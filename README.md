@@ -25,6 +25,10 @@ Changelog
 * New for 2022/2023:
 
     * Target architecture is now RISC-V rather than MIPS, in order to align with the modernised Instruction Architectures half of the module.
+    * Instead of Vagrant, Docker is now used for the testing environment (with optional VS Code support).
+    * Test scripts are now provided to check your compiler against the set of public tests, without having to write this yourself
+    * The basic compiler framework has been improved to support command line arguments
+    * GitHub Actions can now perform automated testing of your compiler
 
 * New for 2021/2022:
 
