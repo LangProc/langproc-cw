@@ -1,7 +1,7 @@
-2021/2022 Compilers Coursework
+2022/2023 Compilers Coursework
 ==============================
 
-There is a single assessed code deliverable, which is due on Friday 24 March 2022 at 23:59. This deliverable contains two components:
+There is a single assessed code deliverable, which is due on Friday 24 March 2023 at 23:59. This deliverable contains two components:
 
 - [*C-compiler*](c_compiler.md) (90%): a compiler from C to RISC-V assembly. The source language is pre-processed C90. The target environment is Ubuntu 22.04, so the lab Ubuntu distribution, or equivalently an Ubuntu 22.04 VM as configured in the attached [Dockerfile](Dockerfile).
 
