@@ -3,7 +3,7 @@
 
 There is a single assessed code deliverable, which is due on Friday 24 March 2023 at 23:59. This deliverable contains two components:
 
-- [*C-compiler*](c_compiler.md) (90%): a compiler from C to RISC-V assembly. The source language is pre-processed C90. The target environment is Ubuntu 22.04, so the lab Ubuntu distribution, or equivalently an Ubuntu 22.04 VM as configured in the attached [Dockerfile](Dockerfile).
+- [*C-compiler*](c_compiler.md) (90%): a compiler from C to RISC-V assembly. The source language is pre-processed C90. The target environment is Ubuntu 22.04, as  described in the attached [Dockerfile](Dockerfile). See [here](./c_compiler.md) for more information about this testing environment.
 
 - [time-tracking/project management component](management.md) (10%), which will be assessed orally at the start of Summer term.
 
