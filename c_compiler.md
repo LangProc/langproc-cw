@@ -20,7 +20,7 @@ It is recommended that you use VS Code as this has good support for working insi
 4) Open the Command Palette in VS Code. You can do this by the shortcut `Ctrl + Shift + P` on Windows or `Cmd + Shift + P` on Mac. Alternatively, you can access this from `View -> Command Palette`.
 5) Enter `>Dev Containers: Reopen in Container` into the Command Palette
 6) After a delay -- depending on how fast your Internet connection can download ~1GB -- you will now be in the container environment. For those interested, VS Code reads the container configuration from the [.devcontainer/devcontainer.json](.devcontainer/devcontainer.json) file.
-7) Test that your tools are correctly setup by running ./test.sh in the VS Code terminal, accessible via `Terminal -> New Terminal`. Your output should look as follows:
+7) Test that your tools are correctly setup by running `./toolchain_test.sh` in the VS Code terminal, accessible via `Terminal -> New Terminal`. Your output should look as follows:
 
     ```console
     root@e3221f21a2a1:/workspaces/langproc-env# ./toolchain_test.sh
@@ -45,7 +45,7 @@ It is recommended that you use VS Code as this has good support for working insi
 2) Open a terminal to the folder containing this file
 3) Inside that terminal, run `docker build -t compilers_image .`
 4) Once that completes, run `docker run --rm -it -v "${PWD}:/code" -w "/code" --name "compilers_env" compilers_image`
-5) You should now be inside the LangProc tools container, where you can run `./test.sh` inside the `/code` folder to check that your tools are working correctly. Note that the folder containing this file, as well as any subdirectories, are mounted inside this container under the path `/code`. The output of running the command should look as follows:
+5) You should now be inside the LangProc tools container, where you can run `./toolchain_test.sh` inside the `/code` folder to check that your tools are working correctly. Note that the folder containing this file, as well as any subdirectories, are mounted inside this container under the path `/code`. The output of running the command should look as follows:
 
     ```console
     root@ad12f00322f6:/code# ./toolchain_test.sh
@@ -69,7 +69,7 @@ If you wish to use C++, then a basic framework for building your compiler has be
 
 Source files can be found in the [./src](./src) folder and header files can be found in the [./include](./include) folder.
 
-You can test your compiler by running `./test.sh` from the folder containing this file; the output should look as follows:
+You can test your compiler against the provided test-suite by running `./test.sh` from the folder containing this file; the output should look as follows:
 
 ```console
 root@host:/workspaces/langproc-env# ./test.sh
