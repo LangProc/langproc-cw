@@ -6,13 +6,13 @@ Your program should read C source code from a file, and write RISC-V assembly to
 Environment
 -----------
 
-For the coursework, an Ubuntu 22.04 Dockerfile has been provided which defines all of the tools you need to get started -- just like the labs.
+An Ubuntu 22.04 Dockerfile has been provided which defines all of the tools you need to get started, just like the labs.
 
 It is strongly suggested that you do your final testing before each submission in this environment, otherwise you are likely to hit incompatibility problems, which may mean your program won't build in my test environment.
 
-It is recommended that you use VS Code as this has good support for working inside Docker containers. However, instructions have been provided if you wish to use another editor.
+Many students develop their compiler in VS Code, as this has good support for collaborative programming and working inside Docker containers. Instructions for getting set up in VS Code are provided below. More generic instructions for those using other editors are also provided.
 
-### VS Code + Docker (recommended)
+### VS Code + Docker (the most popular option)
 
 1) Install [Docker Desktop](https://www.docker.com/products/docker-desktop/). If you are on Apple M1/M2, make sure to choose the Apple Silicon download.
 2) Open VS Code and install the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension
@@ -39,7 +39,7 @@ It is recommended that you use VS Code as this has good support for working insi
 
 ### Another Editor + Docker
 
-> Warning for Windows users: if you are running Windows and use this method, you may experience errors related to the line endings of your files. Windows uses the special characters CRLF to represent the end of a line, whereas Linux uses just LF. As such, if you edit these files on Windows they are most likely to be saved using CRLF. See if you can change your editor to use LF file endings or, even better, see if your editor supports [EditorConfig](https://editorconfig.org/), which standardises formatting across all files based on the [.editorconfig](.editorconfig) file in the same folder as this file.
+> Warning for Windows users: if you are running Windows and use this method, you may experience errors related to the line endings of your files. Windows uses the special characters CRLF (`\r\n`) to represent the end of a line, whereas Linux uses just LF (`\n`). As such, if you edit these files on Windows they are most likely to be saved using CRLF. See if you can change your editor to use LF file endings or, even better, see if your editor supports [EditorConfig](https://editorconfig.org/), which standardises formatting across all files based on the [.editorconfig](.editorconfig) file in the same folder as this file.
 
 1) Install [Docker](https://www.docker.com/products/docker-desktop/). If you are on Apple M1/M2, make sure to choose the Apple Silicon download.
 2) Open a terminal to the folder containing this file
