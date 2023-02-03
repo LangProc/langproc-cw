@@ -10,6 +10,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       packages: read
+      statuses: write
+      checks: write
     container:
       image: ghcr.io/langproc/langproc-2022-cw/environment:v1.0.0
       credentials:
