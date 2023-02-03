@@ -26,7 +26,7 @@ jobs:
 
       - name: Perm issue fix
         if: success() || failure()
-        run: git config --global --add safe.directory /__w/langproc-2022-cw/environment
+        run: git config --global --add safe.directory "/__w/${{ github.event.repository.name }}/${{ github.event.repository.name }}"
 
       - name: Upload test results
         uses: dorny/test-reporter@v1
