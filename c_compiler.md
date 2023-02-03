@@ -1,5 +1,5 @@
-Deliverable 3: A compiler for the C language
-============================================
+Main coursework: A compiler for the C language
+==============================================
 
 Your program should read C source code from a file, and write RISC-V assembly to another file.
 
