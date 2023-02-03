@@ -8,6 +8,8 @@ on:
 jobs:
   Test:
     runs-on: ubuntu-latest
+    permissions:
+      packages: read
     container:
       image: ghcr.io/langproc/langproc-2022-cw/environment:v1.0.0
       credentials:
