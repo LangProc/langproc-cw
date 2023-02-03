@@ -10,7 +10,7 @@ An Ubuntu 22.04 Dockerfile has been provided which defines all of the tools you 
 
 It is strongly suggested that you do your final testing before each submission in this environment, otherwise you are likely to hit incompatibility problems, which may mean your program won't build in my test environment.
 
-Many students develop their compiler in VS Code, as this has good support for collaborative programming and working inside Docker containers. Instructions for getting set up in VS Code are provided below. More generic instructions for those using other editors are also provided.
+Many students develop their compiler in VS Code, as this has good support for collaborative programming and working inside Docker containers. Instructions for getting set up in VS Code are provided below. More generic instructions for those using other editors are also provided, further down the page.
 
 ### VS Code + Docker (the most popular option)
 
