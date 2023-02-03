@@ -11,7 +11,6 @@ RUN apt-get install -y \
     bc \
     bison \
     dos2unix \
-    g++ \
     gdb \
     gcc \
     make \
@@ -23,7 +22,16 @@ RUN apt-get install -y \
 
 # Install RISC-V Toolchain
 WORKDIR /tmp
-RUN curl --output riscv-gnu-toolchain.tar.gz -L "https://github.com/iac-reshaping/compiler-test/releases/download/v1.0.0/riscv-gnu-toolchain-2022-09-21-ubuntu-22.04.tar.gz"
+RUN set -eux; \
+    arch="$(dpkg --print-architecture)"; arch="${arch##*-}"; \
+    url=; \
+    case "$arch" in \
+    'arm64') \
+    curl --output riscv-gnu-toolchain.tar.gz -L "https://github.com/langproc/langproc-2022-cw/releases/download/v1.0.0/riscv-gnu-toolchain-2022-09-21-ubuntu-22.04-arm64.tar.gz" \
+    ;; \
+    *) curl --output riscv-gnu-toolchain.tar.gz -L "https://github.com/langproc/langproc-2022-cw/releases/download/v1.0.0/riscv-gnu-toolchain-2022-09-21-ubuntu-22.04-amd64.tar.gz" \
+    ;; \
+    esac;
 RUN rm -rf /opt/riscv
 RUN tar -xzf riscv-gnu-toolchain.tar.gz --directory /opt
 ENV PATH="/opt/riscv/bin:${PATH}"
