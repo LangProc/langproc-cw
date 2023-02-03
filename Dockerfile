@@ -27,9 +27,9 @@ RUN set -eux; \
     url=; \
     case "$arch" in \
     'arm64') \
-    curl --output riscv-gnu-toolchain.tar.gz -L "https://github.com/iac-reshaping/compiler-test/releases/download/v1.0.0/riscv-gnu-toolchain-2022-09-21-ubuntu-22.04-arm64.tar.gz" \
+    curl --output riscv-gnu-toolchain.tar.gz -L "https://github.com/langproc/langproc-2022-cw/releases/download/v1.0.0/riscv-gnu-toolchain-2022-09-21-ubuntu-22.04-arm64.tar.gz" \
     ;; \
-    *) curl --output riscv-gnu-toolchain.tar.gz -L "https://github.com/iac-reshaping/compiler-test/releases/download/v1.0.0/riscv-gnu-toolchain-2022-09-21-ubuntu-22.04.tar.gz" \
+    *) curl --output riscv-gnu-toolchain.tar.gz -L "https://github.com/langproc/langproc-2022-cw/releases/download/v1.0.0/riscv-gnu-toolchain-2022-09-21-ubuntu-22.04-amd64.tar.gz" \
     ;; \
     esac;
 RUN rm -rf /opt/riscv
