@@ -12,6 +12,7 @@ jobs:
       packages: read
       statuses: write
       checks: write
+      contents: read
     container:
       image: ghcr.io/langproc/langproc-2022-cw/environment:v1.0.0
       credentials:
