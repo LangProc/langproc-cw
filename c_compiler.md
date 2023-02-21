@@ -175,12 +175,12 @@ It should be possible to assemble and link this code against a C run-time, and h
 
 For instance, suppose I have a file called `test_program.c` that contains:
 
-    int f() { return 10; }
+    int f() { return 5; }
 
 and another file called `test_program_driver.c` that contains:
 
     int f();
-    int main() { return !( 10 == f() ); }
+    int main() { return !( 5 == f() ); }
 
 I run the compiler on the test program, like so:
 
