@@ -12,6 +12,7 @@ RUN apt-get update && apt-get install -y --fix-missing \
     dos2unix \
     gdb \
     gcc \
+    lcov \
     make \
     flex \
     build-essential \
