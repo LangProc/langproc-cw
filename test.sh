@@ -6,7 +6,19 @@
 set -uo pipefail
 shopt -s globstar
 
-make bin/c_compiler
+make clean
+
+with_coverage=1
+if [ $# -eq 1 ]; then
+    test $1 = "coverage"
+    with_coverage=$?
+fi
+if [ $with_coverage -eq 0 ]; then
+    rm -rf coverage
+    make with_coverage
+else
+    make bin/c_compiler
+fi
 
 mkdir -p bin
 mkdir -p bin/output
@@ -66,6 +78,10 @@ for DRIVER in compiler_tests/**/*_driver.c; do
         fail_testcase "Fail: simulation did not exit with exit-code 0"
     fi
 done
+
+if [ $with_coverage -eq 0 ]; then
+    make coverage
+fi
 
 printf "\nPassing %d/%d tests\n" "${PASSING}" "${TOTAL}"
 printf '%s\n' '</testsuite>' >> "${J_UNIT_OUTPUT_FILE}"

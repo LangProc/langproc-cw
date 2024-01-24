@@ -24,6 +24,10 @@ All submissions will be tested functionally -- there is no expectation for your 
 Changelog
 =========
 
+* New for 2023/2024:
+
+    * Provided guidance to generate coverage information.
+
 * New for 2022/2023:
 
     * Target architecture is now RISC-V rather than MIPS, in order to align with the modernised Instruction Architectures half of the module.
