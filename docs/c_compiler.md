@@ -177,7 +177,7 @@ Useful links
 
 Getting started 
 ---------------
-[How to get started? (previous students' perspetives)](./starting_guide.md)
+[How to get started? (previous students' perspectives)](./starting_guide.md)
 
 Coverage information
 -----------
