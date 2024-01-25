@@ -3,9 +3,12 @@
 
 There are two components to the coursework:
 
-- [*A C compiler*](c_compiler.md), worth 90%. The source language is pre-processed C90, and the target language is RISC-V assembly. The target environment is Ubuntu 22.04, as described in the attached [Dockerfile](Dockerfile). See [here](./c_compiler.md) for the full set of requirements and more information about the testing environment.
+- Worth 90%:
+    - [*A C compiler*](docs/c_compiler.md). The source language is pre-processed C90, and the target language is RISC-V assembly. The target environment is Ubuntu 22.04, as described in the attached [Dockerfile](Dockerfile). See [here](docs/c_compiler.md) for the full set of requirements and more information about the testing environment.
 
-- [*Evidence of time-tracking/project management*](management.md), worth 10%. This will be assessed orally at the start of Summer term. See [here](management.md) for more information about this component.
+- Worth 10%:
+    - Overall design style and code readability. This has been introduced to reward thoughtful planning throughout the project, rather than penalise you. There are no strict guidelines, but you should consider the use of abstraction, your internal representation of instructions, proper Git use, signs of appropriate testing, as well as general code hygiene.
+    - [*Evidence of time-tracking/project management*](docs/management.md). This will be assessed orally at the start of Summer term. See [here](docs/management.md) for more information about this component.
 
 Repositories
 ============
@@ -27,6 +30,14 @@ Changelog
 * New for 2023/2024:
 
     * Provided guidance to generate coverage information.
+    * Expanded features list and provided a visual test case distribution.
+    * Included useful links to Godbolt, simulator, ISA, ABI, Assembler reference.
+    * Directly linked to ANSI C parser and lexer.
+    * Added a "Getting started" guide and incorporated last year's feedback from Ed.
+    * Changed the 10% of the grade (previously only for time management) to also account for code design to reward thoughtful planning.
+    * Improved the skeleton compiler to be more advanced by providing lexer and parser to hopefully jump-start progress and avoid unnecessary debugging. [WIP]
+    * Covered assembler directives in more details by showcasing the meaning behind an example assembly program, because that topic had always caused confusion in the past years. [WIP]
+
 
 * New for 2022/2023:
 
@@ -44,7 +55,7 @@ Changelog
 
     * In previous years, students were additionally required to submit a C-to-Python translator, as a "ramping up" task. This extra deliverable has been removed, as the labs provide plenty of "ramping up" practice.
 
-    * We have provided a really basic compiler that simply ignores its input and produces a fixed, valid MIPS assembly program. This should help you to get started a bit more rapidly.
+    * We have provided a really basic compiler that simply ignores its input and produces a fixed, valid RISC-V assembly program. This should help you to get started a bit more rapidly.
 
 * New for 2019/2020:
 
