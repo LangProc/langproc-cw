@@ -5,71 +5,16 @@ Your program should read C source code from a file, and write RISC-V assembly to
 
 Environment
 -----------
-
-An Ubuntu 22.04 Dockerfile has been provided which defines all of the tools you need to get started, just like the labs.
-
-It is strongly suggested that you do your final testing before each submission in this environment, otherwise you are likely to hit incompatibility problems, which may mean your program won't build in my test environment.
-
-Many students develop their compiler in VS Code, as this has good support for collaborative programming and working inside Docker containers. Instructions for getting set up in VS Code are provided below. More generic instructions for those using other editors are also provided, further down the page.
-
-### VS Code + Docker (the most popular option)
-
-1) Install [Docker Desktop](https://www.docker.com/products/docker-desktop/). If you are on Apple M1/M2, make sure to choose the Apple Silicon download.
-2) Open VS Code and install the [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) extension
-3) Open the folder containing this file, in VS Code
-4) Open the Command Palette in VS Code. You can do this by the shortcut `Ctrl + Shift + P` on Windows or `Cmd + Shift + P` on Mac. Alternatively, you can access this from `View -> Command Palette`.
-5) Enter `>Dev Containers: Reopen in Container` into the Command Palette
-6) After a delay -- depending on how fast your Internet connection can download ~1GB -- you will now be in the container environment. For those interested, VS Code reads the container configuration from the [.devcontainer/devcontainer.json](.devcontainer/devcontainer.json) file.
-7) Test that your tools are correctly setup by running `./toolchain_test.sh` in the VS Code terminal, accessible via `Terminal -> New Terminal`. Your output should look as follows:
-
-    ```console
-    root@e3221f21a2a1:/workspaces/langproc-env# ./toolchain_test.sh
-
-    g++ -std=c++20 -W -Wall -g -I include -o bin/c_compiler src/cli.cpp src/compiler.cpp
-
-    Compiling: compiler_tests/_example/example.c
-    Compiled to: bin/riscv_example.s
-
-    bbl loader
-    Hello from RISC-V
-    Test function produced value: 8.700000
-    Example function returned: 5
-    Test successful
-    ```
-
-### Another Editor + Docker
-
-> Warning for Windows users: if you are running Windows and use this method, you may experience errors related to the line endings of your files. Windows uses the special characters CRLF (`\r\n`) to represent the end of a line, whereas Linux uses just LF (`\n`). As such, if you edit these files on Windows they are most likely to be saved using CRLF. See if you can change your editor to use LF file endings or, even better, see if your editor supports [EditorConfig](https://editorconfig.org/), which standardises formatting across all files based on the [.editorconfig](.editorconfig) file in the same folder as this file.
-
-1) Install [Docker](https://www.docker.com/products/docker-desktop/). If you are on Apple M1/M2, make sure to choose the Apple Silicon download.
-2) Open a terminal (Powershell on Windows; Terminal on Mac) to the folder containing this file
-3) Inside that terminal, run `docker build -t compilers_image .`
-4) Once that completes, run `docker run --rm -it -v "${PWD}:/code" -w "/code" --name "compilers_env" compilers_image`
-5) You should now be inside the LangProc tools container, where you can run `./toolchain_test.sh` inside the `/code` folder to check that your tools are working correctly. Note that the folder containing this file, as well as any subdirectories, are mounted inside this container under the path `/code`. The output of running the command should look as follows:
-
-    ```console
-    root@ad12f00322f6:/code# ./toolchain_test.sh
-
-    g++ -std=c++20 -W -Wall -g -I include -o bin/c_compiler src/cli.cpp src/compiler.cpp
-
-    Compiling: compiler_tests/_example/example.c
-    Compiled to: bin/riscv_example.s
-
-    bbl loader
-    Hello from RISC-V
-    Test function produced value: 8.700000
-    Example function returned: 5
-    Test successful
-    ```
+[How to set up your environment?](./environment_guide.md)
 
 Developing your compiler
 ------------------------
 
 If you wish to use C++, then a basic framework for building your compiler has been provided.
 
-Source files can be found in the [./src](./src) folder and header files can be found in the [./include](./include) folder.
+Source files can be found in the [./src](../src) folder and header files can be found in the [./include](../include) folder.
 
-You can test your compiler against the provided test-suite by running `./test.sh` from the folder containing this file; the output should look as follows:
+You can test your compiler against the provided test-suite by running `./test.sh` from the top of this repo; the output should look as follows:
 
 ```console
 root@host:/workspaces/langproc-env# ./test.sh
@@ -93,7 +38,7 @@ If you want to know which part of your code is executed when running your compil
 
 This will generate a webpage `coverage/index.html` with a listing of all the source files and for each source file a listing of the number of times each line has been executed.
 
-![Index.html screenshot](coverage_example.png)
+![Index.html screenshot](./coverage_example.png)
 
 It can also be used automatically on all test files by running `./test.sh coverage`.
 
@@ -121,23 +66,29 @@ The source code will not contain any compiler-specific or platform-specific exte
 
 The test inputs will be a set of files of increasing complexity and variety. The test inputs will not have syntax errors or other programming errors, so your code does not need to handle these gracefully.
 
+[This is the "official" C90 grammar](https://www.lysator.liu.se/c/ANSI-C-grammar-y.html), presented in the form of a Yacc parser file without any speficic actions linked to each rule. There is also a [corresponding Lex lexer file](https://www.lysator.liu.se/c/ANSI-C-grammar-l.html) attached. You do not need to use everything that is in there, but it can help to give you an idea of the AST constructs that you need. If you find the grammar too complicated to understand, it is also perfectly fine to try create your own simple grammar and build upon it as you add more features.
+
+Features
+-------
+
 Here is a list of basic features that you might like to implement first.
 
 * a file containing just a single function with no arguments
 * variables of `int` type
 * local variables
 * arithmetic and logical expressions
-* if-then-else statements
-* while loops
+* `if`-then-`else` statements
+* `while` loops
 
 Here is a list of intermediate features that you might like to implement once the basic features are working.
 
 * files containing multiple functions that call each other
-* functions that take up to four parameters
-* for loops
+* functions that take up to 8 parameters
+* `for` loops
 * arrays declared globally (i.e. outside of any function in your file)
 * arrays declared locally (i.e. inside a function)
-* reading and writing elements of an array
+* array initialization
+* reading and writing elements of an array (index can be a constant, a variable or an expression)
 * recursive function calls
 * the `enum` keyword
 * `switch` statements
@@ -147,7 +98,7 @@ Here is a list of more advanced features like you might like to implement once t
 
 * variables of `double`, `float`, `char`, `unsigned`, structs, and pointer types
 * calling externally-defined functions (i.e. the file being compiled declares a function, but its definition is provided in a different file that is linked in later on)
-* functions that take more than four parameters
+* functions that take more than 8 parameters
 * mutually recursive function calls
 * locally scoped variable declarations (e.g. a variable that is declared inside the body of a while loop, such as `while(...) { int x = ...; ... }`.
 * the `typedef` keyword
@@ -168,21 +119,32 @@ Here is a (partial) list of features that will not be tested.
 * the comma operator (for sequencing within expressions)
 * the [old K&R style of declaring functions](https://stackoverflow.com/a/18820829)
 * union types
-* variable-length arrays
+* variable-length arrays (C90 forbids them)
 * the `const` keyword
 * function pointers
 * both implicit and explicit casting
+* the `extern` keyword (handling externally-defined functions is a part of the advanced features, but `extern` is not used for that)
+* the `short` and `long` types (correct width handling is tested with `float` and `double`)
+* the `void` type is not tested explicitly, but it appears in some helper functions in the test cases, so your compiler cannot break when it encounters this keyword
+* the `static` keyword
+
+Test cases
+----------
 
 All test inputs will be valid; that is, you can assume the absence of programmer errors like syntax faults, type mismatches, and array out-of-bounds errors. The entire compilation and testing process (including compilation, assembly, linking, and RISC-V simulation) is expected to complete within ten seconds per program (which should be plenty of time!), and is expected not to use an inordinate amount of memory or disk space. There is no requirement for the generated assembly to be optimised in any way -- the only requirement is that it produces the correct answer.
 
-The [compiler_tests](compiler_tests) contains a large number of example inputs, divided into various categories, that you might like to use as testcases. Your compiler will be assessed on these "seen" inputs together with a further set of "unseen" inputs that are of a similar form. It is worth emphasising that it is not expected that many compilers will correctly compile all of the "seen" inputs (let alone the "unseen" ones!). You are encouraged to focus on compiling the "basic" features (as listed above) first, before moving on to more advanced features if you have time.
+The [compiler_tests](../compiler_tests) contains a large number of example inputs, divided into various categories, that you might like to use as testcases. Your compiler will be assessed on these "seen" inputs together with a further set of "unseen" inputs that are of a similar form. It is worth emphasising that it is not expected that many compilers will correctly compile all of the "seen" inputs (let alone the "unseen" ones!). You are encouraged to focus on compiling the "basic" features (as listed above) first, before moving on to more advanced features if you have time.
+
+The split between test cases last year can be seen below. Do not assume it will stay the same this year, but you can use it as a rough estimate of what to focus on in case you are running short on time. **Remember that more advanced features most certainly use some of the less advanced features, so implement the latter first (i.e. without working functions the array tests will fail)**.
+
+![Testcase distribution](./testcase_distribution.png)
 
 Output Format
 -------------
 
 The output format should be RISC-V assembly code.
 
-It should be possible to assemble and link this code against a C run-time, and have it execute correctly on a MIPS processor as emulated by `spike`.
+It should be possible to assemble and link this code against a C run-time, and have it execute correctly on a RISC-V processor as emulated by `spike`.
 
 For instance, suppose I have a file called `test_program.c` that contains:
 
@@ -210,3 +172,20 @@ I then use spike to simulate the executable on RISC-V, like so:
     spike pk test_program
 
 This command should produce the exit code `0`.
+
+
+Useful links
+------------
+* [Godbolt](https://godbolt.org/z/vMMnWbsff) - Great tool for viewing what a real (`gcc` in this case) RISC-V compiler would produce for a given snippet of C code. This link is pre-configured for the correct architecture (`RV32IMFD`) and ABI (`ILP32D`) that the coursework targets. Code optimisation is also disabled to best mimic what you might want your compiler to output. You can replicate Godbolt locally by running `riscv64-unknown-elf-gcc -std=c90 -pedantic -ansi -O0 -march=rv32imfd -mabi=ilp32d -S [source-file.c] -o [dest-file.s]`, which might make debugging easier for some.
+
+* [Interactive RISC-V simulator](https://creatorsim.github.io/creator) - Might be helpful when trying to work out the behaviour of certain instructions that Godbolt emits.
+
+* [RISC-V ISA](https://riscv.org/wp-content/uploads/2017/05/riscv-spec-v2.2.pdf) - Instruction Set Manual, where you should only be generating assembly using instructions from the I, M, F, and D sections.
+
+* [RISC-V ABI](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/9a77e8801592b3d194796ea5ba6ec670e4fe054f/riscv-cc.adoc) - Calling conventions for registers and functions depending on their types. For example, it is expected that certain registers will contain the same value before and after making a function call. Additionally, it is expected that function arguments are passed in a certain order - so pay careful attention to the standard ABI called [`ILP32D`](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/9a77e8801592b3d194796ea5ba6ec670e4fe054f/riscv-cc.adoc#abi-ilp32d) with `XLEN` of 32.
+
+* [RISC-V Assembler Reference](https://michaeljclark.github.io/asm.html) - Very useful resource containing information about structuring your output assembly files and most importantly the assembler directives - if you don't know the meaning behind `.data`, `.text`, or `.word` then definitely check this out as well as experiment with Godbolt to see how it actually emits them.
+
+Getting started 
+---------------
+[How to get started? (previous students' perspetives)](./starting_guide.md)

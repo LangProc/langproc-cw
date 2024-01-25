@@ -3,9 +3,9 @@
 
 There are two components to the coursework:
 
-- [*A C compiler*](c_compiler.md), worth 90%. The source language is pre-processed C90, and the target language is RISC-V assembly. The target environment is Ubuntu 22.04, as described in the attached [Dockerfile](Dockerfile). See [here](./c_compiler.md) for the full set of requirements and more information about the testing environment.
+- [*A C compiler*](docs/c_compiler.md), worth 90%. The source language is pre-processed C90, and the target language is RISC-V assembly. The target environment is Ubuntu 22.04, as described in the attached [Dockerfile](Dockerfile). See [here](docs/c_compiler.md) for the full set of requirements and more information about the testing environment.
 
-- [*Evidence of time-tracking/project management*](management.md), worth 10%. This will be assessed orally at the start of Summer term. See [here](management.md) for more information about this component.
+- [*Evidence of time-tracking/project management*](docs/management.md), worth 10%. This will be assessed orally at the start of Summer term. See [here](docs/management.md) for more information about this component.
 
 Repositories
 ============
@@ -44,7 +44,7 @@ Changelog
 
     * In previous years, students were additionally required to submit a C-to-Python translator, as a "ramping up" task. This extra deliverable has been removed, as the labs provide plenty of "ramping up" practice.
 
-    * We have provided a really basic compiler that simply ignores its input and produces a fixed, valid MIPS assembly program. This should help you to get started a bit more rapidly.
+    * We have provided a really basic compiler that simply ignores its input and produces a fixed, valid RISC-V assembly program. This should help you to get started a bit more rapidly.
 
 * New for 2019/2020:
 
