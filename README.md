@@ -1,4 +1,4 @@
-2022/2023 Compilers Coursework
+2023/24 Compilers Coursework
 ==============================
 
 There are two components to the coursework:
