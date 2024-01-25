@@ -18,7 +18,7 @@ Each group gets a bare private repository. It is up to you if you want to clone 
 Submission
 ==========
 
-The deadline for submitting your C compiler is **Friday 24 March 2023 at 23:59**. There is no deadline for the project management component; instead, this will be assessed by a short oral viva that will be organised in Summer term.
+The deadline for submitting your C compiler is **Friday 22 March 2024 at 23:59**. There is no deadline for the project management component; instead, this will be assessed by a short oral viva that will be organised in Summer term.
 
 Submission will be via GitHub (code) and Teams (commit hash), as in the labs.
 
