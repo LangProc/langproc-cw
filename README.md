@@ -8,7 +8,7 @@ There are two components to the coursework:
 
 - Worth 10%:
     - Overall design style and code readability. This has been introduced to reward thoughtful planning throughout the project, rather than penalise you. There are no strict guidelines, but you should consider the use of abstraction, your internal representation of instructions, proper Git use, signs of appropriate testing, as well as general code hygiene.
-    - [*Evidence of time-tracking/project management*](docs/management.md). This will be assessed orally at the start of Summer term. See [here](docs/management.md) for more information about this component.
+    - Evidence of time-tracking/project management. This will be assessed orally at the start of Summer term. See [here](docs/management.md) for more information about this component.
 
 Repositories
 ============
