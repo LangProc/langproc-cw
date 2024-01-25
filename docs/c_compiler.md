@@ -55,7 +55,7 @@ The source code will not contain any compiler-specific or platform-specific exte
 
 The test inputs will be a set of files of increasing complexity and variety. The test inputs will not have syntax errors or other programming errors, so your code does not need to handle these gracefully.
 
-[This is the "official" C90 grammar](https://www.lysator.liu.se/c/ANSI-C-grammar-y.html), presented in the form of a Yacc parser file without any speficic actions linked to each rule. There is also a [corresponding Lex lexer file](https://www.lysator.liu.se/c/ANSI-C-grammar-l.html) attached. You do not need to use everything that is in there, but it can help to give you an idea of the AST constructs that you need. If you find the grammar too complicated to understand, it is also perfectly fine to try create your own simple grammar and build upon it as you add more features.
+[This is the "official" C90 grammar](https://www.lysator.liu.se/c/ANSI-C-grammar-y.html), presented in the form of a Yacc parser file without any specific actions linked to each rule. There is also a [corresponding Lex lexer file](https://www.lysator.liu.se/c/ANSI-C-grammar-l.html) attached. You do not need to use everything that is in there, but it can help to give you an idea of the AST constructs that you need. If you find the grammar too complicated to understand, it is also perfectly fine to create your own simple grammar and build upon it as you add more features.
 
 Features
 -------
@@ -124,7 +124,7 @@ All test inputs will be valid; that is, you can assume the absence of programmer
 
 The [compiler_tests](../compiler_tests) contains a large number of example inputs, divided into various categories, that you might like to use as testcases. Your compiler will be assessed on these "seen" inputs together with a further set of "unseen" inputs that are of a similar form. It is worth emphasising that it is not expected that many compilers will correctly compile all of the "seen" inputs (let alone the "unseen" ones!). You are encouraged to focus on compiling the "basic" features (as listed above) first, before moving on to more advanced features if you have time.
 
-The split between test cases last year can be seen below. Do not assume it will stay the same this year, but you can use it as a rough estimate of what to focus on in case you are running short on time. **Remember that more advanced features most certainly use some of the less advanced features, so implement the latter first (i.e. without working functions the array tests will fail)**.
+The split between test cases last year can be seen below. Do not assume it will stay the same this year, but you can use it as a rough estimate of what to focus on in case you are running short on time. **Remember that tests for advanced features will also test basic features, so you should implement the basic features first (e.g. without working functions the array tests will fail).**
 
 ![Testcase distribution](./testcase_distribution.png)
 
