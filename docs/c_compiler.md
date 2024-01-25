@@ -31,11 +31,6 @@ By default, the first `_example/example.c` test should be passing.
 
 This basic framework ignores the source input file and always produces the same assembly, which loads the value `5` into `a0`.
 
-
-Coverage information
------------
-[Do you want to know which part of your code is executed when running your compiler on a file?](./coverage.md)
-
 Program build and execution
 ---------------------------
 
@@ -183,3 +178,7 @@ Useful links
 Getting started 
 ---------------
 [How to get started? (previous students' perspetives)](./starting_guide.md)
+
+Coverage information
+-----------
+[Do you want to know which part of your code is executed when running your compiler on a file?](./coverage.md)
