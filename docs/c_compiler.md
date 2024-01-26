@@ -10,7 +10,7 @@ Environment
 Developing your compiler
 ------------------------
 
-If you wish to use C++, then a basic framework for building your compiler has been provided.
+If you wish to use C++, then a basic framework for building your compiler has been provided. You are recommended to check out its structure [here](./basic_compiler.md).
 
 Source files can be found in the [./src](../src) folder and header files can be found in the [./include](../include) folder.
 
@@ -175,7 +175,7 @@ Useful links
 
 * [RISC-V Assembler Reference](https://michaeljclark.github.io/asm.html) - Very useful resource containing information about structuring your output assembly files and most importantly the assembler directives - if you don't know the meaning behind `.data`, `.text`, or `.word` then definitely check this out as well as experiment with Godbolt to see how it actually emits them.
 
-Getting started 
+Getting started
 ---------------
 [How to get started? (previous students' perspectives)](./starting_guide.md)
 
