@@ -1,12 +1,20 @@
 CPPFLAGS += -std=c++20 -W -Wall -g -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -I include
 
+HPPFILES := $(shell find include/ -type f -name "*.hpp")
+CPPFILES := $(shell find src/ -type f -name "*.cpp")
+OBJFILES := $(patsubst %.cpp,%.o,$(CPPFILES))
+
+
 .PHONY: default clean with_coverage coverage
 
 default: bin/c_compiler
 
-bin/c_compiler : src/lexer.yy.o src/parser.tab.o src/cli.o src/compiler.o
+bin/c_compiler : src/lexer.yy.o src/parser.tab.o $(OBJFILES)
 	@mkdir -p bin
-	g++ $(CPPFLAGS) -o bin/c_compiler $^
+	g++ $(CPPFLAGS) -o $@ $^
+
+src/%.o: src/%.cpp $(HPPFILES)
+	g++ $(CPPFLAGS) -c -o $@ $<
 
 src/parser.tab.cpp src/parser.tab.hpp: src/parser.y
 	yacc -v -d src/parser.y -o src/parser.tab.cpp
@@ -31,3 +39,8 @@ clean :
 	@rm -rf coverage
 	@find . -name "*.o" -delete
 	@rm -rf bin/*
+	@rm -f src/*.tab.hpp
+	@rm -f src/*.tab.cpp
+	@rm -f src/*.yy.cpp
+	@rm -f src/*.output
+

@@ -1,5 +1,5 @@
 %code requires{
-  // #include "ast.hpp"
+  #include "ast.hpp"
 
   extern Node *g_root; // A way of getting the AST out
   extern FILE *yyin;
@@ -13,7 +13,7 @@
 
 // Represents the value associated with any kind of AST node.
 %union{
-  Node*        expr;
+  Node*        node;
   int          number_int;
   double       number_float;
   std::string* string;
@@ -27,6 +27,22 @@
 %token CHAR SHORT INT LONG SIGNED UNSIGNED FLOAT DOUBLE CONST VOLATILE VOID
 %token STRUCT UNION ENUM ELLIPSIS
 %token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
+
+%type <node> translation_unit external_declaration function_definition primary_expression postfix_expression argument_expression_list
+%type <node> unary_expression cast_expression multiplicative_expression additive_expression shift_expression relational_expression
+%type <node> equality_expression and_expression exclusive_or_expression inclusive_or_expression logical_and_expression logical_or_expression
+%type <node> conditional_expression assignment_expression expression constant_expression declaration declaration_specifiers init_declarator_list
+%type <node> init_declarator type_specifier struct_specifier struct_declaration_list struct_declaration specifier_qualifier_list struct_declarator_list
+%type <node> struct_declarator enum_specifier enumerator_list enumerator declarator direct_declarator pointer parameter_list parameter_declaration
+%type <node> identifier_list type_name abstract_declarator direct_abstract_declarator initializer initializer_list statement labeled_statement
+%type <node> compound_statement declaration_list statement_list expression_statement selection_statement iteration_statement jump_statement
+
+%type <string> unary_operator assignment_operator storage_class_specifier
+
+%type <number_int> INT_CONSTANT STRING_LITERAL
+%type <number_float> FLOAT_CONSTANT
+%type <string> IDENTIFIER
+
 
 %start ROOT
 %%
@@ -46,7 +62,7 @@ external_declaration
 
 function_definition
 	: declaration_specifiers declarator declaration_list compound_statement
-	| declaration_specifiers declarator compound_statement                      {$$ = $1;}
+	| declaration_specifiers declarator compound_statement                      {$$ = new FunctionDefinition($1, $2, $3);}
 	| declarator declaration_list compound_statement
 	| declarator compound_statement
 	;
@@ -200,8 +216,6 @@ declaration_specifiers
 	| storage_class_specifier declaration_specifiers
 	| type_specifier                                                                  {$$ = $1;}
 	| type_specifier declaration_specifiers
-	| type_qualifier
-	| type_qualifier declaration_specifiers
 	;
 
 init_declarator_list
@@ -226,26 +240,21 @@ type_specifier
 	: VOID
 	| CHAR
 	| SHORT
-	| INT                                                                              {$$ = $1;}
+	| INT                                                                              {$$ = new TypeSpecifier("int");}
 	| LONG
 	| FLOAT
 	| DOUBLE
 	| SIGNED
 	| UNSIGNED
-	| struct_or_union_specifier
+  | struct_specifier
 	| enum_specifier
 	| TYPE_NAME
 	;
 
-struct_or_union_specifier
-	: struct_or_union IDENTIFIER '{' struct_declaration_list '}'
-	| struct_or_union '{' struct_declaration_list '}'
-	| struct_or_union IDENTIFIER
-	;
-
-struct_or_union
-	: STRUCT
-	| UNION
+struct_specifier
+	: STRUCT IDENTIFIER '{' struct_declaration_list '}'
+	| STRUCT '{' struct_declaration_list '}'
+	| STRUCT IDENTIFIER
 	;
 
 struct_declaration_list
@@ -260,8 +269,6 @@ struct_declaration
 specifier_qualifier_list
 	: type_specifier specifier_qualifier_list
 	| type_specifier
-	| type_qualifier specifier_qualifier_list
-	| type_qualifier
 	;
 
 struct_declarator_list
@@ -291,42 +298,24 @@ enumerator
 	| IDENTIFIER '=' constant_expression
 	;
 
-type_qualifier
-	: CONST
-	| VOLATILE
-	;
-
 declarator
 	: pointer direct_declarator
 	| direct_declarator                                                     {$$ = $1;}
 	;
 
 direct_declarator
-	: IDENTIFIER                                                            {$$ = $1;}
+	: IDENTIFIER                                                            {$$ = new Identifier($1);}
 	| '(' declarator ')'
 	| direct_declarator '[' constant_expression ']'
 	| direct_declarator '[' ']'
-	| direct_declarator '(' parameter_type_list ')'
+	| direct_declarator '(' parameter_list ')'
 	| direct_declarator '(' identifier_list ')'
-	| direct_declarator '(' ')'                                             {$$ = $1;}
+	| direct_declarator '(' ')'                                             {$$ = new DirectDeclarator($1);}
 	;
 
 pointer
 	: '*'
-	| '*' type_qualifier_list
 	| '*' pointer
-	| '*' type_qualifier_list pointer
-	;
-
-type_qualifier_list
-	: type_qualifier
-	| type_qualifier_list type_qualifier
-	;
-
-
-parameter_type_list
-	: parameter_list
-	| parameter_list ',' ELLIPSIS
 	;
 
 parameter_list
@@ -363,9 +352,9 @@ direct_abstract_declarator
 	| direct_abstract_declarator '[' ']'
 	| direct_abstract_declarator '[' constant_expression ']'
 	| '(' ')'
-	| '(' parameter_type_list ')'
+	| '(' parameter_list ')'
 	| direct_abstract_declarator '(' ')'
-	| direct_abstract_declarator '(' parameter_type_list ')'
+	| direct_abstract_declarator '(' parameter_list ')'
 	;
 
 initializer
@@ -396,7 +385,7 @@ labeled_statement
 
 compound_statement
 	: '{' '}'
-	| '{' statement_list '}'                                                   {$$ = $1;}
+	| '{' statement_list '}'                                                   {$$ = $2;}
 	| '{' declaration_list '}'
 	| '{' declaration_list statement_list '}'
 	;
@@ -433,21 +422,24 @@ jump_statement
 	: GOTO IDENTIFIER ';'
 	| CONTINUE ';'
 	| BREAK ';'
-	| RETURN ';'                                                               {$$ = $1;}
+	| RETURN ';'                                                               {$$ = new JumpStatement();}
 	| RETURN expression ';'
 	;
 
 
 
 %%
-#include <stdio.h>
 
-extern char yytext[];
-extern int column;
+Node *g_root;
 
-yyerror(s)
-char *s;
+Node *parseAST(std::string file_name)
 {
-	fflush(stdout);
-	printf("\n%*s\n%*s\n", column, "^", column, s);
+  yyin = fopen(file_name.c_str(), "r");
+  if(yyin == NULL){
+    std::cerr << "Couldn't open input file: " << file_name << std::endl;
+    exit(1);
+  }
+  g_root = NULL;
+  yyparse();
+  return g_root;
 }
