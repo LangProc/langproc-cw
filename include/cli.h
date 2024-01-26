@@ -4,6 +4,6 @@
 #include <iostream>
 #include <unistd.h>
 
-int parse_command_line_args(int argc, char **argv, std::string &sourcePath, std::string &outputPath);
+int parseCommandLineArgs(int argc, char **argv, std::string &source_path, std::string &output_path);
 
 #endif
