@@ -1,12 +1,18 @@
-CPPFLAGS += -std=c++20 -W -Wall -g -I include
+CPPFLAGS += -std=c++20 -W -Wall -g -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -I include
 
-.PHONY: default
+.PHONY: default clean with_coverage coverage
 
 default: bin/c_compiler
 
-bin/c_compiler : src/cli.cpp src/compiler.cpp
+bin/c_compiler : src/lexer.yy.o src/parser.tab.o src/cli.o src/compiler.o
 	@mkdir -p bin
 	g++ $(CPPFLAGS) -o bin/c_compiler $^
+
+src/parser.tab.cpp src/parser.tab.hpp: src/parser.y
+	yacc -v -d src/parser.y -o src/parser.tab.cpp
+
+src/lexer.yy.cpp : src/lexer.flex src/parser.tab.hpp
+	flex -o src/lexer.yy.cpp src/lexer.flex
 
 with_coverage : CPPFLAGS += --coverage
 with_coverage : bin/c_compiler
