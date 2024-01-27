@@ -38,7 +38,6 @@ Changelog
     * Improved the skeleton compiler to be more advanced by integrating lexer and parser to hopefully jump-start progress and avoid unnecessary debugging.
     * Covered assembler directives in more details by showcasing the meaning behind an example assembly program, because that topic had always caused confusion in the past years. [WIP]
 
-
 * New for 2022/2023:
 
     * Target architecture is now RISC-V rather than MIPS, in order to align with the modernised Instruction Architectures half of the module.
