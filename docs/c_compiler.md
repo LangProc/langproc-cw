@@ -1,7 +1,7 @@
 Main coursework: A compiler for the C language
 ==============================================
 
-Your program should read C source code from a file, and write RISC-V assembly to another file.
+Your program should read C source code from a file, and write corresponding RISC-V assembly to another file.
 
 Environment
 -----------
@@ -10,26 +10,25 @@ Environment
 Developing your compiler
 ------------------------
 
-If you wish to use C++, then a basic framework for building your compiler has been provided. You are recommended to check out its structure [here](./basic_compiler.md).
+If you wish to use C++, then a basic framework for building your compiler has been provided. You are strongly recommended to check out its structure [here](./basic_compiler.md).
 
 Source files can be found in the [./src](../src) folder and header files can be found in the [./include](../include) folder.
 
-You can test your compiler against the provided test-suite by running `./test.sh` from the top of this repo; the output should look as follows:
+You can test your compiler against the provided test-suite by running [`./test.sh`](../test.sh) from the top of this repo; the output should look as follows:
 
 ```console
-root@host:/workspaces/langproc-env# ./test.sh
-
-g++ -std=c++20 -W -Wall -g -I include -o bin/c_compiler src/cli.cpp src/compiler.cpp
-
+> ./test.sh
+>
 compiler_tests/_example/example.c
         > Pass
 compiler_tests/array/declare_global.c
         > Fail: simulation did not exit with exit-code 0
+...
 ```
 
-By default, the first `_example/example.c` test should be passing.
+By default, the first [`_example/example.c`](../compiler_tests/_example/example.c) test should be passing.
 
-This basic framework ignores the source input file and always produces the same assembly, which loads the value `5` into `a0`.
+This basic framework is only able to compile a very simple program, as described [here](./basic_compiler.md).
 
 Program build and execution
 ---------------------------
@@ -47,15 +46,13 @@ You can assume that the command-line arguments will always be in this order, and
 Input
 -----
 
-The input file will be pre-processed [ANSI C](https://en.wikipedia.org/wiki/ANSI_C), also called C90 or C89. It's what's generally thought of as "classic" or "normal" C, but not the _really_ old one without function prototypes (you may never have come across that). C90 is still often used in embedded systems, and pretty much the entire Linux kernel is in C90.
+The input file will be pre-processed [ANSI C](https://en.wikipedia.org/wiki/ANSI_C), also called C90 or C89. It is what is generally thought of as "classic" or "normal" C, but not the _really_ old one without function prototypes (you may never have come across that). C90 is still often used in embedded systems, and pretty much the entire Linux kernel is in C90.
 
-You've mainly been taught C++, but you're probably aware of C as a subset of C++ without classes, which is a good mental model. Your programs (lexer, parser and compiler) will never be given code that has different parsing or execution semantics under C and C++ (so, for example, I won't give you code that uses `class` as an identifier).
+You have mainly been taught C++, but you are probably aware of C as a subset of C++ without classes, which is a good mental model. Your programs (lexer, parser and compiler) will never be given code that has different parsing or execution semantics under C and C++ (so, for example, I will not give you code that uses `class` as an identifier).
 
-The source code will not contain any compiler-specific or platform-specific extensions. If you pre-process a typical program (see later), you'll see many things such as `__attribute__` or `__declspec` coming from the system headers. You will not need to deal with any of these.
+The source code will not contain any compiler-specific or platform-specific extensions. If you pre-process a typical program (see later), you will see many things such as `__attribute__` or `__declspec` coming from the system headers. You will not need to deal with any of these.
 
 The test inputs will be a set of files of increasing complexity and variety. The test inputs will not have syntax errors or other programming errors, so your code does not need to handle these gracefully.
-
-[This is the "official" C90 grammar](https://www.lysator.liu.se/c/ANSI-C-grammar-y.html), presented in the form of a Yacc parser file without any specific actions linked to each rule. There is also a [corresponding Lex lexer file](https://www.lysator.liu.se/c/ANSI-C-grammar-l.html) attached. You do not need to use everything that is in there, but it can help to give you an idea of the AST constructs that you need. If you find the grammar too complicated to understand, it is also perfectly fine to create your own simple grammar and build upon it as you add more features.
 
 Features
 -------
