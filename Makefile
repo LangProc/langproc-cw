@@ -38,11 +38,12 @@ coverage/index.html :
 	@find . -name "*.gcda" -delete
 
 clean :
-	@rm -rf coverage
-	@find . -name "*.o" -delete
-	@rm -rf bin/*
+	@rm -rf coverage/
+	@rm -rf src/*.o
+	@rm -rf src/*.d
+	@rm -rf src/*.gcno
+	@rm -rf bin/
 	@rm -f src/*.tab.hpp
 	@rm -f src/*.tab.cpp
 	@rm -f src/*.yy.cpp
 	@rm -f src/*.output
-
