@@ -7,7 +7,7 @@ class DirectDeclarator : public Node {
 public:
   DirectDeclarator(Node* identifier);
   ~DirectDeclarator() {};
-  void emitRISC(std::ostream &stream, Context context) const;
+  void emitRISC(std::ostream &stream, Context &context) const;
 };
 
 #endif

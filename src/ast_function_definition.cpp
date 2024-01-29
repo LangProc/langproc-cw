@@ -4,7 +4,7 @@ FunctionDefinition::FunctionDefinition(Node* declaration_specifiers, Node* decla
   branches.insert(branches.end(), {declaration_specifiers, declarator, compound_statement});
 }
 
-void FunctionDefinition::emitRISC(std::ostream &stream, Context context) const {
+void FunctionDefinition::emitRISC(std::ostream &stream, Context &context) const {
   // Emit declarator
   branches[1]->emitRISC(stream, context);
 
