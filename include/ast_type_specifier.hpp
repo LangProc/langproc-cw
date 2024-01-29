@@ -9,7 +9,7 @@ private:
 public:
   TypeSpecifier(std::string _type) : type(_type) {};
   ~TypeSpecifier() {};
-  void emitRISC(std::ostream &stream, Context context) const {};
+  void emitRISC(std::ostream &stream, Context &context) const {};
 };
 
 #endif

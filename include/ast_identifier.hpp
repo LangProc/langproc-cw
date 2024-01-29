@@ -9,7 +9,7 @@ private:
 public:
   Identifier(std::string* _identifier) : identifier(_identifier) {};
   ~Identifier() {delete identifier;};
-  void emitRISC(std::ostream &stream, Context context) const;
+  void emitRISC(std::ostream &stream, Context &context) const;
 };
 
 #endif

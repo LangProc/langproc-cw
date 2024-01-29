@@ -13,7 +13,7 @@ protected:
 public:
   Node() {};
   virtual ~Node();
-  virtual void emitRISC(std::ostream &stream, Context context) const = 0;
+  virtual void emitRISC(std::ostream &stream, Context &context) const = 0;
 };
 
 #endif
