@@ -3,52 +3,38 @@
 #include <unistd.h>
 
 #include "cli.h"
-
-void compile(std::ostream &w)
-{
-    w << ".text" << std::endl;
-    w << ".globl f" << std::endl;
-    w << std::endl;
-
-    w << "f:" << std::endl;
-    w << "addi  t0, zero, 0" << std::endl;
-    w << "addi  t0, t0,   5" << std::endl;
-    w << "add   a0, zero, t0" << std::endl;
-    w << "ret" << std::endl;
-}
-
-// TODO: uncomment the below if you're using Flex/Bison.
-// extern FILE *yyin;
+#include "ast.hpp"
 
 int main(int argc, char **argv)
 {
-    // Parse CLI arguments, to fetch the values of the source and output files.
-    std::string sourcePath = "";
-    std::string outputPath = "";
-    if (parse_command_line_args(argc, argv, sourcePath, outputPath))
-    {
-        return 1;
-    }
+  // Parse CLI arguments, to fetch the values of the source and output files.
+  std::string source_path = "";
+  std::string output_path = "";
+  if (parseCommandLineArgs(argc, argv, source_path, output_path)) {
+    return 1;
+  }
 
-    // TODO: uncomment the below lines if you're using Flex/Bison.
-    // This configures Flex to look at sourcePath instead of
-    // reading from stdin.
-    // yyin = fopen(sourcePath, "r");
-    // if (yyin == NULL)
-    // {
-    //     perror("Could not open source file");
-    //     return 1;
-    // }
+  // Parse input and generate AST
+  Node* root = parseAST(source_path);
 
-    // Open the output file in truncation mode (to overwrite the contents)
-    std::ofstream output;
-    output.open(outputPath, std::ios::trunc);
+  // Open the output file in truncation mode (to overwrite the contents)
+  std::ofstream output;
+  output.open(output_path, std::ios::trunc);
 
-    // Compile the input
-    std::cout << "Compiling: " << sourcePath << std::endl;
-    compile(output);
-    std::cout << "Compiled to: " << outputPath << std::endl;
+  // Emit assembler directives
+  // TODO these are just examples ones, make sure you understand the concept of directives and correct them
+  std::vector<std::string> directives = {"text", "globl f"};
+  for (auto directive : directives) {
+    output << "." << directive << "\n";
+  }
+  output << std::endl;
 
-    output.close();
-    return 0;
+  // Do actual compilation
+  Context context;
+  root->emitRISC(output, context);
+
+  // Close output file
+  output.close();
+
+  return 0;
 }
