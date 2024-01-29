@@ -1,23 +1,25 @@
 CPPFLAGS += -std=c++20 -W -Wall -g -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -I include
 
-HPPFILES := $(shell find include/ -type f -name "*.hpp")
-CPPFILES := $(shell find src/ -type f -name "*.cpp")
+CPPFILES := $(wildcard src/*.cpp)
+DEPENDENCIES := $(patsubst %.cpp,%.d,$(CPPFILES))
+-include $(DEPENDENCIES)
 OBJFILES := $(patsubst %.cpp,%.o,$(CPPFILES))
+OBJFILES += src/lexer.yy.o src/parser.tab.o
 
 
 .PHONY: default clean with_coverage coverage
 
 default: bin/c_compiler
 
-bin/c_compiler : src/lexer.yy.o src/parser.tab.o $(OBJFILES)
+bin/c_compiler : $(OBJFILES)
 	@mkdir -p bin
 	g++ $(CPPFLAGS) -o $@ $^
 
-src/%.o: src/%.cpp $(HPPFILES)
-	g++ $(CPPFLAGS) -c -o $@ $<
+%.o: %.cpp Makefile
+	g++ $(CPPFLAGS) -MMD -MP -c $< -o $@
 
 src/parser.tab.cpp src/parser.tab.hpp: src/parser.y
-	yacc -v -d src/parser.y -o src/parser.tab.cpp
+	bison -v -d src/parser.y -o src/parser.tab.cpp
 
 src/lexer.yy.cpp : src/lexer.flex src/parser.tab.hpp
 	flex -o src/lexer.yy.cpp src/lexer.flex
