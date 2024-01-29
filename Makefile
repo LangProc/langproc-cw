@@ -1,4 +1,4 @@
-CPPFLAGS += -std=c++20 -W -Wall -g -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -I include
+CXXFLAGS += -std=c++20 -W -Wall -g -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -I include
 
 CPPFILES := $(wildcard src/*.cpp)
 DEPENDENCIES := $(patsubst %.cpp,%.d,$(CPPFILES))
@@ -13,10 +13,10 @@ default: bin/c_compiler
 
 bin/c_compiler : $(OBJFILES)
 	@mkdir -p bin
-	g++ $(CPPFLAGS) -o $@ $^
+	g++ $(CXXFLAGS) -o $@ $^
 
 %.o: %.cpp Makefile
-	g++ $(CPPFLAGS) -MMD -MP -c $< -o $@
+	g++ $(CXXFLAGS) -MMD -MP -c $< -o $@
 
 src/parser.tab.cpp src/parser.tab.hpp: src/parser.y
 	bison -v -d src/parser.y -o src/parser.tab.cpp
@@ -24,7 +24,7 @@ src/parser.tab.cpp src/parser.tab.hpp: src/parser.y
 src/lexer.yy.cpp : src/lexer.flex src/parser.tab.hpp
 	flex -o src/lexer.yy.cpp src/lexer.flex
 
-with_coverage : CPPFLAGS += --coverage
+with_coverage : CXXFLAGS += --coverage
 with_coverage : bin/c_compiler
 
 coverage : coverage/index.html
