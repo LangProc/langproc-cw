@@ -41,7 +41,9 @@ The compilation function is invoked using the flag `-S`, with the source file an
 
     bin/c_compiler -S [source-file.c] -o [dest-file.s]
 
-You can assume that the command-line arguments will always be in this order, and that there will be no spaces in source or destination paths.
+You can assume that the command-line (CLI) arguments will always be in this order, and that there will be no spaces in source or destination paths.
+
+NOTE: the provided starting point in this repository already functions as specified above, so these CLI arguments should work out of the box (unless you decide not to use the provided base compiler).
 
 Input
 -----
