@@ -35,9 +35,8 @@ Changelog
     * Directly linked to ANSI C parser and lexer.
     * Added a "Getting started" guide and incorporated last year's feedback from Ed.
     * Changed the 10% of the grade (previously only for time management) to also account for code design to reward thoughtful planning.
-    * Improved the skeleton compiler to be more advanced by providing lexer and parser to hopefully jump-start progress and avoid unnecessary debugging. [WIP]
+    * Improved the skeleton compiler to be more advanced by integrating lexer and parser to hopefully jump-start progress and avoid unnecessary debugging.
     * Covered assembler directives in more details by showcasing the meaning behind an example assembly program, because that topic had always caused confusion in the past years. [WIP]
-
 
 * New for 2022/2023:
 
