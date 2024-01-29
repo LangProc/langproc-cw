@@ -1,1 +1,7 @@
 bin/
+.vscode
+*.o
+*.tab.hpp
+*.tab.cpp
+*.yy.cpp
+*.output
