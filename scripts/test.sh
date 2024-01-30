@@ -13,11 +13,16 @@ if [ $# -eq 1 ]; then
     test $1 = "coverage"
     with_coverage=$?
 fi
+
 if [ $with_coverage -eq 0 ]; then
     rm -rf coverage
+    set -e
     make with_coverage
+    set +e
 else
+    set -e
     make bin/c_compiler
+    set +e
 fi
 
 mkdir -p bin
