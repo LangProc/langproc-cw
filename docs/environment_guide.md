@@ -29,6 +29,8 @@ Many students develop their compiler in VS Code, as this has good support for co
 
     Parsing: compiler_tests/_example/example.c
     AST parsing complete
+    Printing parsed AST...
+    Printed parsed AST to: bin/riscv_example.s.printed
     Compiling parsed AST...
     Compiled to: bin/riscv_example.s
     bbl loader
@@ -66,6 +68,8 @@ Many students develop their compiler in VS Code, as this has good support for co
 
     Parsing: compiler_tests/_example/example.c
     AST parsing complete
+    Printing parsed AST...
+    Printed parsed AST to: bin/riscv_example.s.printed
     Compiling parsed AST...
     Compiled to: bin/riscv_example.s
     bbl loader
