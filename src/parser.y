@@ -81,7 +81,8 @@ declarator
 
 direct_declarator
 	: IDENTIFIER {
-		$$ = new Identifier($1);
+		$$ = new Identifier(*$1);
+		delete $1;
 	}
 	| direct_declarator '(' ')' {
 		$$ = new DirectDeclarator($1);
