@@ -309,7 +309,8 @@ declarator
 
 direct_declarator
 	: IDENTIFIER {
-		$$ = new Identifier($1);
+		$$ = new Identifier(*$1);
+		delete $1;
 	}
 	| '(' declarator ')'
 	| direct_declarator '[' constant_expression ']'
