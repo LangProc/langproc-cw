@@ -72,8 +72,10 @@ function_definition
 
 primary_expression
 	: IDENTIFIER
-	| INT_CONSTANT
-  | FLOAT_CONSTANT
+	| INT_CONSTANT {
+		$$ = new IntConstant($1);
+	}
+    | FLOAT_CONSTANT
 	| STRING_LITERAL
 	| '(' expression ')'
 	;
@@ -442,11 +444,10 @@ jump_statement
 	| CONTINUE ';'
 	| BREAK ';'
 	| RETURN ';' {
-		$$ = new JumpStatement();
+		$$ = new ReturnStatement(nullptr);
 	}
 	| RETURN expression ';' {
-		// TODO: add expression to JumpStatement
-		$$ = new JumpStatement();
+		$$ = new ReturnStatement($2);
 	}
 	;
 
