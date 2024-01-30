@@ -1,19 +1,23 @@
+# Based on https://stackoverflow.com/a/52036564 which is well worth reading!
+
 CXXFLAGS += -std=c++20 -W -Wall -g -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -I include
 
-CPPFILES := $(wildcard src/*.cpp)
-DEPENDENCIES := $(patsubst %.cpp,%.d,$(CPPFILES))
--include $(DEPENDENCIES)
-OBJFILES := $(patsubst %.cpp,%.o,$(CPPFILES))
-OBJFILES += src/lexer.yy.o src/parser.tab.o
+SOURCES := $(wildcard src/*.cpp)
+DEPENDENCIES := $(patsubst %.cpp,%.d,$(SOURCES))
+
+OBJECTS := $(patsubst %.cpp,%.o,$(SOURCES))
+OBJECTS += src/parser.tab.o src/lexer.yy.o
 
 
 .PHONY: default clean with_coverage coverage
 
 default: bin/c_compiler
 
-bin/c_compiler : $(OBJFILES)
+bin/c_compiler: $(OBJECTS)
 	@mkdir -p bin
 	g++ $(CXXFLAGS) -o $@ $^
+
+-include $(DEPENDENCIES)
 
 %.o: %.cpp Makefile
 	g++ $(CXXFLAGS) -MMD -MP -c $< -o $@
