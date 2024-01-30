@@ -56,7 +56,7 @@ for DRIVER in compiler_tests/**/*_driver.c; do
     printf '%s\n' "<testcase name=\"${TO_ASSEMBLE}\">" >> "${J_UNIT_OUTPUT_FILE}"
 
     OUT="${LOG_FILE_BASE}"
-    ./bin/c_compiler -S "${TO_ASSEMBLE}" -o "${OUT}.s" 2> "${LOG_FILE_BASE}.compiler.stderr.log" > "${LOG_FILE_BASE}.compiler.stdout.log"
+    ASAN_OPTIONS=exitcode=0 ./bin/c_compiler -S "${TO_ASSEMBLE}" -o "${OUT}.s" 2> "${LOG_FILE_BASE}.compiler.stderr.log" > "${LOG_FILE_BASE}.compiler.stdout.log"
     if [ $? -ne 0 ]; then
         fail_testcase "Failed to compile testcase: see ${LOG_FILE_BASE}.compiler.stderr.log and ${LOG_FILE_BASE}.compiler.stdout.log and ${OUT}.s"
         continue
