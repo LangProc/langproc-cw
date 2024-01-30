@@ -7,4 +7,5 @@ This will generate a webpage `coverage/index.html` with a listing of all the sou
 
 ![Index.html screenshot](./coverage_example.png)
 
-It can also be used automatically on all test files by running `./test.sh coverage`.
+It can also be used automatically on all test files by running
+`scripts/test.sh coverage`.

@@ -14,10 +14,31 @@ If you wish to use C++, then a basic framework for building your compiler has be
 
 Source files can be found in the [./src](../src) folder and header files can be found in the [./include](../include) folder.
 
-You can test your compiler against the provided test-suite by running [`./test.sh`](../test.sh) from the top of this repo; the output should look as follows:
+If you have Python installed, you can test your compiler by running
+[`scripts/test.py`](../scripts/test.py) from the top of this repo; the
+output should look as follows (note: the progress bar will be coloured).
+Full usage guide is found in the file header.
 
 ```console
-> ./test.sh
+> scripts/test.py
+>
+make: Entering directory '/home/saturn691/projects/university/iac/langproc-cw'
+make: 'bin/c_compiler' is up to date.
+make: Leaving directory '/home/saturn691/projects/university/iac/langproc-cw'
+Running Tests [################################################################]
+Pass:  1 | Fail: 87 | Remaining:  0
+See logs for more details (use -v for verbose output).
+
+>> Test Summary: 1 Passed, 87 Failed
+
+```
+
+If Python is not installed, you can also test your compiler against the provided
+test-suite by running [`scripts/test.sh`](../scripts/test.sh) from the top of
+this repo; the output should look as follows:
+
+```console
+> scripts/test.sh
 >
 compiler_tests/_example/example.c
         > Pass
