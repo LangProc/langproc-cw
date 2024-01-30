@@ -11,7 +11,10 @@ void FunctionDefinition::emitRISC(std::ostream &stream, Context &context) const
     branches[1]->emitRISC(stream, context);
 
     // Emit compound_statement
-    branches[2]->emitRISC(stream, context);
+    if (branches[2] != nullptr)
+    {
+        branches[2]->emitRISC(stream, context);
+    }
 }
 
 void FunctionDefinition::print(std::ostream &stream) const
@@ -23,6 +26,9 @@ void FunctionDefinition::print(std::ostream &stream) const
     branches[1]->print(stream);
     stream << "() {" << std::endl;
 
-    branches[2]->print(stream);
+    if (branches[2] != nullptr)
+    {
+        branches[2]->print(stream);
+    }
     stream << "}" << std::endl;
 }
