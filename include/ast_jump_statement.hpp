@@ -7,7 +7,8 @@ class JumpStatement : public Node {
 public:
   JumpStatement() {};
   ~JumpStatement() {};
-  void emitRISC(std::ostream &stream, Context &context) const;
+  void emitRISC(std::ostream &stream, Context &context) const override;
+  void print(std::ostream &stream) const override;
 };
 
 #endif

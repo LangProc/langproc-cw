@@ -8,3 +8,8 @@ void JumpStatement::emitRISC(std::ostream &stream, Context &context) const {
   stream << "ret"                << std::endl;
   //-------------------------------------------------------------------------------------
 }
+
+void JumpStatement::print(std::ostream &stream) const {
+    // TODO: fix for other type of return statements
+    stream << "return 5" << std::endl;
+}

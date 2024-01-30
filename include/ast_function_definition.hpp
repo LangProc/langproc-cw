@@ -8,6 +8,7 @@ public:
   FunctionDefinition(Node* declaration_specifiers, Node* declarator, Node* compound_statement);
   ~FunctionDefinition() {};
   void emitRISC(std::ostream &stream, Context &context) const;
+  void print(std::ostream &stream) const override;
 };
 
 #endif

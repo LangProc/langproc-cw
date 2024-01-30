@@ -9,3 +9,7 @@ void DirectDeclarator::emitRISC(std::ostream &stream, Context &context) const {
   branches[0]->emitRISC(stream, context);
   stream << ":" << std::endl;
 }
+
+void DirectDeclarator::print(std::ostream &stream) const {
+    branches[0]->print(stream);
+}

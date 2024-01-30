@@ -8,6 +8,7 @@ public:
   DirectDeclarator(Node* identifier);
   ~DirectDeclarator() {};
   void emitRISC(std::ostream &stream, Context &context) const;
+  void print(std::ostream &stream) const override;
 };
 
 #endif

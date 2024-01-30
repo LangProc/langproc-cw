@@ -10,6 +10,9 @@ public:
   Identifier(std::string* _identifier) : identifier(_identifier) {};
   ~Identifier() {delete identifier;};
   void emitRISC(std::ostream &stream, Context &context) const;
+  void print(std::ostream &stream) const override {
+    stream << *identifier;
+  };
 };
 
 #endif
