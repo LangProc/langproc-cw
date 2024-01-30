@@ -30,17 +30,6 @@ int main(int argc, char **argv)
     auto prettyPrintOutputPath = commandLineArguments.compileOutputPath + ".printed";
     prettyPrintOutput.open(prettyPrintOutputPath, std::ios::trunc);
 
-    // Emit assembler directives.
-    // TODO: these are just examples ones, make sure you understand
-    // the concept of directives and correct them. They likely should
-    // be emitted elsewhere in your compiler.
-    std::vector<std::string> directives = {"text", "globl f"};
-    for (auto directive : directives)
-    {
-        compiledOutput << "." << directive << "\n";
-    }
-    compiledOutput << std::endl;
-
     // Output the pretty print version of what was parsed to the .printed output
     // file.
     std::cout << "Printing parsed AST..." << std::endl;
