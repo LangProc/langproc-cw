@@ -48,21 +48,23 @@
 %%
 
 ROOT
-  : translation_unit                                                          {g_root = $1;}
+  : translation_unit { g_root = $1; }
 
 translation_unit
-	: external_declaration                                                      {$$ = $1;}
+	: external_declaration { $$ = $1; }
 	| translation_unit external_declaration
 	;
 
 external_declaration
-	: function_definition                                                       {$$ = $1;}
+	: function_definition { $$ = $1; }
 	| declaration
 	;
 
 function_definition
 	: declaration_specifiers declarator declaration_list compound_statement
-	| declaration_specifiers declarator compound_statement                      {$$ = new FunctionDefinition($1, $2, $3);}
+	| declaration_specifiers declarator compound_statement {
+		$$ = new FunctionDefinition($1, $2, $3);
+	}
 	| declarator declaration_list compound_statement
 	| declarator compound_statement
 	;
@@ -214,7 +216,7 @@ declaration
 declaration_specifiers
 	: storage_class_specifier
 	| storage_class_specifier declaration_specifiers
-	| type_specifier                                                                  {$$ = $1;}
+	| type_specifier { $$ = $1; }
 	| type_specifier declaration_specifiers
 	;
 
@@ -240,7 +242,9 @@ type_specifier
 	: VOID
 	| CHAR
 	| SHORT
-	| INT                                                                              {$$ = new TypeSpecifier("int");}
+	| INT {
+		$$ = new TypeSpecifier("int");
+	}
 	| LONG
 	| FLOAT
 	| DOUBLE
@@ -300,17 +304,21 @@ enumerator
 
 declarator
 	: pointer direct_declarator
-	| direct_declarator                                                     {$$ = $1;}
+	| direct_declarator { $$ = $1; }
 	;
 
 direct_declarator
-	: IDENTIFIER                                                            {$$ = new Identifier($1);}
+	: IDENTIFIER {
+		$$ = new Identifier($1);
+	}
 	| '(' declarator ')'
 	| direct_declarator '[' constant_expression ']'
 	| direct_declarator '[' ']'
 	| direct_declarator '(' parameter_list ')'
 	| direct_declarator '(' identifier_list ')'
-	| direct_declarator '(' ')'                                             {$$ = new DirectDeclarator($1);}
+	| direct_declarator '(' ')' {
+		$$ = new DirectDeclarator($1);
+	}
 	;
 
 pointer
@@ -374,7 +382,7 @@ statement
 	| expression_statement
 	| selection_statement
 	| iteration_statement
-	| jump_statement                                                           {$$ = $1;}
+	| jump_statement { $$ = $1; }
 	;
 
 labeled_statement
@@ -384,10 +392,21 @@ labeled_statement
 	;
 
 compound_statement
-	: '{' '}'
-	| '{' statement_list '}'                                                   {$$ = $2;}
-	| '{' declaration_list '}'
-	| '{' declaration_list statement_list '}'
+	: '{' '}' {
+		// TODO: correct this
+		$$ = nullptr;
+	}
+	| '{' statement_list '}' {
+		$$ = $2;
+	}
+	| '{' declaration_list '}' {
+		// TODO: correct this
+		$$ = nullptr;
+	}
+	| '{' declaration_list statement_list '}'  {
+		// TODO: correct this
+		$$ = nullptr;
+	}
 	;
 
 declaration_list
@@ -396,13 +415,13 @@ declaration_list
 	;
 
 statement_list
-	: statement                                                                {$$ = $1;}
+	: statement { $$ = $1; }
 	| statement_list statement
 	;
 
 expression_statement
 	: ';'
-	| expression ';'                                                           {$$ = $1;}
+	| expression ';' { $$ = $1; }
 	;
 
 selection_statement
@@ -422,8 +441,13 @@ jump_statement
 	: GOTO IDENTIFIER ';'
 	| CONTINUE ';'
 	| BREAK ';'
-	| RETURN ';'                                                               {$$ = new JumpStatement();}
-	| RETURN expression ';'
+	| RETURN ';' {
+		$$ = new JumpStatement();
+	}
+	| RETURN expression ';' {
+		// TODO: add expression to JumpStatement
+		$$ = new JumpStatement();
+	}
 	;
 
 
@@ -439,7 +463,7 @@ Node *parseAST(std::string file_name)
     std::cerr << "Couldn't open input file: " << file_name << std::endl;
     exit(1);
   }
-  g_root = NULL;
+  g_root = nullptr;
   yyparse();
   return g_root;
 }
