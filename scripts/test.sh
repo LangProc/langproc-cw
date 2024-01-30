@@ -58,25 +58,25 @@ for DRIVER in compiler_tests/**/*_driver.c; do
     printf '%s\n' "<testcase name=\"${TO_ASSEMBLE}\">" >> "${J_UNIT_OUTPUT_FILE}"
 
     OUT="${LOG_FILE_BASE}"
-    ASAN_OPTIONS=exitcode=0 ./bin/c_compiler -S "${TO_ASSEMBLE}" -o "${OUT}.s" 2> "${LOG_FILE_BASE}.compiler.stderr.log" > "${LOG_FILE_BASE}.compiler.stdout.log"
+    ASAN_OPTIONS=exitcode=0 timeout --foreground 15s ./bin/c_compiler -S "${TO_ASSEMBLE}" -o "${OUT}.s" 2> "${LOG_FILE_BASE}.compiler.stderr.log" > "${LOG_FILE_BASE}.compiler.stdout.log"
     if [ $? -ne 0 ]; then
         fail_testcase "Failed to compile testcase: \n\t ${LOG_FILE_BASE}.compiler.stderr.log \n\t ${LOG_FILE_BASE}.compiler.stdout.log \n\t ${OUT}.s \n\t ${OUT}.s.printed"
         continue
     fi
 
-    riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -o "${OUT}.o" -c "${OUT}.s" 2> "${LOG_FILE_BASE}.assembler.stderr.log" > "${LOG_FILE_BASE}.assembler.stdout.log"
+    timeout --foreground 15s riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -o "${OUT}.o" -c "${OUT}.s" 2> "${LOG_FILE_BASE}.assembler.stderr.log" > "${LOG_FILE_BASE}.assembler.stdout.log"
     if [ $? -ne 0 ]; then
         fail_testcase "Failed to assemble: \n\t ${LOG_FILE_BASE}.compiler.stderr.log \n\t ${LOG_FILE_BASE}.compiler.stdout.log \n\t ${LOG_FILE_BASE}.assembler.stderr.log \n\t ${LOG_FILE_BASE}.assembler.stdout.log \n\t ${OUT}.s \n\t ${OUT}.s.printed"
         continue
     fi
 
-    riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -static -o "${OUT}" "${OUT}.o" "${DRIVER}" 2> "${LOG_FILE_BASE}.linker.stderr.log" > "${LOG_FILE_BASE}.linker.stdout.log"
+    timeout --foreground 15s riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -static -o "${OUT}" "${OUT}.o" "${DRIVER}" 2> "${LOG_FILE_BASE}.linker.stderr.log" > "${LOG_FILE_BASE}.linker.stdout.log"
     if [ $? -ne 0 ]; then
         fail_testcase "Failed to link driver: \n\t ${LOG_FILE_BASE}.compiler.stderr.log \n\t ${LOG_FILE_BASE}.compiler.stdout.log \n\t ${LOG_FILE_BASE}.linker.stderr.log \n\t ${LOG_FILE_BASE}.linker.stdout.log \n\t ${OUT}.s \n\t ${OUT}.s.printed"
         continue
     fi
 
-    spike pk "${OUT}" > "${LOG_FILE_BASE}.simulation.log"
+    timeout --foreground 15s spike pk "${OUT}" > "${LOG_FILE_BASE}.simulation.log"
     if [ $? -eq 0 ]; then
         echo -e "\t> Pass"
         (( PASSING++ ))
