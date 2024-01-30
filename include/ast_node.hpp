@@ -14,6 +14,7 @@ public:
   Node() {};
   virtual ~Node();
   virtual void emitRISC(std::ostream &stream, Context &context) const = 0;
+  virtual void print(std::ostream &stream) const = 0;
 };
 
 #endif
