@@ -19,7 +19,7 @@ For more information, run scripts/test.py -h
 
 
 __version__ = "0.1.0"
-__author__ = "William Huynh"
+__author__ = "William Huynh (@saturn691)"
 
 
 import argparse
