@@ -3,6 +3,7 @@
 void FunctionDefinition::emitRISC(std::ostream &stream, Context &context) const
 {
     // TODO: this is not complete.
+    std::cerr << "FunctionDefinition: emitRISC is not fully implemented." << std::endl;
 
     // Emit assembler directives.
     // TODO: these are just examples ones, make sure you understand
@@ -21,6 +22,8 @@ void FunctionDefinition::emitRISC(std::ostream &stream, Context &context) const
 void FunctionDefinition::print(std::ostream &stream) const
 {
     // TODO: this is not complete.
+    std::cerr << "FunctionDefinition: print is not fully implemented." << std::endl;
+
     this->declarationSpecifiers->print(stream);
     stream << " ";
 
