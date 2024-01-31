@@ -6,7 +6,9 @@
 set -uo pipefail
 shopt -s globstar
 
-make clean
+if [ "${DONT_CLEAN:-}" != "1" ]; then
+    make clean
+fi
 
 if [ "${COVERAGE:-}" == "1" ]; then
     rm -rf coverage
@@ -37,7 +39,9 @@ fail_testcase() {
     printf '%s\n' "</testcase>" >> "${J_UNIT_OUTPUT_FILE}"
 }
 
-for DRIVER in compiler_tests/**/*_driver.c; do
+SPECIFIC_FOLDER="${1:-**}"
+
+for DRIVER in compiler_tests/${SPECIFIC_FOLDER}/*_driver.c; do
     (( TOTAL++ ))
 
     TO_ASSEMBLE="${DRIVER%_driver.c}.c"
