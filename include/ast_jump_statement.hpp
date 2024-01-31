@@ -1,5 +1,5 @@
-#ifndef AST_STATEMENTS_HPP
-#define AST_STATEMENTS_HPP
+#ifndef AST_JUMP_STATEMENT_HPP
+#define AST_JUMP_STATEMENT_HPP
 
 #include "ast_node.hpp"
 
