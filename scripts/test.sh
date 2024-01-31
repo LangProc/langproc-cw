@@ -8,13 +8,7 @@ shopt -s globstar
 
 make clean
 
-with_coverage=1
-if [ $# -eq 1 ]; then
-    test $1 = "coverage"
-    with_coverage=$?
-fi
-
-if [ $with_coverage -eq 0 ]; then
+if [ "${COVERAGE:-}" == "1" ]; then
     rm -rf coverage
     set -e
     make with_coverage
@@ -88,7 +82,7 @@ for DRIVER in compiler_tests/**/*_driver.c; do
     fi
 done
 
-if [ $with_coverage -eq 0 ]; then
+if [ "${COVERAGE:-}" == "1" ]; then
     make coverage
 fi
 
