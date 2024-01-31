@@ -4,6 +4,42 @@
 #include "cli.h"
 #include "ast.hpp"
 
+Node *parse(CommandLineArguments &args)
+{
+    std::cout << "Parsing: " << args.compileSourcePath << std::endl;
+    auto root = parseAST(args.compileSourcePath);
+    std::cout << "AST parsing complete" << std::endl;
+    return root;
+}
+
+// Output the pretty print version of what was parsed to the .printed output
+// file.
+void prettyPrint(Node *root, CommandLineArguments &args)
+{
+    auto outputPath = args.compileOutputPath + ".printed";
+
+    std::cout << "Printing parsed AST..." << std::endl;
+    std::ofstream output(outputPath, std::ios::trunc);
+    root->print(output);
+    output.close();
+    std::cout << "Printed parsed AST to: " << outputPath << std::endl;
+}
+
+// Compile from the root of the AST and output this to the
+// args.compiledOutputPath file.
+void compile(Node *root, CommandLineArguments &args)
+{
+    // Create a Context. This can be used to pass around information about
+    // what's currently being compiled (e.g. function scope and variable names).
+    Context ctx;
+
+    std::cout << "Compiling parsed AST..." << std::endl;
+    std::ofstream output(args.compileOutputPath, std::ios::trunc);
+    root->emitRISC(output, ctx);
+    output.close();
+    std::cout << "Compiled to: " << args.compileOutputPath << std::endl;
+}
+
 int main(int argc, char **argv)
 {
     // Parse CLI arguments to fetch the source file to compile and the path to output to.
@@ -12,43 +48,18 @@ int main(int argc, char **argv)
     auto commandLineArguments = parseCommandLineArgs(argc, argv);
 
     // Parse input and generate AST
-    std::cout << "Parsing: " << commandLineArguments.compileSourcePath << std::endl;
-    auto root = parseAST(commandLineArguments.compileSourcePath);
-    std::cout << "AST parsing complete" << std::endl;
-
-    if (root == nullptr)
+    auto astRoot = parse(commandLineArguments);
+    if (astRoot == nullptr)
     {
         // Check something was actually returned by parseAST().
         std::cerr << "The root of the AST was a null pointer. Likely the root was never initialised correctly during parsing." << std::endl;
         return 3;
     }
 
-    // Open the output files in truncation mode (to overwrite the contents)
-    std::ofstream compiledOutput, prettyPrintOutput;
-    compiledOutput.open(commandLineArguments.compileOutputPath, std::ios::trunc);
-
-    auto prettyPrintOutputPath = commandLineArguments.compileOutputPath + ".printed";
-    prettyPrintOutput.open(prettyPrintOutputPath, std::ios::trunc);
-
-    // Output the pretty print version of what was parsed to the .printed output
-    // file.
-    std::cout << "Printing parsed AST..." << std::endl;
-    root->print(prettyPrintOutput);
-    prettyPrintOutput.close();
-    std::cout << "Printed parsed AST to: " << prettyPrintOutputPath << std::endl;
-
-    // Create a Context. This can be used to pass around information about
-    // what's currently being compiled (e.g. function scope and variable names).
-    Context ctx;
-
-    // Compile from the root of the AST and output this to the compiledOutput
-    // file.
-    std::cout << "Compiling parsed AST..." << std::endl;
-    root->emitRISC(compiledOutput, ctx);
-    compiledOutput.close();
-    std::cout << "Compiled to: " << commandLineArguments.compileOutputPath << std::endl;
+    prettyPrint(astRoot, commandLineArguments);
+    compile(astRoot, commandLineArguments);
 
     // Clean up afterwards.
-    delete root;
+    delete astRoot;
     return 0;
 }
