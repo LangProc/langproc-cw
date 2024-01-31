@@ -6,13 +6,17 @@
 class ReturnStatement : public Node
 {
 private:
-  Node *expression;
+    Node *expression_;
 
 public:
-  ReturnStatement(Node *_expression) { expression = _expression; };
-  ~ReturnStatement() { delete expression; };
-  void emitRISC(std::ostream &stream, Context &context) const override;
-  void print(std::ostream &stream) const override;
+    ReturnStatement(Node *expression) : expression_(expression) {}
+    ~ReturnStatement()
+    {
+        delete expression_;
+    };
+
+    void EmitRISC(std::ostream &stream, Context &context) const override;
+    void Print(std::ostream &stream) const override;
 };
 
 #endif

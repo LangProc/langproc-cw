@@ -6,16 +6,13 @@
 class Identifier : public Node
 {
 private:
-    std::string identifier;
+    std::string identifier_;
 
 public:
-    Identifier(std::string _identifier) : identifier(_identifier){};
+    Identifier(std::string identifier) : identifier_(identifier){};
     ~Identifier(){};
-    void emitRISC(std::ostream &stream, Context &context) const;
-    void print(std::ostream &stream) const override
-    {
-        stream << identifier;
-    };
+    void EmitRISC(std::ostream &stream, Context &context) const override;
+    void Print(std::ostream &stream) const override;
 };
 
 #endif
