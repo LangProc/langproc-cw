@@ -1,23 +1,23 @@
 #include "ast_statements.hpp"
 
-void ReturnStatement::emitRISC(std::ostream &stream, Context &context) const
+void ReturnStatement::EmitRISC(std::ostream &stream, Context &context) const
 {
     // TODO: this implementation is incomplete
-    std::cerr << "ReturnStatement: emitRISC is not fully implemented." << std::endl;
-    if (this->expression != nullptr)
+    std::cerr << "ReturnStatement: EmitRISC is not fully implemented." << std::endl;
+    if (expression_ != nullptr)
     {
-        expression->emitRISC(stream, context);
+        expression_->EmitRISC(stream, context);
     }
     stream << "ret" << std::endl;
 }
 
-void ReturnStatement::print(std::ostream &stream) const
+void ReturnStatement::Print(std::ostream &stream) const
 {
     stream << "return";
-    if (this->expression != nullptr)
+    if (expression_ != nullptr)
     {
         stream << " ";
-        expression->print(stream);
+        expression_->Print(stream);
     }
     stream << ";" << std::endl;
 }

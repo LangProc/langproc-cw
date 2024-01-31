@@ -9,60 +9,35 @@
 class Node
 {
 protected:
-    std::vector<Node *> branches;
+    std::vector<Node *> branches_;
 
 public:
     Node(){};
     virtual ~Node();
-    virtual void emitRISC(std::ostream &stream, Context &context) const = 0;
-    virtual void print(std::ostream &stream) const = 0;
+    virtual void EmitRISC(std::ostream &stream, Context &context) const = 0;
+    virtual void Print(std::ostream &stream) const = 0;
 };
 
 // Represents a list of nodes.
 class NodeList : public Node
 {
 private:
-    std::vector<Node *> nodes;
+    std::vector<Node *> nodes_;
 
 public:
-    NodeList(Node *firstNode) : nodes({firstNode}) {}
+    NodeList(Node *first_node) : nodes_({first_node}) {}
 
     ~NodeList()
     {
-        for (auto node : nodes)
+        for (auto node : nodes_)
         {
             delete node;
         }
     }
 
-    inline void push_back(Node *item)
-    {
-        nodes.push_back(item);
-    }
-
-    virtual void emitRISC(std::ostream &stream, Context &context) const override
-    {
-        for (auto node : nodes)
-        {
-            if (node == nullptr)
-            {
-                continue;
-            }
-            node->emitRISC(stream, context);
-        }
-    }
-
-    virtual void print(std::ostream &stream) const override
-    {
-        for (auto node : nodes)
-        {
-            if (node == nullptr)
-            {
-                continue;
-            }
-            node->print(stream);
-        }
-    }
+    void PushBack(Node *item);
+    virtual void EmitRISC(std::ostream &stream, Context &context) const override;
+    virtual void Print(std::ostream &stream) const override;
 };
 
 #endif

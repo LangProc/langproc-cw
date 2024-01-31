@@ -6,16 +6,16 @@
 class DirectDeclarator : public Node
 {
 private:
-    Node *identifier;
+    Node *identifier_;
 
 public:
-    DirectDeclarator(Node *_identifier) : identifier(_identifier){};
+    DirectDeclarator(Node *identifier) : identifier_(identifier){};
     ~DirectDeclarator()
     {
-        delete identifier;
+        delete identifier_;
     };
-    void emitRISC(std::ostream &stream, Context &context) const;
-    void print(std::ostream &stream) const override;
+    void EmitRISC(std::ostream &stream, Context &context) const override;
+    void Print(std::ostream &stream) const override;
 };
 
 #endif

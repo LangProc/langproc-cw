@@ -6,19 +6,19 @@
 class IntConstant : public Node
 {
 private:
-    int value;
+    int value_;
 
 public:
-    IntConstant(int _value) : value(_value) {}
+    IntConstant(int value) : value_(value) {}
 
-    void emitRISC(std::ostream &stream, Context &ctx) const override
+    void EmitRISC(std::ostream &stream, Context &context) const override
     {
-        stream << "li a0, " << value << std::endl;
+        stream << "li a0, " << value_ << std::endl;
     }
 
-    void print(std::ostream &stream) const override
+    void Print(std::ostream &stream) const override
     {
-        stream << value;
+        stream << value_;
     }
 };
 

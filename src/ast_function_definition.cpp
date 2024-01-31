@@ -1,9 +1,9 @@
 #include "ast_function_definition.hpp"
 
-void FunctionDefinition::emitRISC(std::ostream &stream, Context &context) const
+void FunctionDefinition::EmitRISC(std::ostream &stream, Context &context) const
 {
     // TODO: this is not complete.
-    std::cerr << "FunctionDefinition: emitRISC is not fully implemented." << std::endl;
+    std::cerr << "FunctionDefinition: EmitRISC is not fully implemented." << std::endl;
 
     // Emit assembler directives.
     // TODO: these are just examples ones, make sure you understand
@@ -11,28 +11,28 @@ void FunctionDefinition::emitRISC(std::ostream &stream, Context &context) const
     stream << ".text" << std::endl;
     stream << ".globl f" << std::endl;
 
-    this->declarator->emitRISC(stream, context);
+    declarator_->EmitRISC(stream, context);
 
-    if (this->compoundStatement != nullptr)
+    if (compound_statement_ != nullptr)
     {
-        this->compoundStatement->emitRISC(stream, context);
+        compound_statement_->EmitRISC(stream, context);
     }
 }
 
-void FunctionDefinition::print(std::ostream &stream) const
+void FunctionDefinition::Print(std::ostream &stream) const
 {
     // TODO: this is not complete.
-    std::cerr << "FunctionDefinition: print is not fully implemented." << std::endl;
+    std::cerr << "FunctionDefinition: Print is not fully implemented." << std::endl;
 
-    this->declarationSpecifiers->print(stream);
+    declaration_specifiers_->Print(stream);
     stream << " ";
 
-    this->declarator->print(stream);
+    declarator_->Print(stream);
     stream << "() {" << std::endl;
 
-    if (this->compoundStatement != nullptr)
+    if (compound_statement_ != nullptr)
     {
-        this->compoundStatement->print(stream);
+        compound_statement_->Print(stream);
     }
     stream << "}" << std::endl;
 }

@@ -1,6 +1,11 @@
 #include "ast_identifier.hpp"
 
-void Identifier::emitRISC(std::ostream &stream, Context &context) const
+void Identifier::EmitRISC(std::ostream &stream, Context &context) const
 {
-    stream << identifier;
+    stream << identifier_;
 }
+
+void Identifier::Print(std::ostream &stream) const
+{
+    stream << identifier_;
+};

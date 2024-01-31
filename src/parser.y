@@ -103,7 +103,7 @@ compound_statement
 
 statement_list
 	: statement { $$ = new NodeList($1); }
-	| statement_list statement { $1->push_back($2); $$=$1; }
+	| statement_list statement { $1->PushBack($2); $$=$1; }
 	;
 
 jump_statement
@@ -193,7 +193,7 @@ expression
 
 Node *g_root;
 
-Node *parseAST(std::string file_name)
+Node *ParseAST(std::string file_name)
 {
   yyin = fopen(file_name.c_str(), "r");
   if(yyin == NULL){

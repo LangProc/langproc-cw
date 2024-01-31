@@ -6,10 +6,10 @@
 
 struct CommandLineArguments
 {
-    std::string compileSourcePath;
-    std::string compileOutputPath;
+    std::string compile_source_path;
+    std::string compile_output_path;
 };
 
-CommandLineArguments parseCommandLineArgs(int argc, char **argv);
+CommandLineArguments ParseCommandLineArgs(int argc, char **argv);
 
 #endif
