@@ -183,7 +183,12 @@ def run_test(driver: Path, log_queue: queue.Queue) -> int:
     gcc_result = subprocess.run(
         [
             "riscv64-unknown-elf-gcc",
-            "-march=rv32imfd", "-mabi=ilp32d",
+            "-std=c90",
+            "-pedantic",
+            "-ansi",
+            "-O0",
+            "-march=rv32imfd",
+            "-mabi=ilp32d",
             "-o", f"{log_path}.gcc.s",
             "-S", str(to_assemble)
         ]
