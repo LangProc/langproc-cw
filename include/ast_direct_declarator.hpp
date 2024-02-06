@@ -1,13 +1,21 @@
-#ifndef AST_DIRECT_DECLARATOR
-#define AST_DIRECT_DECLARATOR
+#ifndef AST_DIRECT_DECLARATOR_HPP
+#define AST_DIRECT_DECLARATOR_HPP
 
 #include "ast_node.hpp"
 
-class DirectDeclarator : public Node {
+class DirectDeclarator : public Node
+{
+private:
+    Node *identifier_;
+
 public:
-  DirectDeclarator(Node* identifier);
-  ~DirectDeclarator() {};
-  void emitRISC(std::ostream &stream, Context &context) const;
+    DirectDeclarator(Node *identifier) : identifier_(identifier){};
+    ~DirectDeclarator()
+    {
+        delete identifier_;
+    };
+    void EmitRISC(std::ostream &stream, Context &context) const override;
+    void Print(std::ostream &stream) const override;
 };
 
 #endif
