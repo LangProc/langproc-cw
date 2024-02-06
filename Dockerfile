@@ -18,7 +18,9 @@ RUN apt-get update && apt-get install -y --fix-missing \
     build-essential \
     ca-certificates \
     curl \
-    device-tree-compiler
+    device-tree-compiler \
+    lcov \
+    nano
 
 # Install RISC-V Toolchain
 WORKDIR /tmp

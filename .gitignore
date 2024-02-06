@@ -5,3 +5,6 @@ bin/
 *.tab.cpp
 *.yy.cpp
 *.output
+*.gcno
+coverage/
+*.d

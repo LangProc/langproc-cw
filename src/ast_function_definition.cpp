@@ -1,13 +1,32 @@
 #include "ast_function_definition.hpp"
 
-FunctionDefinition::FunctionDefinition(Node* declaration_specifiers, Node* declarator, Node* compound_statement) {
-  branches.insert(branches.end(), {declaration_specifiers, declarator, compound_statement});
+void FunctionDefinition::EmitRISC(std::ostream &stream, Context &context) const
+{
+    // Emit assembler directives.
+    // TODO: these are just examples ones, make sure you understand
+    // the concept of directives and correct them.
+    stream << ".text" << std::endl;
+    stream << ".globl f" << std::endl;
+
+    declarator_->EmitRISC(stream, context);
+
+    if (compound_statement_ != nullptr)
+    {
+        compound_statement_->EmitRISC(stream, context);
+    }
 }
 
-void FunctionDefinition::emitRISC(std::ostream &stream, Context &context) const {
-  // Emit declarator
-  branches[1]->emitRISC(stream, context);
+void FunctionDefinition::Print(std::ostream &stream) const
+{
+    declaration_specifiers_->Print(stream);
+    stream << " ";
 
-  // Emit compound_statement
-  branches[2]->emitRISC(stream, context);
+    declarator_->Print(stream);
+    stream << "() {" << std::endl;
+
+    if (compound_statement_ != nullptr)
+    {
+        compound_statement_->Print(stream);
+    }
+    stream << "}" << std::endl;
 }
