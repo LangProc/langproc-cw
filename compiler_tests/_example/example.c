@@ -1,4 +1,4 @@
 int f()
 {
-    return;
+    return 5;
 }

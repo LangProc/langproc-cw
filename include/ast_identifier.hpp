@@ -1,15 +1,18 @@
-#ifndef AST_IDENTIFIER
-#define AST_IDENTIFIER
+#ifndef AST_IDENTIFIER_HPP
+#define AST_IDENTIFIER_HPP
 
 #include "ast_node.hpp"
 
-class Identifier : public Node {
+class Identifier : public Node
+{
 private:
-  std::string* identifier;
+    std::string identifier_;
+
 public:
-  Identifier(std::string* _identifier) : identifier(_identifier) {};
-  ~Identifier() {delete identifier;};
-  void emitRISC(std::ostream &stream, Context &context) const;
+    Identifier(std::string identifier) : identifier_(identifier){};
+    ~Identifier(){};
+    void EmitRISC(std::ostream &stream, Context &context) const override;
+    void Print(std::ostream &stream) const override;
 };
 
 #endif
