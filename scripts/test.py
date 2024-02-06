@@ -7,14 +7,14 @@ Makefile, run the tests and store the outputs in bin/output.
 This script will also generate a JUnit XML file, which can be used to integrate
 with CI/CD pipelines.
 
-Usage: test.py [-h] [-m] [-v] [--version] [dir]
+Usage: test.py [-h] [-m] [-v] [--version] [--no_clean | --coverage] [dir]
 
 Example usage: scripts/test.py compiler_tests/_example
 
 This will print out a progress bar and only run the example tests.
 The output would be placed into bin/output/_example/example/.
 
-For more information, run scripts/test.py -h
+For more information, run scripts/test.py --help
 """
 
 
@@ -35,10 +35,10 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 SCRIPT_LOCATION = Path(__file__).resolve().parent
 PROJECT_LOCATION = SCRIPT_LOCATION.joinpath("..").resolve()
 OUTPUT_FOLDER = PROJECT_LOCATION.joinpath("bin/output").resolve()
-J_UNIT_OUTPUT_FILE = PROJECT_LOCATION.joinpath(
-    "bin/junit_results.xml").resolve()
+J_UNIT_OUTPUT_FILE = PROJECT_LOCATION.joinpath("bin/junit_results.xml").resolve()
 COMPILER_TEST_FOLDER = PROJECT_LOCATION.joinpath("compiler_tests").resolve()
 COMPILER_FILE = PROJECT_LOCATION.joinpath("bin/c_compiler").resolve()
+COVERAGE_FOLDER = PROJECT_LOCATION.joinpath("coverage").resolve()
 
 
 class ProgressBar:
@@ -98,7 +98,7 @@ class ProgressBar:
 
         print("Running Tests [{}]".format(progress_bar))
         # Space is left there intentionally to flush out the command line
-        print("Pass: {:2} | Fail: {:2} | Remaining: {:2} ".format(
+        print("\033[92mPass: {:2}\033[0m | \033[91mFail: {:2}\033[0m | Remaining: {:2} ".format(
             self.passed, self.failed, remaining_tests))
         print("See logs for more details (use -v for verbose output).")
 
@@ -312,6 +312,22 @@ def main():
         action="version",
         version=f"BetterTesting {__version__}"
     )
+    # Coverage cannot be perfomed without rebuilding the compiler
+    group = parser.add_mutually_exclusive_group(required=False)
+    group.add_argument(
+        "--no_clean",
+        action="store_true",
+        default=False,
+        help="Do no clean the repository before testing. This will make it "
+        "faster but it can be safer to clean if you have any compilation issues."
+    )
+    group.add_argument(
+        "--coverage",
+        action="store_true",
+        default=False,
+        help="Run with coverage if you want to know which part of your code is "
+        "executed when running your compiler. See docs/coverage.md"
+    )
     args = parser.parse_args()
 
     try:
@@ -321,7 +337,23 @@ def main():
 
     Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
 
-    subprocess.run(["make", "-C", PROJECT_LOCATION, "bin/c_compiler"])
+    # Clean the repo
+    if not args.no_clean:
+        subprocess.run(["make", "clean"])
+
+    # Run coverage if needed
+    if args.coverage:
+        shutil.rmtree(COVERAGE_FOLDER, ignore_errors=True)
+        subprocess.run(["make", "-C", PROJECT_LOCATION, "with_coverage"])
+
+    # Otherwise run the main make command for building and testing
+    else:
+        extra_flags = [] if args.verbose else ["--silent"]
+        subprocess.run(
+            ["make"] +
+            extra_flags +
+            ["-C", PROJECT_LOCATION, "bin/c_compiler"]
+        )
 
     with open(J_UNIT_OUTPUT_FILE, "w") as f:
         f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
@@ -354,9 +386,11 @@ def main():
     with open(J_UNIT_OUTPUT_FILE, "a") as f:
         f.write('</testsuite>\n')
 
-    print("\n>> Test Summary: {} Passed, {} Failed".format(
-        passing, total-passing))
+    print(f"\n>> Test Summary: \033[92m{passing} Passed\033[0m, \033[91m{total-passing} Failed\033[0m")
 
+    # Run coverage if needed
+    if args.coverage:
+        subprocess.run(["make", "-C", PROJECT_LOCATION, "coverage"])
 
 if __name__ == "__main__":
     try:

@@ -6,6 +6,8 @@ The linked guide explains in details all available directives, but fortunately y
 
 ```riscv64-unknown-elf-gcc -std=c90 -pedantic -ansi -O0 -march=rv32imfd -mabi=ilp32d -S [source-file.c] -o [dest-file.s]```.
 
+In the [`scripts/test.py`](../scripts/test.py) script, when running testcases, there is the aforementioned call to the compiler and the compiled test programs can be found as `<test_name>.gcc.s`. Your compiler may not produce the exact same assembly as GCC, so it is not advisable to blindly attempt to replicate the GCC output. Instead, the purpose of the `.gcc.s` files is to assist in debugging issues within your own compiler.
+
 The below picture offers a quick walk-through of a very simple program with detailed annotations describing the meaning behind the included directives. Some of them a crucial (e.g. section specifiers, labels, data emitting) while others not so much (e.g. file attributes, compiler identifier, symbol types) - you will get a feel for them during the development of the compiler. Most importantly, you only need to set the correct section and provide function directives as long as you deal with local variables. **In other words, you can postpone studying this document in details until you decide to deal with global variables.**
 
 ![Assembler directives](./assembler_directives.png)
