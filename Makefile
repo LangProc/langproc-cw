@@ -1,22 +1,26 @@
-CPPFLAGS += -std=c++20 -W -Wall -g -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -I include
+# Based on https://stackoverflow.com/a/52036564 which is well worth reading!
 
-CPPFILES := $(wildcard src/*.cpp)
-DEPENDENCIES := $(patsubst %.cpp,%.d,$(CPPFILES))
--include $(DEPENDENCIES)
-OBJFILES := $(patsubst %.cpp,%.o,$(CPPFILES))
-OBJFILES += src/lexer.yy.o src/parser.tab.o
+CXXFLAGS += -std=c++20 -W -Wall -g -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -fsanitize=address -static-libasan -O0 -rdynamic -I include
+
+SOURCES := $(wildcard src/*.cpp)
+DEPENDENCIES := $(patsubst %.cpp,%.d,$(SOURCES))
+
+OBJECTS := $(patsubst %.cpp,%.o,$(SOURCES))
+OBJECTS += src/parser.tab.o src/lexer.yy.o
 
 
 .PHONY: default clean with_coverage coverage
 
 default: bin/c_compiler
 
-bin/c_compiler : $(OBJFILES)
+bin/c_compiler: $(OBJECTS)
 	@mkdir -p bin
-	g++ $(CPPFLAGS) -o $@ $^
+	g++ $(CXXFLAGS) -o $@ $^
+
+-include $(DEPENDENCIES)
 
 %.o: %.cpp Makefile
-	g++ $(CPPFLAGS) -MMD -MP -c $< -o $@
+	g++ $(CXXFLAGS) -MMD -MP -c $< -o $@
 
 src/parser.tab.cpp src/parser.tab.hpp: src/parser.y
 	bison -v -d src/parser.y -o src/parser.tab.cpp
@@ -24,7 +28,7 @@ src/parser.tab.cpp src/parser.tab.hpp: src/parser.y
 src/lexer.yy.cpp : src/lexer.flex src/parser.tab.hpp
 	flex -o src/lexer.yy.cpp src/lexer.flex
 
-with_coverage : CPPFLAGS += --coverage
+with_coverage : CXXFLAGS += --coverage
 with_coverage : bin/c_compiler
 
 coverage : coverage/index.html
@@ -38,11 +42,12 @@ coverage/index.html :
 	@find . -name "*.gcda" -delete
 
 clean :
-	@rm -rf coverage
-	@find . -name "*.o" -delete
-	@rm -rf bin/*
+	@rm -rf coverage/
+	@rm -rf src/*.o
+	@rm -rf src/*.d
+	@rm -rf src/*.gcno
+	@rm -rf bin/
 	@rm -f src/*.tab.hpp
 	@rm -f src/*.tab.cpp
 	@rm -f src/*.yy.cpp
 	@rm -f src/*.output
-

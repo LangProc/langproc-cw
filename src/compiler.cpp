@@ -1,40 +1,65 @@
 #include <fstream>
 #include <iostream>
-#include <unistd.h>
 
 #include "cli.h"
 #include "ast.hpp"
 
+Node *Parse(CommandLineArguments &args)
+{
+    std::cout << "Parsing: " << args.compile_source_path << std::endl;
+    auto root = ParseAST(args.compile_source_path);
+    std::cout << "AST parsing complete" << std::endl;
+    return root;
+}
+
+// Output the pretty print version of what was parsed to the .printed output
+// file.
+void PrettyPrint(Node *root, CommandLineArguments &args)
+{
+    auto output_path = args.compile_output_path + ".printed";
+
+    std::cout << "Printing parsed AST..." << std::endl;
+    std::ofstream output(output_path, std::ios::trunc);
+    root->Print(output);
+    output.close();
+    std::cout << "Printed parsed AST to: " << output_path << std::endl;
+}
+
+// Compile from the root of the AST and output this to the
+// args.compiledOutputPath file.
+void Compile(Node *root, CommandLineArguments &args)
+{
+    // Create a Context. This can be used to pass around information about
+    // what's currently being compiled (e.g. function scope and variable names).
+    Context ctx;
+
+    std::cout << "Compiling parsed AST..." << std::endl;
+    std::ofstream output(args.compile_output_path, std::ios::trunc);
+    root->EmitRISC(output, ctx);
+    output.close();
+    std::cout << "Compiled to: " << args.compile_output_path << std::endl;
+}
+
 int main(int argc, char **argv)
 {
-  // Parse CLI arguments, to fetch the values of the source and output files.
-  std::string source_path = "";
-  std::string output_path = "";
-  if (parseCommandLineArgs(argc, argv, source_path, output_path)) {
-    return 1;
-  }
+    // Parse CLI arguments to fetch the source file to compile and the path to output to.
+    // This retrives [source-file.c] and [dest-file.s], when the compiler is invoked as follows:
+    // ./bin/c_compiler -S [source-file.c] -o [dest-file.s]
+    auto command_line_arguments = ParseCommandLineArgs(argc, argv);
 
-  // Parse input and generate AST
-  Node* root = parseAST(source_path);
+    // Parse input and generate AST
+    auto ast_root = Parse(command_line_arguments);
+    if (ast_root == nullptr)
+    {
+        // Check something was actually returned by parseAST().
+        std::cerr << "The root of the AST was a null pointer. Likely the root was never initialised correctly during parsing." << std::endl;
+        return 3;
+    }
 
-  // Open the output file in truncation mode (to overwrite the contents)
-  std::ofstream output;
-  output.open(output_path, std::ios::trunc);
+    PrettyPrint(ast_root, command_line_arguments);
+    Compile(ast_root, command_line_arguments);
 
-  // Emit assembler directives
-  // TODO these are just examples ones, make sure you understand the concept of directives and correct them
-  std::vector<std::string> directives = {"text", "globl f"};
-  for (auto directive : directives) {
-    output << "." << directive << "\n";
-  }
-  output << std::endl;
-
-  // Do actual compilation
-  Context context;
-  root->emitRISC(output, context);
-
-  // Close output file
-  output.close();
-
-  return 0;
+    // Clean up afterwards.
+    delete ast_root;
+    return 0;
 }

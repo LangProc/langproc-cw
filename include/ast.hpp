@@ -11,7 +11,9 @@
 #include "ast_jump_statement.hpp"
 #include "ast_node.hpp"
 #include "ast_type_specifier.hpp"
+#include "ast_constant.hpp"
+#include "ast_context.hpp"
 
-extern Node* parseAST(std::string file_name);
+extern Node *ParseAST(std::string file_name);
 
 #endif

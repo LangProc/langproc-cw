@@ -4,6 +4,12 @@
 #include <iostream>
 #include <unistd.h>
 
-int parseCommandLineArgs(int argc, char **argv, std::string &source_path, std::string &output_path);
+struct CommandLineArguments
+{
+    std::string compile_source_path;
+    std::string compile_output_path;
+};
+
+CommandLineArguments ParseCommandLineArgs(int argc, char **argv);
 
 #endif

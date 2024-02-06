@@ -1,11 +1,12 @@
 #include "ast_direct_declarator.hpp"
 
-DirectDeclarator::DirectDeclarator(Node* identifier) {
-  branches.insert(branches.end(), {identifier});
+void DirectDeclarator::EmitRISC(std::ostream &stream, Context &context) const
+{
+    identifier_->EmitRISC(stream, context);
+    stream << ":" << std::endl;
 }
 
-void DirectDeclarator::emitRISC(std::ostream &stream, Context &context) const {
-  // Emit identifier
-  branches[0]->emitRISC(stream, context);
-  stream << ":" << std::endl;
+void DirectDeclarator::Print(std::ostream &stream) const
+{
+    identifier_->Print(stream);
 }
