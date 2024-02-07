@@ -8,4 +8,4 @@ if ! command -v python3 &> /dev/null; then
     sudo apt-get install python3 -y
 fi
 
-. scripts/test.py
+./scripts/test.py
