@@ -339,7 +339,7 @@ def main():
 
     # Clean the repo
     if not args.no_clean:
-        subprocess.run(["make", "clean"])
+        subprocess.run(["make", "-C", PROJECT_LOCATION, "clean"])
 
     # Run coverage if needed
     if args.coverage:
