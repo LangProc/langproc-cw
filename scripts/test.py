@@ -367,7 +367,18 @@ def main():
 
     # Clean the repo
     if not args.no_clean:
-        subprocess.run(["make", "-C", PROJECT_LOCATION, "clean"])
+        try:
+            subprocess.run(
+                ["make", "-C", PROJECT_LOCATION, "clean"],
+                timeout=BUILD_TIMEOUT,
+                check=True,
+            )
+        except subprocess.CalledProcessError as e:
+            print(f"{e.cmd} failed with return code {e.returncode}")
+            return e.returncode
+        except subprocess.TimeoutExpired as e:
+            print(f"{e.cmd} took more than {e.timeout}")
+            return 5
 
     # Run coverage if needed
     if args.coverage:
