@@ -434,7 +434,13 @@ def main() -> int:
     drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
     log_queue = queue.Queue()
     results = []
-    progress_bar = ProgressBar(len(drivers), silent=args.short)
+
+    try:
+        progress_bar = ProgressBar(len(drivers), silent=args.short)
+    except ValueError as e: # Error comes from TTY when running in Github Actions
+        assert not args.short,\
+            "Progress bar cannot be initialised, so program has to be verbose"
+        progress_bar = None
 
     if args.multithreading:
         with ThreadPoolExecutor() as executor:
