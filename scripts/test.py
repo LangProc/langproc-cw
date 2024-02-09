@@ -29,6 +29,7 @@ import subprocess
 import queue
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Optional
 from colorama import init, Fore
 init(autoreset=True)
 
@@ -54,7 +55,7 @@ class ProgressBar:
     - total_tests: the length of the progress bar.
     """
 
-    def __init__(self, total_tests, silent=False):
+    def __init__(self, total_tests: int, silent: bool = False):
         self.total_tests = total_tests
         self.passed = 0
         self.failed = 0
@@ -145,8 +146,18 @@ def fail_testcase(
                    init_xml_message + xml_message))
 
 
-# Simple wrapper for subprocess.run(...) with common arguments and error handling
-def run_subprocess(cmd, timeout, env = None, log_queue=None, init_message=None, path=None, silent=False):
+def run_subprocess(
+    cmd: List[str],
+    timeout: int,
+    env: Optional[dict] = None,
+    log_queue: Optional[queue.Queue] = None,
+    init_message: Optional[str] = None,
+    path: Optional[str] = None,
+    silent: bool = False,
+) -> int:
+    """
+    Simple wrapper for subprocess.run(...) with common arguments and error handling
+    """
     if silent:
         assert not log_queue, "You can only silent subprocesses that do not redirect stdout/stderr"
         stdout = subprocess.DEVNULL
@@ -315,6 +326,9 @@ def empty_log_queue(
     verbose: bool = False,
     progress_bar: ProgressBar = None
 ):
+    """
+    Empty log queue while logs are sent to XML file and terminal/progress bar
+    """
     while not log_queue.empty():
         print_msg, xml_message = log_queue.get()
 
@@ -331,7 +345,7 @@ def empty_log_queue(
 
 
 
-def main():
+def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "dir",
@@ -458,6 +472,8 @@ def main():
         )
         if return_code != 0:
             return return_code
+
+    return 0
 
 
 if __name__ == "__main__":
