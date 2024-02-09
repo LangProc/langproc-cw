@@ -7,7 +7,7 @@ Makefile, run the tests and store the outputs in bin/output.
 This script will also generate a JUnit XML file, which can be used to integrate
 with CI/CD pipelines.
 
-Usage: test.py [-h] [-m] [-v] [--version] [--no_clean | --coverage] [dir]
+Usage: test.py [-h] [-m] [-s] [--version] [--no_clean | --coverage] [dir]
 
 Example usage: scripts/test.py compiler_tests/_example
 
@@ -52,10 +52,11 @@ class ProgressBar:
     - total_tests: the length of the progress bar.
     """
 
-    def __init__(self, total_tests):
+    def __init__(self, total_tests, silent=False):
         self.total_tests = total_tests
         self.passed = 0
         self.failed = 0
+        self.silent = silent
 
         _, max_line_length = os.popen("stty size", "r").read().split()
         self.max_line_length = min(
@@ -66,7 +67,8 @@ class ProgressBar:
         # Initialize the lines for the progress bar and stats
         print("Running Tests [" + " " * self.max_line_length + "]")
         print("Pass: 0 | Fail: 0 | Remaining: {}".format(total_tests))
-        print("See logs for more details (use -v for verbose output).")
+        if not self.silent:
+            print("See logs for more details (use -s to disable verbose output).")
 
         # Initialize the progress bar
         self.update()
@@ -95,14 +97,16 @@ class ProgressBar:
         progress_bar += '\033[91m#\033[0m' * prop_failed    # Red
         progress_bar += ' ' * remaining                     # Empty space
 
-        # Move the cursor up 3 lines, to the beginning of the progress bar
-        print("\033[3A\r", end='')
+        # Move the cursor up 2 or 3 lines, to the beginning of the progress bar
+        lines_to_move_cursor = 2 if self.silent else 3
+        print(f"\033[{lines_to_move_cursor}A\r", end='')
 
         print("Running Tests [{}]".format(progress_bar))
         # Space is left there intentionally to flush out the command line
         print("\033[92mPass: {:2}\033[0m | \033[91mFail: {:2}\033[0m | Remaining: {:2} ".format(
             self.passed, self.failed, remaining_tests))
-        print("See logs for more details (use -v for verbose output).")
+        if not self.silent:
+            print("See logs for more details (use -s to disable verbose output).")
 
     def test_passed(self):
         self.passed += 1
@@ -132,11 +136,22 @@ def fail_testcase(
 
 
 # Simple wrapper for subprocess.run(...) with common arguments and error handling
-def run_subprocess(cmd, timeout, log_queue=None, init_message=None, path=None):
+def run_subprocess(cmd, timeout, log_queue=None, init_message=None, path=None, silent=False):
+    if silent:
+        assert not log_queue, "You can only silent subprocesses that do not redirect stdout/stderr"
+        stdout = subprocess.DEVNULL
+        stderr = subprocess.DEVNULL
+    else:
+        # None means that stdout and stderr are handled by parent, i.e., they go to console by default
+        stdout = None
+        stderr = None
+
     try:
         if not log_queue:
             subprocess.run(
                 cmd,
+                stdout=stdout,
+                stderr=stderr,
                 timeout=timeout,
                 check=True
             )
@@ -317,10 +332,10 @@ def main():
         "but order is not guaranteed. Should only be used for speed."
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-s", "--short",
         action="store_true",
         default=False,
-        help="Enable verbose output into the terminal. Note that all logs will "
+        help="Disable verbose output into the terminal. Note that all logs will "
         "be stored automatically into log files regardless of this option."
     )
     parser.add_argument(
@@ -358,6 +373,7 @@ def main():
         return_code = run_subprocess(
             cmd=["make", "-C", PROJECT_LOCATION, "clean"],
             timeout=BUILD_TIMEOUT,
+            silent=args.short,
         )
         if return_code != 0:
             return return_code
@@ -369,12 +385,12 @@ def main():
 
     # Otherwise run the main make command for building and testing
     else:
-        extra_flags = [] if args.verbose else ["--silent"]
-        cmd = ["make"] + extra_flags + ["-C", PROJECT_LOCATION, "bin/c_compiler"]
+        cmd = ["make", "-C", PROJECT_LOCATION, "bin/c_compiler"]
 
     return_code = run_subprocess(
         cmd=cmd,
         timeout=BUILD_TIMEOUT,
+        silent=args.short,
     )
     if return_code != 0:
         return return_code
@@ -387,7 +403,7 @@ def main():
     drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
     log_queue = queue.Queue()
     results = []
-    progress_bar = ProgressBar(len(drivers))
+    progress_bar = ProgressBar(len(drivers), silent=args.short)
 
     if args.multithreading:
         with ThreadPoolExecutor() as executor:
@@ -396,13 +412,13 @@ def main():
 
             for future in as_completed(futures):
                 results.append(future.result())
-                empty_log_queue(log_queue, args.verbose, progress_bar)
+                empty_log_queue(log_queue, not args.short, progress_bar)
 
     else:
         for driver in drivers:
             result = run_test(driver, log_queue)
             results.append(result)
-            empty_log_queue(log_queue, args.verbose, progress_bar)
+            empty_log_queue(log_queue, not args.short, progress_bar)
 
     passing = sum([1 if result == 0 else 0 for result in results])
     total = len(drivers)
@@ -410,13 +426,15 @@ def main():
     with open(J_UNIT_OUTPUT_FILE, "a") as f:
         f.write('</testsuite>\n')
 
-    print(f"\n>> Test Summary: \033[92m{passing} Passed\033[0m, \033[91m{total-passing} Failed\033[0m")
+    if not args.short:
+        print(f"\n>> Test Summary: \033[92m{passing} Passed\033[0m, \033[91m{total-passing} Failed\033[0m")
 
     # Run coverage if needed
     if args.coverage:
         return_code = run_subprocess(
             cmd=["make", "-C", PROJECT_LOCATION, "coverage"],
             timeout=BUILD_TIMEOUT,
+            silent=args.short,
         )
         if return_code != 0:
             return return_code
