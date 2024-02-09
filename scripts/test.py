@@ -29,6 +29,8 @@ import subprocess
 import queue
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from colorama import init, Fore
+init(autoreset=True)
 
 
 # "File" will suggest the absolute path to the file, including the extension.
@@ -66,7 +68,11 @@ class ProgressBar:
 
         # Initialize the lines for the progress bar and stats
         print("Running Tests [" + " " * self.max_line_length + "]")
-        print("Pass: 0 | Fail: 0 | Remaining: {}".format(total_tests))
+        print(
+            Fore.GREEN +  "Pass: 0 | " +
+            Fore.RED   +  "Fail: 0 | " +
+            Fore.RESET + f"Remaining: {total_tests:2}"
+        )
         if not self.silent:
             print("See logs for more details (use -s to disable verbose output).")
 
@@ -93,18 +99,22 @@ class ProgressBar:
 
         remaining = self.max_line_length - prop_passed - prop_failed
 
-        progress_bar += '\033[92m#\033[0m' * prop_passed    # Green
-        progress_bar += '\033[91m#\033[0m' * prop_failed    # Red
-        progress_bar += ' ' * remaining                     # Empty space
+        progress_bar += Fore.GREEN + '#' * prop_passed    # Green
+        progress_bar += Fore.RED   + '#' * prop_failed    # Red
+        progress_bar += Fore.RESET + ' ' * remaining      # Empty space
 
         # Move the cursor up 2 or 3 lines, to the beginning of the progress bar
         lines_to_move_cursor = 2 if self.silent else 3
         print(f"\033[{lines_to_move_cursor}A\r", end='')
 
         print("Running Tests [{}]".format(progress_bar))
+
         # Space is left there intentionally to flush out the command line
-        print("\033[92mPass: {:2}\033[0m | \033[91mFail: {:2}\033[0m | Remaining: {:2} ".format(
-            self.passed, self.failed, remaining_tests))
+        print(
+            Fore.GREEN + f"Pass: {self.passed:2} | " +
+            Fore.RED   + f"Fail: {self.failed:2} | " +
+            Fore.RESET + f"Remaining: {remaining_tests:2}"
+        )
         if not self.silent:
             print("See logs for more details (use -s to disable verbose output).")
 
@@ -170,7 +180,7 @@ def run_subprocess(cmd, timeout, log_queue=None, init_message=None, path=None, s
             assert (init_message and path)
             fail_testcase(
                 init_message,
-                f"Fail: see {path}.stderr.log and {path}.stdout.log",
+                Fore.RED + f"Fail: see {path}.stderr.log and {path}.stdout.log",
                 log_queue
             )
         return e.returncode
@@ -286,7 +296,7 @@ def run_test(driver: Path, log_queue: queue.Queue) -> int:
 
     init_print_message, init_xml_message = init_message
     log_queue.put((
-        f"{init_print_message}\t> Pass",
+        f"{init_print_message}\t> " + Fore.GREEN + "Pass",
         f"{init_xml_message}</testcase>\n"
     ))
 
@@ -427,7 +437,10 @@ def main():
         f.write('</testsuite>\n')
 
     if not args.short:
-        print(f"\n>> Test Summary: \033[92m{passing} Passed\033[0m, \033[91m{total-passing} Failed\033[0m")
+        print(
+            "\n>> Test Summary: " +
+            Fore.GREEN + f"{passing} Passed, " + Fore.RED + f"{total-passing} Failed"
+        )
 
     # Run coverage if needed
     if args.coverage:
