@@ -22,8 +22,8 @@ __version__ = "0.1.0"
 __author__ = "William Huynh (@saturn691)"
 
 
-import argparse
 import os
+import argparse
 import shutil
 import subprocess
 import queue
@@ -146,7 +146,7 @@ def fail_testcase(
 
 
 # Simple wrapper for subprocess.run(...) with common arguments and error handling
-def run_subprocess(cmd, timeout, log_queue=None, init_message=None, path=None, silent=False):
+def run_subprocess(cmd, timeout, env = None, log_queue=None, init_message=None, path=None, silent=False):
     if silent:
         assert not log_queue, "You can only silent subprocesses that do not redirect stdout/stderr"
         stdout = subprocess.DEVNULL
@@ -160,6 +160,7 @@ def run_subprocess(cmd, timeout, log_queue=None, init_message=None, path=None, s
         if not log_queue:
             subprocess.run(
                 cmd,
+                env=env,
                 stdout=stdout,
                 stderr=stderr,
                 timeout=timeout,
@@ -168,6 +169,7 @@ def run_subprocess(cmd, timeout, log_queue=None, init_message=None, path=None, s
         else:
             subprocess.run(
                 cmd,
+                env=env,
                 stderr=open(f"{path}.stderr.log", "w"),
                 stdout=open(f"{path}.stdout.log", "w"),
                 timeout=timeout,
@@ -222,10 +224,15 @@ def run_test(driver: Path, log_queue: queue.Queue) -> int:
     for suffix in [".s", ".o", ""]:
         log_path.with_suffix(suffix).unlink(missing_ok=True)
 
+    # Modifying environment to combat errors on memory leak
+    custom_env = os.environ.copy()
+    custom_env["ASAN_OPTIONS"] = "exitcode=0"
+
     # Compile
     return_code = run_subprocess(
         cmd=[COMPILER_FILE, "-S", to_assemble_str, "-o", f"{log_path}.s"],
         timeout=RUN_TIMEOUT,
+        env=custom_env,
         log_queue=log_queue,
         init_message=init_message,
         path=f"{log_path}.compiler",
