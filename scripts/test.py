@@ -131,6 +131,41 @@ def fail_testcase(
                    init_xml_message + xml_message))
 
 
+# Simple wrapper for subprocess.run(...) with common arguments and error handling
+def run_subprocess(cmd, timeout, log_queue=None, init_message=None, path=None):
+    try:
+        if not log_queue:
+            subprocess.run(
+                cmd,
+                timeout=timeout,
+                check=True
+            )
+        else:
+            subprocess.run(
+                cmd,
+                stderr=open(f"{path}.stderr.log", "w"),
+                stdout=open(f"{path}.stdout.log", "w"),
+                timeout=timeout,
+                check=True
+            )
+    except subprocess.CalledProcessError as e:
+        if not log_queue:
+            print(f"{e.cmd} failed with return code {e.returncode}")
+        else:
+            assert (init_message and path)
+            fail_testcase(
+                init_message,
+                f"Fail: see {path}.stderr.log and {path}.stdout.log",
+                log_queue
+            )
+        return e.returncode
+    except subprocess.TimeoutExpired as e:
+        print(f"{e.cmd} took more than {e.timeout}")
+        return 5
+
+    return 0
+
+
 def run_test(driver: Path, log_queue: queue.Queue) -> int:
     """
     Run an instance of a test case.
@@ -155,41 +190,27 @@ def run_test(driver: Path, log_queue: queue.Queue) -> int:
     # Ensure the directory exists.
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    init_message = (str(to_assemble) + "\n",
-                    f'<testcase name="{to_assemble}">\n')
+    to_assemble_str = str(to_assemble)
+    init_message = (to_assemble_str + "\n",
+                    f'<testcase name="{to_assemble_str}">\n')
 
     for suffix in [".s", ".o", ""]:
         log_path.with_suffix(suffix).unlink(missing_ok=True)
 
     # Compile
-    try:
-        subprocess.run(
-            [
-                COMPILER_FILE,
-                "-S", str(to_assemble),
-                "-o", f"{log_path}.s",
-            ],
-            stderr=open(f"{log_path}.compiler.stderr.log", "w"),
-            stdout=open(f"{log_path}.compiler.stdout.log", "w"),
-            timeout=RUN_TIMEOUT,
-            check=True
-        )
-    except subprocess.CalledProcessError as e:
-        fail_testcase(
-            init_message,
-            f"Fail: see {log_path}.compiler.stderr.log "
-            f"and {log_path}.compiler.stdout.log",
-            log_queue
-        )
-        return e.returncode
-    except subprocess.TimeoutExpired as e:
-        print(f"{e.cmd} took more than {e.timeout}")
-        return 5
+    return_code = run_subprocess(
+        cmd=[COMPILER_FILE, "-S", to_assemble_str, "-o", f"{log_path}.s"],
+        timeout=RUN_TIMEOUT,
+        log_queue=log_queue,
+        init_message=init_message,
+        path=f"{log_path}.compiler",
+    )
+    if return_code != 0:
+        return return_code
 
     # GCC Reference Output
-    try:
-        subprocess.run(
-            [
+    return_code = run_subprocess(
+        cmd=[
                 "riscv64-unknown-elf-gcc",
                 "-std=c90",
                 "-pedantic",
@@ -198,88 +219,55 @@ def run_test(driver: Path, log_queue: queue.Queue) -> int:
                 "-march=rv32imfd",
                 "-mabi=ilp32d",
                 "-o", f"{log_path}.gcc.s",
-                "-S", str(to_assemble)
+                "-S", to_assemble_str
             ],
-            timeout=RUN_TIMEOUT,
-            check=True
-        )
-    except subprocess.CalledProcessError as e:
-        print(f"{e.cmd} failed with return code {e.returncode}")
-        return e.returncode
-    except subprocess.TimeoutExpired as e:
-        print(f"{e.cmd} took more than {e.timeout}")
-        return 5
+        timeout=RUN_TIMEOUT,
+    )
+    if return_code != 0:
+        return return_code
 
     # Assemble
-    try:
-        subprocess.run(
-            [
+    return_code = run_subprocess(
+        cmd=[
                 "riscv64-unknown-elf-gcc",
                 "-march=rv32imfd", "-mabi=ilp32d",
                 "-o", f"{log_path}.o",
                 "-c", f"{log_path}.s"
             ],
-            stderr=open(f"{log_path}.assembler.stderr.log", "w"),
-            stdout=open(f"{log_path}.assembler.stdout.log", "w"),
-            timeout=RUN_TIMEOUT,
-            check=True
-        )
-    except subprocess.CalledProcessError as e:
-        fail_testcase(
-            init_message,
-            f"Fail: see {log_path}.assembler.stderr.log "
-            f"and {log_path}.assembler.stdout.log",
-            log_queue
-        )
-        e.returncode
-    except subprocess.TimeoutExpired as e:
-        print(f"{e.cmd} took more than {e.timeout}")
-        return 5
+        timeout=RUN_TIMEOUT,
+        log_queue=log_queue,
+        init_message=init_message,
+        path=f"{log_path}.assembler",
+    )
+    if return_code != 0:
+        return return_code
 
     # Link
-    try:
-        subprocess.run(
-            [
+    return_code = run_subprocess(
+        cmd=[
                 "riscv64-unknown-elf-gcc",
                 "-march=rv32imfd", "-mabi=ilp32d", "-static",
                 "-o", f"{log_path}",
                 f"{log_path}.o", str(driver)
             ],
-            stderr=open(f"{log_path}.linker.stderr.log", "w"),
-            stdout=open(f"{log_path}.linker.stdout.log", "w"),
-            timeout=RUN_TIMEOUT,
-            check=True
-        )
-    except subprocess.CalledProcessError as e:
-        fail_testcase(
-            init_message,
-            f"Fail: see {log_path}.linker.stderr.log "
-            f"and {log_path}.linker.stdout.log",
-            log_queue
-        )
-        e.returncode
-    except subprocess.TimeoutExpired as e:
-        print(f"{e.cmd} took more than {e.timeout}")
-        return 5
+        timeout=RUN_TIMEOUT,
+        log_queue=log_queue,
+        init_message=init_message,
+        path=f"{log_path}.linker",
+    )
+    if return_code != 0:
+        return return_code
 
     # Simulate
-    try:
-        subprocess.run(
-            ["spike", "pk", log_path],
-            stdout=open(f"{log_path}.simulation.log", "w"),
-            timeout=RUN_TIMEOUT,
-            check=True
-        )
-    except subprocess.CalledProcessError as e:
-        fail_testcase(
-            init_message,
-            f"Fail: simulation did not exit with exitcode 0",
-            log_queue
-        )
-        e.returncode
-    except subprocess.TimeoutExpired as e:
-        print(f"{e.cmd} took more than {e.timeout}")
-        return 5
+    return_code = run_subprocess(
+        cmd=["spike", "pk", log_path],
+        timeout=RUN_TIMEOUT,
+        log_queue=log_queue,
+        init_message=init_message,
+        path=f"{log_path}.simulation",
+    )
+    if return_code != 0:
+        return return_code
 
     init_print_message, init_xml_message = init_message
     log_queue.put((
@@ -310,6 +298,7 @@ def empty_log_queue(
             xml_file.write(xml_message)
 
 
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -320,7 +309,6 @@ def main():
         help="(Optional) paths to the compiler test folders. Use this to select "
         "certain tests. Leave blank to run all tests."
     )
-
     parser.add_argument(
         "-m", "--multithreading",
         action="store_true",
@@ -367,18 +355,12 @@ def main():
 
     # Clean the repo
     if not args.no_clean:
-        try:
-            subprocess.run(
-                ["make", "-C", PROJECT_LOCATION, "clean"],
-                timeout=BUILD_TIMEOUT,
-                check=True,
-            )
-        except subprocess.CalledProcessError as e:
-            print(f"{e.cmd} failed with return code {e.returncode}")
-            return e.returncode
-        except subprocess.TimeoutExpired as e:
-            print(f"{e.cmd} took more than {e.timeout}")
-            return 5
+        return_code = run_subprocess(
+            cmd=["make", "-C", PROJECT_LOCATION, "clean"],
+            timeout=BUILD_TIMEOUT,
+        )
+        if return_code != 0:
+            return return_code
 
     # Run coverage if needed
     if args.coverage:
@@ -390,18 +372,12 @@ def main():
         extra_flags = [] if args.verbose else ["--silent"]
         cmd = ["make"] + extra_flags + ["-C", PROJECT_LOCATION, "bin/c_compiler"]
 
-    try:
-        subprocess.run(
-            cmd,
-            timeout=BUILD_TIMEOUT,
-            check=True,
-        )
-    except subprocess.CalledProcessError as e:
-        print(f"{e.cmd} failed with return code {e.returncode}")
-        return e.returncode
-    except subprocess.TimeoutExpired as e:
-        print(f"{e.cmd} took more than {e.timeout}")
-        return 5
+    return_code = run_subprocess(
+        cmd=cmd,
+        timeout=BUILD_TIMEOUT,
+    )
+    if return_code != 0:
+        return return_code
 
     with open(J_UNIT_OUTPUT_FILE, "w") as f:
         f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
@@ -438,18 +414,13 @@ def main():
 
     # Run coverage if needed
     if args.coverage:
-        try:
-            subprocess.run(
-                ["make", "-C", PROJECT_LOCATION, "coverage"],
-                timeout=BUILD_TIMEOUT,
-                check=True,
-            )
-        except subprocess.CalledProcessError as e:
-            print(f"{e.cmd} failed with return code {e.returncode}")
-            return e.returncode
-        except subprocess.TimeoutExpired as e:
-            print(f"{e.cmd} took more than {e.timeout}")
-            return 5
+        return_code = run_subprocess(
+            cmd=["make", "-C", PROJECT_LOCATION, "coverage"],
+            timeout=BUILD_TIMEOUT,
+        )
+        if return_code != 0:
+            return return_code
+
 
 if __name__ == "__main__":
     try:
