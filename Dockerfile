@@ -22,6 +22,10 @@ RUN apt-get update && apt-get install -y --fix-missing \
     lcov \
     nano
 
+# Install Python packages
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir colorama
+
 # Install RISC-V Toolchain
 WORKDIR /tmp
 RUN set -eux; \
