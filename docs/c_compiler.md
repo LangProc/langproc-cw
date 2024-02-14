@@ -19,7 +19,7 @@ You can test your compiler by running
 output should look as follows (note: the progress bar and results will be coloured):
 
 ```console
-> scripts/test.py
+> user@host:langproc-cw# scripts/test.py
 >
 Running Tests [################################################################]
 Pass:  1 | Fail: 85 | Remaining:  0
@@ -30,8 +30,8 @@ See logs for more details (use -v for verbose output).
 
 Full usage guide of [`scripts/test.py`](../scripts/test.py) is found in the file header or after running:
 
-```
-> scripts/test.py --help
+```console
+> user@host:langproc-cw# scripts/test.py --help
 ```
 
 If for any reason you run into issues with the Python script, you can also test your compiler against the provided
@@ -39,7 +39,7 @@ test-suite by running [`scripts/test.sh`](../scripts/test.sh) from the top of
 this repo; the output should look as follows:
 
 ```console
-> scripts/test.sh
+> user@host:langproc-cw# scripts/test.sh
 >
 compiler_tests/_example/example.c
         > Pass
@@ -58,11 +58,15 @@ Program build and execution
 
 Your program should be built by running the following command in the top-level directory of your repo:
 
-    make bin/c_compiler
+```console
+> user@host:langproc-cw# make bin/c_compiler
+```
 
 The compilation function is invoked using the flag `-S`, with the source file and output file specified on the command line:
 
-    bin/c_compiler -S [source-file.c] -o [dest-file.s]
+```console
+> user@host:langproc-cw# bin/c_compiler -S [source-file.c] -o [dest-file.s]
+```
 
 You can assume that the command-line (CLI) arguments will always be in this order, and that there will be no spaces in source or destination paths.
 
@@ -159,28 +163,45 @@ It should be possible to assemble and link this code against a C run-time, and h
 
 For instance, suppose I have a file called `test_program.c` that contains:
 
-    int f() { return 5; }
+```
+int f() {
+    return 5;
+}
+```
 
 and another file called `test_program_driver.c` that contains:
 
-    int f();
-    int main() { return !( 5 == f() ); }
+```
+int f();
+
+int main() {
+    return !( 5 == f() );
+}
+```
 
 I run the compiler on the test program, like so:
 
-    bin/c_compiler -S test_program.c -o test_program.s
+```console
+> user@host:langproc-cw# bin/c_compiler -S test_program.c -o test_program.s
+```
 
 I then use GCC to assemble the generated assembly program (`test_program.s`), like so:
 
-    riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -o test_program.o -c test_program.s
+```console
+> user@host:langproc-cw# riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -o test_program.o -c test_program.s
+```
 
 I then use GCC to link the generated object file (`test_program.o`) with the driver program (`test_program_driver.c`), to produce an executable (`test_program`), like so:
 
-    riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -static -o test_program test_program.o test_program_driver.c
+```console
+> user@host:langproc-cw# riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -static -o test_program test_program.o test_program_driver.c
+```
 
 I then use spike to simulate the executable on RISC-V, like so:
 
-    spike pk test_program
+```console
+> user@host:langproc-cw# spike pk test_program
+```
 
 This command should produce the exit code `0`.
 

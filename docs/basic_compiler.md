@@ -3,8 +3,7 @@ Basic compiler
 
 For the first time ever, you are provided with a basic compiler that can lex, parse and generate code for only the following program:
 ```
-int f()
-{
+int f() {
     return 5;
 }
 ```
