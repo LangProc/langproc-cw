@@ -30,8 +30,9 @@ import queue
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional
-from colorama import init, Fore
-init(autoreset=True)
+from colorama import Fore, init, just_fix_windows_console
+just_fix_windows_console() # Make Windows behave as standard terminals
+init(autoreset=True) # No need to reset style to default after each style changing call
 
 
 # "File" will suggest the absolute path to the file, including the extension.
