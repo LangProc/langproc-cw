@@ -40,7 +40,9 @@ Many students develop their compiler in VS Code, as this has good support for co
     Test successful
     ```
 
-8) You might also benefit from installing VS Code extensions for C++, Lex, and Yacc for better text highlighting and easier debugging.
+8) You might also benefit from installing VS Code extensions for C++, Lex, and Yacc for better text highlighting and easier debugging. For example, you can press F5 (or fn + F5) to start the integrated VS Code debugger. By default, this attempts to compile [compiler_tests/_example/example.c](../compiler_tests/_example/example.c), as specified in [.vscode/launch.json](../.vscode/launch.json).
+
+
 
 ### Another Editor + Docker
 
