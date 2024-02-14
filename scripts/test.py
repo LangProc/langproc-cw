@@ -26,6 +26,7 @@ import os
 import argparse
 import shutil
 import subprocess
+import re
 import queue
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -332,13 +333,14 @@ def empty_log_queue(
     """
     while not log_queue.empty():
         print_msg, xml_message = log_queue.get()
+        processed_msg = re.sub(r"(/workspaces/).+?/([compiler_tests|bin])", r"\1\2", print_msg)
 
         if verbose:
             print(print_msg)
         else:
-            if "Pass" in print_msg:
+            if "Pass" in processed_msg:
                 progress_bar.test_passed()
-            elif "Fail" in print_msg:
+            elif "Fail" in processed_msg:
                 progress_bar.test_failed()
 
         with open(J_UNIT_OUTPUT_FILE, "a") as xml_file:
