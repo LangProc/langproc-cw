@@ -13,12 +13,12 @@ It can also be used automatically on all test files by running: `./scripts/test.
 
 You can view the webpage in your browser by navigating to the coverage directory and running a Python HTTP server:
 
-```
-> cd coverage
-> python3 -m http.server
+```console
+> user@host:langproc-cw# cd coverage
+> user@host:langproc-cw/coverage# python3 -m http.server
 >
 Serving HTTP on 0.0.0.0 port 8000 (http://0.0.0.0:8000/) ...
 ```
 
 VS Code should prompt you to open the webpage in your browser.
-You can also manually do so by navigating to `http://0.0.0.0:8000/`.
+You can also manually do so by navigating to [http://0.0.0.0:8000](`http://0.0.0.0:8000`).

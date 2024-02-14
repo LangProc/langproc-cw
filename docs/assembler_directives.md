@@ -4,7 +4,9 @@ Assembler directives
 
 The linked guide explains in details all available directives, but fortunately you only need a very small subset to start with and even the more advanced features only require a few additional directives. While [Godbolt](https://godbolt.org/z/vMMnWbsff) emits some directives, to see all of them (more than you actually need) you are advised to run:
 
-```riscv64-unknown-elf-gcc -std=c90 -pedantic -ansi -O0 -march=rv32imfd -mabi=ilp32d -S [source-file.c] -o [dest-file.s]```.
+```console
+> user@host:langproc-cw# riscv64-unknown-elf-gcc -std=c90 -pedantic -ansi -O0 -march=rv32imfd -mabi=ilp32d -S [source-file.c] -o [dest-file.s]
+```
 
 In the [`scripts/test.py`](../scripts/test.py) script, when running testcases, there is the aforementioned call to the compiler and the compiled test programs can be found as `<test_name>.gcc.s`. Your compiler may not produce the exact same assembly as GCC, so it is not advisable to blindly attempt to replicate the GCC output. Instead, the purpose of the `.gcc.s` files is to assist in debugging issues within your own compiler.
 
