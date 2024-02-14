@@ -22,10 +22,6 @@ RUN apt-get update && apt-get install -y --fix-missing \
     lcov \
     nano
 
-# Install Python packages
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir colorama
-
 # Install RISC-V Toolchain
 WORKDIR /tmp
 RUN set -eux; \
@@ -67,5 +63,9 @@ WORKDIR /tmp/riscv-pk/build
 RUN ../configure --prefix=$RISCV --host=riscv64-unknown-elf --with-arch=rv32imfd --with-abi=ilp32d
 RUN make
 RUN make install
+
+# Install Python packages
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir colorama
 
 ENTRYPOINT [ "/bin/bash" ]
