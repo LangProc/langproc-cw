@@ -45,5 +45,5 @@ coverage/index.html :
 
 clean :
 	@rm -rf coverage/
-	@rm -rf build/*
+	@rm -rf build/
 	@rm -rf bin/
