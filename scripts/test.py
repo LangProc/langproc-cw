@@ -7,14 +7,14 @@ Makefile, run the tests and store the outputs in bin/output.
 This script will also generate a JUnit XML file, which can be used to integrate
 with CI/CD pipelines.
 
-Usage: test.py [-h] [-m] [-v] [--version] [dir]
+Usage: test.py [-h] [-m] [-s] [--version] [--no_clean | --coverage] [dir]
 
 Example usage: scripts/test.py compiler_tests/_example
 
 This will print out a progress bar and only run the example tests.
 The output would be placed into bin/output/_example/example/.
 
-For more information, run scripts/test.py -h
+For more information, run scripts/test.py --help
 """
 
 
