@@ -1,4 +1,5 @@
 bin/
+build/
 .vscode
 *.o
 *.tab.hpp
