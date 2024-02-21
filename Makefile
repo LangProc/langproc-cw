@@ -1,6 +1,6 @@
 # Based on https://stackoverflow.com/a/52036564 which is well worth reading!
 
-CXXFLAGS += -std=c++20 -W -Wall -g -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -fsanitize=address -static-libasan -O0 -rdynamic -I include
+CXXFLAGS += -std=c++20 -W -Wall -g -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -fsanitize=address -static-libasan -O0 -rdynamic --coverage -I include
 
 SOURCES := $(wildcard src/*.cpp)
 DEPENDENCIES := $(patsubst src/%.cpp,build/%.d,$(SOURCES))
@@ -30,12 +30,10 @@ build/lexer.yy.cpp: src/lexer.flex build/parser.tab.hpp
 	@mkdir -p build
 	flex -o build/lexer.yy.cpp src/lexer.flex
 
-with_coverage : CXXFLAGS += --coverage
 with_coverage : bin/c_compiler
 
-coverage : coverage/index.html
-
-coverage/index.html :
+coverage:
+	@rm -rf coverage/
 	@mkdir -p coverage
 # somehow lexer and parser coverage info are available but not accurate. To exclude them use:
 # lcov -c --no-external --exclude "`pwd`/src/lexer.*" --exclude "`pwd`/src/parser.*" -d . -o coverage/cov.info
