@@ -23,6 +23,7 @@ __author__ = "William Huynh (@saturn691)"
 
 
 import os
+import sys
 import argparse
 import shutil
 import subprocess
@@ -438,11 +439,14 @@ def main() -> int:
     log_queue = queue.Queue()
     results = []
 
-    try:
-        progress_bar = ProgressBar(len(drivers), silent=args.short)
-    except ValueError as e: # Error comes from TTY when running in Github Actions
-        assert not args.short,\
-            "Progress bar cannot be initialised, so program has to be verbose"
+    if sys.stdout.isatty():
+        try:
+            progress_bar = ProgressBar(len(drivers), silent=args.short)
+        except ValueError as e: # Error comes from TTY when running in Github Actions
+            assert not args.short,\
+                "Progress bar cannot be initialised, so program has to be verbose"
+            progress_bar = None
+    else:
         progress_bar = None
 
     if args.multithreading:
