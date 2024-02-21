@@ -32,6 +32,7 @@ from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 
 RED = "\033[31m"
@@ -344,6 +345,37 @@ def make(with_coverage: bool, silent: bool) -> bool:
 
     return True
 
+def coverage() -> bool:
+    """
+    Wrapper for make coverage.
+
+    Return True if successful, False otherwise
+    """
+    print(GREEN + "Running make coverage..." + RESET)
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["make", "-C", PROJECT_LOCATION, "coverage"], timeout=BUILD_TIMEOUT_SECONDS, silent=True
+    )
+    if return_code != 0:
+        print(RED + "Error when making coverage:", error_msg + RESET)
+        return False
+    return True
+
+def serve_coverage_forever(host: str, port: int):
+    """
+    Starts a HTTP server which serves the coverage folder forever until Ctrl+C
+    is pressed.
+    """
+    class Handler(SimpleHTTPRequestHandler):
+        def __init__(self, *args, directory=None, **kwargs):
+            super().__init__(*args, directory=COVERAGE_FOLDER, **kwargs)
+
+        def log_message(self, format, *args):
+            pass
+
+    httpd = HTTPServer((host, port), Handler)
+    print(GREEN + "Serving coverage on" + RESET + f" http://{host}:{port}/ ... (Ctrl+C to exit)")
+    httpd.serve_forever()
+
 def process_result(
     result: Result,
     xml_file: JUnitXMLFile,
@@ -436,10 +468,11 @@ def parse_args():
     # Coverage cannot be perfomed without rebuilding the compiler
     group = parser.add_mutually_exclusive_group(required=False)
     group.add_argument(
-        "--no_clean",
+        "--no-clean",
+        '--no_clean',
         action="store_true",
         default=False,
-        help="Do no clean the repository before testing. This will make it "
+        help="Don't clean the repository before testing. This will make it "
         "faster but it can be safer to clean if you have any compilation issues."
     )
     group.add_argument(
@@ -466,6 +499,11 @@ def main():
 
     with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
         run_tests(args, xml_file)
+
+    if args.coverage:
+        if not coverage():
+            exit(4)
+        serve_coverage_forever('0.0.0.0', 8000)
 
 if __name__ == "__main__":
     try:
