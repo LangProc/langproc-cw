@@ -313,7 +313,7 @@ def clean() -> bool:
         timeout=BUILD_TIMEOUT_SECONDS,
         silent=True,
     )
-    print("")
+
     if return_code != 0:
         print("Error when cleaning:", error_msg)
         return False
@@ -325,7 +325,7 @@ def make(with_coverage: bool, silent: bool) -> bool:
 
     Return True if successful, False otherwise
     """
-    print("Running make...\n")
+    print("Running make...")
 
     cmd = ["make", "-C", PROJECT_LOCATION, "bin/c_compiler"]
     if with_coverage:
@@ -336,7 +336,6 @@ def make(with_coverage: bool, silent: bool) -> bool:
 
     return_code, error_msg, _ = run_subprocess(cmd=cmd, timeout=BUILD_TIMEOUT_SECONDS, silent=silent)
 
-    print("")
     if return_code != 0:
         print("Error when making:", error_msg)
         return False
@@ -471,7 +470,7 @@ if __name__ == "__main__":
     try:
         main()
     finally:
-        print(RESET)
+        print(RESET, end="")
         if sys.stdout.isatty():
             # This solves dodgy terminal behaviour on multithreading
             os.system("stty echo")
