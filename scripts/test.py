@@ -143,11 +143,8 @@ class ProgressBar:
             prop_passed = 0
             prop_failed = 0
         else:
-            prop_passed = round(
-                self.passed / self.total_tests * self.max_line_length)
-            prop_failed = round(
-                self.failed / self.total_tests * self.max_line_length
-            )
+            prop_passed = round(self.passed / self.total_tests * self.max_line_length)
+            prop_failed = round(self.failed / self.total_tests * self.max_line_length)
 
         # Ensure at least one # for passed and failed, if they exist
         prop_passed = max(prop_passed, 1) if self.passed > 0 else 0
@@ -183,8 +180,10 @@ def run_test(driver: Path) -> Result:
     """
     Run an instance of a test case.
 
-    Returns:
-    1 if passed, 0 otherwise. This is to increment the pass counter.
+    Parameters:
+    - driver: driver path.
+
+    Returns Result object
     """
 
     # Replaces example_driver.c -> example.c
@@ -225,10 +224,8 @@ def run_test(driver: Path) -> Result:
     # GCC Reference Output
     return_code, _, timed_out = run_subprocess(
         cmd=[
-                "riscv64-unknown-elf-gcc", "-std=c90", "-pedantic", "-ansi", "-O0",
-                "-march=rv32imfd", "-mabi=ilp32d",
-                "-o", f"{log_path}.gcc.s",
-                "-S", to_assemble
+                "riscv64-unknown-elf-gcc", "-std=c90", "-pedantic", "-ansi", "-O0", "-march=rv32imfd", "-mabi=ilp32d",
+                "-o", f"{log_path}.gcc.s", "-S", to_assemble
             ],
         timeout=RUN_TIMEOUT_SECONDS,
         log_path=f"{log_path}.reference",
@@ -241,8 +238,7 @@ def run_test(driver: Path) -> Result:
     return_code, _, timed_out = run_subprocess(
         cmd=[
                 "riscv64-unknown-elf-gcc", "-march=rv32imfd", "-mabi=ilp32d",
-                "-o", f"{log_path}.o",
-                "-c", f"{log_path}.s"
+                "-o", f"{log_path}.o", "-c", f"{log_path}.s"
             ],
         timeout=RUN_TIMEOUT_SECONDS,
         log_path=f"{log_path}.assembler",
@@ -255,8 +251,7 @@ def run_test(driver: Path) -> Result:
     return_code, _, timed_out = run_subprocess(
         cmd=[
                 "riscv64-unknown-elf-gcc", "-march=rv32imfd", "-mabi=ilp32d", "-static",
-                "-o", f"{log_path}",
-                f"{log_path}.o", str(driver)
+                "-o", f"{log_path}", f"{log_path}.o", str(driver)
             ],
         timeout=RUN_TIMEOUT_SECONDS,
         log_path=f"{log_path}.linker",
@@ -285,7 +280,7 @@ def run_subprocess(
     silent: bool = False,
 ) -> tuple[int, str, bool]:
     """
-    Simple wrapper for subprocess.run(...) with common arguments and error handling
+    Wrapper for subprocess.run(...) with common arguments and error handling.
 
     Returns tuple of (return_code: int, error_message: str, timed_out: bool)
     """
@@ -309,6 +304,11 @@ def run_subprocess(
     return 0, "", False
 
 def clean() -> bool:
+    """
+    Wrapper for make clean.
+
+    Return True if successful, False otherwise
+    """
     print("Cleaning project...")
     return_code, error_msg, _ = run_subprocess(
         cmd=["make", "-C", PROJECT_LOCATION, "clean"],
@@ -322,6 +322,11 @@ def clean() -> bool:
     return True
 
 def make(with_coverage, silent) -> bool:
+    """
+    Wrapper for make bin/c_compiler.
+
+    Return True if successful, False otherwise
+    """
     print("Running make...\n")
 
     cmd = ["make", "-C", PROJECT_LOCATION, "bin/c_compiler"]
@@ -346,6 +351,9 @@ def process_result(
     verbose: bool = False,
     progress_bar: ProgressBar = None,
 ):
+    """
+    Processes results and updates progress bar if necessary.
+    """
     xml_file.write(result.to_xml())
 
     if verbose:
@@ -360,7 +368,10 @@ def process_result(
     else:
         progress_bar.test_failed()
 
-def run_tests(args, xml_file):
+def run_tests(args, xml_file: JUnitXMLFile):
+    """
+    Runs tests against compiler.
+    """
     drivers = list(Path(args.dir).rglob("*_driver.c"))
     drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
     results = []
@@ -392,12 +403,12 @@ def run_tests(args, xml_file):
     if args.short:
         return
 
-    print(
-        "\n>> Test Summary: " +
-        GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET
-    )
+    print("\n>> Test Summary: " + GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET)
 
 def parse_args():
+    """"
+    Wrapper for argument parsing.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "dir",
