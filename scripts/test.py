@@ -439,7 +439,7 @@ def main() -> int:
     log_queue = queue.Queue()
     results = []
 
-    if sys.stdout.isatty():
+    if sys.stdout.isatty(): # Another TTY fix for Github Actions
         try:
             progress_bar = ProgressBar(len(drivers), silent=args.short)
         except ValueError as e: # Error comes from TTY when running in Github Actions
