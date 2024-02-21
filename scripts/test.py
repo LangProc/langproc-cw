@@ -26,7 +26,6 @@ import argparse
 import os
 import shutil
 import subprocess
-import sys
 from dataclasses import dataclass
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from pathlib import Path
@@ -87,7 +86,7 @@ class Result:
         return f'{self.test_case_name}\n{timeout + self.error_log}\n'
 
 class JUnitXMLFile():
-    def __init__(self, path):
+    def __init__(self, path: Path):
         self.path = path
         self.fd = None
 
@@ -156,7 +155,7 @@ class ProgressBar:
         progress_bar += RED   + '#' * prop_failed    # Red
         progress_bar += RESET + ' ' * remaining      # Empty space
 
-        # Move the cursor up 2 or 3 lines, to the beginning of the progress bar
+        # Move the cursor up 2 lines to the beginning of the progress bar
         lines_to_move_cursor = 2
         print(f"\033[{lines_to_move_cursor}A\r", end='')
 
@@ -168,12 +167,11 @@ class ProgressBar:
             RESET + f"Remaining: {remaining_tests:2}"
         )
 
-    def test_passed(self):
-        self.passed += 1
-        self.update()
-
-    def test_failed(self):
-        self.failed += 1
+    def update_with_value(self, passed: bool):
+        if passed:
+            self.passed += 1
+        else:
+            self.failed += 1
         self.update()
 
 def run_test(driver: Path) -> Result:
@@ -321,7 +319,7 @@ def clean() -> bool:
         return False
     return True
 
-def make(with_coverage, silent) -> bool:
+def make(with_coverage: bool, silent: bool) -> bool:
     """
     Wrapper for make bin/c_compiler.
 
@@ -360,13 +358,10 @@ def process_result(
         print(result.to_log())
         return
 
-    if not progress_bar:
-        return
+    if progress_bar:
+        progress_bar.update_with_value(result.passed)
 
-    if result.passed:
-        progress_bar.test_passed()
-    else:
-        progress_bar.test_failed()
+    return
 
 def run_tests(args, xml_file: JUnitXMLFile):
     """
@@ -464,10 +459,10 @@ def main():
 
     if not args.no_clean and not clean():
         # Clean the repo if required and exit if this fails.
-        exit(1)
+        exit(2)
 
     if not make(with_coverage=args.coverage, silent=args.short):
-        exit(1)
+        exit(3)
 
     with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
         run_tests(args, xml_file)
