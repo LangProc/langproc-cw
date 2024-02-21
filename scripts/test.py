@@ -7,14 +7,14 @@ Makefile, run the tests and store the outputs in bin/output.
 This script will also generate a JUnit XML file, which can be used to integrate
 with CI/CD pipelines.
 
-Usage: test.py [-h] [-m] [-v] [--version] [dir]
+Usage: test.py [-h] [-m] [-s] [--version] [--no_clean | --coverage] [dir]
 
 Example usage: scripts/test.py compiler_tests/_example
 
 This will print out a progress bar and only run the example tests.
 The output would be placed into bin/output/_example/example/.
 
-For more information, run scripts/test.py -h
+For more information, run scripts/test.py --help
 """
 
 
@@ -22,9 +22,9 @@ __version__ = "0.2.0"
 __author__ = "William Huynh (@saturn691), Filip Wojcicki, James Nock"
 
 
-import argparse
 import os
 import sys
+import argparse
 import shutil
 import subprocess
 from dataclasses import dataclass
@@ -46,10 +46,10 @@ if not sys.stdout.isatty():
 SCRIPT_LOCATION = Path(__file__).resolve().parent
 PROJECT_LOCATION = SCRIPT_LOCATION.joinpath("..").resolve()
 OUTPUT_FOLDER = PROJECT_LOCATION.joinpath("bin/output").resolve()
-J_UNIT_OUTPUT_FILE = PROJECT_LOCATION.joinpath(
-    "bin/junit_results.xml").resolve()
+J_UNIT_OUTPUT_FILE = PROJECT_LOCATION.joinpath("bin/junit_results.xml").resolve()
 COMPILER_TEST_FOLDER = PROJECT_LOCATION.joinpath("compiler_tests").resolve()
 COMPILER_FILE = PROJECT_LOCATION.joinpath("bin/c_compiler").resolve()
+COVERAGE_FOLDER = PROJECT_LOCATION.joinpath("coverage").resolve()
 
 BUILD_TIMEOUT_SECONDS = 60
 RUN_TIMEOUT_SECONDS = 15
@@ -161,6 +161,7 @@ class ProgressBar:
         print(f"\033[{lines_to_move_cursor}A\r", end='')
 
         print("Running Tests [{}]".format(progress_bar))
+
         # Space is left there intentionally to flush out the command line
         print(
             GREEN + f"Pass: {self.passed:2} | " +
@@ -413,7 +414,6 @@ def parse_args():
         help="(Optional) paths to the compiler test folders. Use this to select "
         "certain tests. Leave blank to run all tests."
     )
-
     parser.add_argument(
         "-m", "--multithreading",
         action="store_true",
@@ -422,10 +422,10 @@ def parse_args():
         "but order is not guaranteed. Should only be used for speed."
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-s", "--short",
         action="store_true",
         default=False,
-        help="Enable verbose output into the terminal. Note that all logs will "
+        help="Disable verbose output into the terminal. Note that all logs will "
         "be stored automatically into log files regardless of this option."
     )
     parser.add_argument(
