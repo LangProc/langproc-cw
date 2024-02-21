@@ -19,12 +19,15 @@ bin/c_compiler: $(OBJECTS)
 -include $(DEPENDENCIES)
 
 build/%.o: src/%.cpp Makefile
+	@mkdir -p $(@D)
 	g++ $(CXXFLAGS) -MMD -MP -c $< -o $@
 
 build/parser.tab.cpp build/parser.tab.hpp: src/parser.y
+	@mkdir -p build
 	bison -v -d src/parser.y -o build/parser.tab.cpp
 
 build/lexer.yy.cpp: src/lexer.flex build/parser.tab.hpp
+	@mkdir -p build
 	flex -o build/lexer.yy.cpp src/lexer.flex
 
 with_coverage : CXXFLAGS += --coverage
