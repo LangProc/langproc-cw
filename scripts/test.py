@@ -33,9 +33,14 @@ from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional
 
-from colorama import Fore, init
-init(autoreset=True) # No need to reset style to default after each style changing call
 
+RED = "\033[31m"
+GREEN = "\033[32m"
+RESET = "\033[0m"
+
+if not sys.stdout.isatty():
+    # Don't output colours when we're not in a TTY
+    RED, GREEN, RESET = "", "", ""
 
 # "File" will suggest the absolute path to the file, including the extension.
 SCRIPT_LOCATION = Path(__file__).resolve().parent
@@ -122,9 +127,9 @@ class ProgressBar:
         # Initialize the lines for the progress bar and stats
         print("Running Tests [" + " " * self.max_line_length + "]")
         print(
-            Fore.GREEN +  "Pass: 0 | " +
-            Fore.RED   +  "Fail: 0 | " +
-            Fore.RESET + f"Remaining: {total_tests:2}"
+            GREEN +  "Pass: 0 | " +
+            RED   +  "Fail: 0 | " +
+            RESET + f"Remaining: {total_tests:2}"
         )
 
         # Initialize the progress bar
@@ -150,9 +155,9 @@ class ProgressBar:
 
         remaining = self.max_line_length - prop_passed - prop_failed
 
-        progress_bar += '\033[92m#\033[0m' * prop_passed    # Green
-        progress_bar += '\033[91m#\033[0m' * prop_failed    # Red
-        progress_bar += ' ' * remaining                     # Empty space
+        progress_bar += GREEN + '#' * prop_passed    # Green
+        progress_bar += RED   + '#' * prop_failed    # Red
+        progress_bar += RESET + ' ' * remaining      # Empty space
 
         # Move the cursor up 2 or 3 lines, to the beginning of the progress bar
         lines_to_move_cursor = 2
@@ -161,9 +166,9 @@ class ProgressBar:
         print("Running Tests [{}]".format(progress_bar))
         # Space is left there intentionally to flush out the command line
         print(
-            Fore.GREEN + f"Pass: {self.passed:2} | " +
-            Fore.RED   + f"Fail: {self.failed:2} | " +
-            Fore.RESET + f"Remaining: {remaining_tests:2}"
+            GREEN + f"Pass: {self.passed:2} | " +
+            RED   + f"Fail: {self.failed:2} | " +
+            RESET + f"Remaining: {remaining_tests:2}"
         )
 
     def test_passed(self):
@@ -389,7 +394,7 @@ def run_tests(args, xml_file):
 
     print(
         "\n>> Test Summary: " +
-        Fore.GREEN + f"{passing} Passed, " + Fore.RED + f"{total-passing} Failed"
+        GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET
     )
 
 def parse_args():
@@ -460,6 +465,7 @@ if __name__ == "__main__":
     try:
         main()
     finally:
+        print(RESET)
         if sys.stdout.isatty():
             # This solves dodgy terminal behaviour on multithreading
             os.system("stty echo")
