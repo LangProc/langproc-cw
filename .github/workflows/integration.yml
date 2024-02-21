@@ -25,7 +25,7 @@ jobs:
         id: test
         timeout-minutes: 1
         run: |
-          python -m pip install colorama && ./scripts/test.py
+          ./scripts/test.sh
 
       - name: Perm issue fix
         if: success() || failure()
