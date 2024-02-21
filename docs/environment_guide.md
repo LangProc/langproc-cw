@@ -22,23 +22,23 @@ Many students develop their compiler in VS Code, as this has good support for co
     - For those interested, VS Code reads the container configuration from the [.devcontainer/devcontainer.json](.devcontainer/devcontainer.json) file.
 7) Test that your tools are correctly setup by running `./scripts/toolchain_test.sh` in the VS Code terminal, accessible via `Terminal -> New Terminal`. Your output should look as follows:
 
-    ```console
-    root@e3221f21a2a1:/workspaces/langproc-env# ./scripts/toolchain_test.sh
+```console
+> user@host:langproc-cw# ./scripts/toolchain_test.sh
+>
+[...]
 
-    [...]
-
-    Parsing: compiler_tests/_example/example.c
-    AST parsing complete
-    Printing parsed AST...
-    Printed parsed AST to: bin/riscv_example.s.printed
-    Compiling parsed AST...
-    Compiled to: bin/riscv_example.s
-    bbl loader
-    Hello from RISC-V
-    Test function produced value: 8.700000
-    Example function returned: 5
-    Test successful
-    ```
+Parsing: compiler_tests/_example/example.c
+AST parsing complete
+Printing parsed AST...
+Printed parsed AST to: bin/riscv_example.s.printed
+Compiling parsed AST...
+Compiled to: bin/riscv_example.s
+bbl loader
+Hello from RISC-V
+Test function produced value: 8.700000
+Example function returned: 5
+Test successful
+```
 
 8) You might also benefit from installing VS Code extensions for C++, Lex, and Yacc for better text highlighting and easier debugging. For example, you can press F5 (or fn + F5) to start the integrated VS Code debugger. By default, this attempts to compile [compiler_tests/_example/example.c](../compiler_tests/_example/example.c), as specified in [.vscode/launch.json](../.vscode/launch.json).
 
