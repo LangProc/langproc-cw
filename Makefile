@@ -3,11 +3,10 @@
 CXXFLAGS += -std=c++20 -W -Wall -g -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -fsanitize=address -static-libasan -O0 -rdynamic -I include
 
 SOURCES := $(wildcard src/*.cpp)
-DEPENDENCIES := $(patsubst %.cpp,%.d,$(SOURCES))
+DEPENDENCIES := $(patsubst src/%.cpp,build/%.d,$(SOURCES))
 
-OBJECTS := $(patsubst %.cpp,%.o,$(SOURCES))
-OBJECTS += src/parser.tab.o src/lexer.yy.o
-
+OBJECTS := $(patsubst src/%.cpp,build/%.o,$(SOURCES))
+OBJECTS += build/parser.tab.o build/lexer.yy.o
 
 .PHONY: default clean with_coverage coverage
 
@@ -19,14 +18,14 @@ bin/c_compiler: $(OBJECTS)
 
 -include $(DEPENDENCIES)
 
-%.o: %.cpp Makefile
+build/%.o: src/%.cpp Makefile
 	g++ $(CXXFLAGS) -MMD -MP -c $< -o $@
 
-src/parser.tab.cpp src/parser.tab.hpp: src/parser.y
-	bison -v -d src/parser.y -o src/parser.tab.cpp
+build/parser.tab.cpp build/parser.tab.hpp: src/parser.y
+	bison -v -d src/parser.y -o build/parser.tab.cpp
 
-src/lexer.yy.cpp : src/lexer.flex src/parser.tab.hpp
-	flex -o src/lexer.yy.cpp src/lexer.flex
+build/lexer.yy.cpp: src/lexer.flex build/parser.tab.hpp
+	flex -o build/lexer.yy.cpp src/lexer.flex
 
 with_coverage : CXXFLAGS += --coverage
 with_coverage : bin/c_compiler
@@ -43,11 +42,5 @@ coverage/index.html :
 
 clean :
 	@rm -rf coverage/
-	@rm -rf src/*.o
-	@rm -rf src/*.d
-	@rm -rf src/*.gcno
+	@rm -rf build/*
 	@rm -rf bin/
-	@rm -f src/*.tab.hpp
-	@rm -f src/*.tab.cpp
-	@rm -f src/*.yy.cpp
-	@rm -f src/*.output
