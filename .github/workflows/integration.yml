@@ -25,7 +25,7 @@ jobs:
         id: test
         timeout-minutes: 1
         run: |
-          ./scripts/test.sh
+          ./scripts/test.py
 
       - name: Perm issue fix
         if: success() || failure()

@@ -7,39 +7,102 @@ Makefile, run the tests and store the outputs in bin/output.
 This script will also generate a JUnit XML file, which can be used to integrate
 with CI/CD pipelines.
 
-Usage: test.py [-h] [-m] [-v] [--version] [dir]
+Usage: test.py [-h] [-m] [-s] [--version] [--no_clean | --coverage] [dir]
 
 Example usage: scripts/test.py compiler_tests/_example
 
 This will print out a progress bar and only run the example tests.
 The output would be placed into bin/output/_example/example/.
 
-For more information, run scripts/test.py -h
+For more information, run scripts/test.py --help
 """
 
 
-__version__ = "0.1.0"
-__author__ = "William Huynh (@saturn691)"
+__version__ = "0.2.0"
+__author__ = "William Huynh (@saturn691), Filip Wojcicki, James Nock"
 
 
-import argparse
 import os
+import sys
+import argparse
 import shutil
 import subprocess
-import queue
+from dataclasses import dataclass
+from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from typing import List, Optional
 
+
+RED = "\033[31m"
+GREEN = "\033[32m"
+RESET = "\033[0m"
+
+if not sys.stdout.isatty():
+    # Don't output colours when we're not in a TTY
+    RED, GREEN, RESET = "", "", ""
 
 # "File" will suggest the absolute path to the file, including the extension.
 SCRIPT_LOCATION = Path(__file__).resolve().parent
 PROJECT_LOCATION = SCRIPT_LOCATION.joinpath("..").resolve()
 OUTPUT_FOLDER = PROJECT_LOCATION.joinpath("bin/output").resolve()
-J_UNIT_OUTPUT_FILE = PROJECT_LOCATION.joinpath(
-    "bin/junit_results.xml").resolve()
+J_UNIT_OUTPUT_FILE = PROJECT_LOCATION.joinpath("bin/junit_results.xml").resolve()
 COMPILER_TEST_FOLDER = PROJECT_LOCATION.joinpath("compiler_tests").resolve()
 COMPILER_FILE = PROJECT_LOCATION.joinpath("bin/c_compiler").resolve()
+COVERAGE_FOLDER = PROJECT_LOCATION.joinpath("coverage").resolve()
 
+BUILD_TIMEOUT_SECONDS = 60
+RUN_TIMEOUT_SECONDS = 15
+TIMEOUT_RETURNCODE = 124
+
+@dataclass
+class Result:
+    """Class for keeping track of each test case result"""
+    test_case_name: str
+    passed: bool
+    return_code: int
+    timeout: bool
+    error_log: Optional[str]
+
+    def to_xml(self) -> str:
+        if self.passed:
+            return (
+                f'<testcase name="{self.test_case_name}">\n'
+                f'</testcase>\n'
+            )
+
+        timeout = "[TIMED OUT] " if self.timeout else ""
+        attribute = xmlquoteattr(timeout + self.error_log)
+        xml_tag_body = xmlescape(timeout + self.error_log)
+        return (
+            f'<testcase name="{self.test_case_name}">\n'
+            f'<error type="error" message={attribute}>\n{xml_tag_body}</error>\n'
+            f'</testcase>\n'
+        )
+
+    def to_log(self) -> str:
+        timeout = "[TIMED OUT] " if self.timeout else ""
+        if self.passed:
+            return f'{self.test_case_name}\n\t> {GREEN}Pass{RESET}\n'
+        return f'{self.test_case_name}\n{RED}{timeout + self.error_log}{RESET}\n'
+
+class JUnitXMLFile():
+    def __init__(self, path: Path):
+        self.path = path
+        self.fd = None
+
+    def __enter__(self):
+        self.fd = open(self.path, "w")
+        self.fd.write('<?xml version="1.0" encoding="UTF-8"?>\n')
+        self.fd.write('<testsuite name="Integration test">\n')
+        return self
+
+    def write(self, __s: str) -> int:
+        return self.fd.write(__s)
+
+    def __exit__(self, exception_type, exception_value, exception_traceback):
+        self.fd.write('</testsuite>\n')
+        self.fd.close()
 
 class ProgressBar:
     """
@@ -50,7 +113,7 @@ class ProgressBar:
     - total_tests: the length of the progress bar.
     """
 
-    def __init__(self, total_tests):
+    def __init__(self, total_tests: int):
         self.total_tests = total_tests
         self.passed = 0
         self.failed = 0
@@ -63,8 +126,11 @@ class ProgressBar:
 
         # Initialize the lines for the progress bar and stats
         print("Running Tests [" + " " * self.max_line_length + "]")
-        print("Pass: 0 | Fail: 0 | Remaining: {}".format(total_tests))
-        print("See logs for more details (use -v for verbose output).")
+        print(
+            GREEN +  "Pass: 0 | " +
+            RED   +  "Fail: 0 | " +
+            RESET + f"Remaining: {total_tests:2}"
+        )
 
         # Initialize the progress bar
         self.update()
@@ -77,11 +143,8 @@ class ProgressBar:
             prop_passed = 0
             prop_failed = 0
         else:
-            prop_passed = round(
-                self.passed / self.total_tests * self.max_line_length)
-            prop_failed = round(
-                self.failed / self.total_tests * self.max_line_length
-            )
+            prop_passed = round(self.passed / self.total_tests * self.max_line_length)
+            prop_failed = round(self.failed / self.total_tests * self.max_line_length)
 
         # Ensure at least one # for passed and failed, if they exist
         prop_passed = max(prop_passed, 1) if self.passed > 0 else 0
@@ -89,200 +152,259 @@ class ProgressBar:
 
         remaining = self.max_line_length - prop_passed - prop_failed
 
-        progress_bar += '\033[92m#\033[0m' * prop_passed    # Green
-        progress_bar += '\033[91m#\033[0m' * prop_failed    # Red
-        progress_bar += ' ' * remaining                     # Empty space
+        progress_bar += GREEN + '#' * prop_passed    # Green
+        progress_bar += RED   + '#' * prop_failed    # Red
+        progress_bar += RESET + ' ' * remaining      # Empty space
 
-        # Move the cursor up 3 lines, to the beginning of the progress bar
-        print("\033[3A\r", end='')
+        # Move the cursor up 2 lines to the beginning of the progress bar
+        lines_to_move_cursor = 2
+        print(f"\033[{lines_to_move_cursor}A\r", end='')
 
         print("Running Tests [{}]".format(progress_bar))
+
         # Space is left there intentionally to flush out the command line
-        print("Pass: {:2} | Fail: {:2} | Remaining: {:2} ".format(
-            self.passed, self.failed, remaining_tests))
-        print("See logs for more details (use -v for verbose output).")
+        print(
+            GREEN + f"Pass: {self.passed:2} | " +
+            RED   + f"Fail: {self.failed:2} | " +
+            RESET + f"Remaining: {remaining_tests:2}"
+        )
 
-    def test_passed(self):
-        self.passed += 1
+    def update_with_value(self, passed: bool):
+        if passed:
+            self.passed += 1
+        else:
+            self.failed += 1
         self.update()
 
-    def test_failed(self):
-        self.failed += 1
-        self.update()
-
-
-def fail_testcase(
-    init_message: tuple[str, str],
-    message: str,
-    log_queue: queue.Queue
-):
-    """
-    Updates the log queue with the JUnit and the stdout fail message.
-    """
-    init_print_message, init_xml_message = init_message
-    print_message = f"\t> {message}"
-    xml_message = (
-        f'<error type="error" message="{message}">{message}</error>\n'
-        '</testcase>\n'
-    )
-    log_queue.put((init_print_message + print_message,
-                   init_xml_message + xml_message))
-
-
-def run_test(driver: Path, log_queue: queue.Queue) -> int:
+def run_test(driver: Path) -> Result:
     """
     Run an instance of a test case.
 
-    Returns:
-    1 if passed, 0 otherwise. This is to increment the pass counter.
+    Parameters:
+    - driver: driver path.
+
+    Returns Result object
     """
 
     # Replaces example_driver.c -> example.c
     new_name = driver.stem.replace('_driver', '') + '.c'
     to_assemble = driver.parent.joinpath(new_name).resolve()
+    test_name = to_assemble.relative_to(PROJECT_LOCATION)
 
     # Determine the relative path to the file wrt. COMPILER_TEST_FOLDER.
     relative_path = to_assemble.relative_to(COMPILER_TEST_FOLDER)
 
     # Construct the path where logs would be stored, without the suffix
     # e.g. .../bin/output/_example/example/example
-    log_path = Path(OUTPUT_FOLDER).joinpath(
-        relative_path.parent, to_assemble.stem, to_assemble.stem
-    )
+    log_path = Path(OUTPUT_FOLDER).joinpath(relative_path.parent, to_assemble.stem, to_assemble.stem)
 
-    # Ensure the directory exists.
+    # Recreate the directory
+    shutil.rmtree(log_path.parent, ignore_errors=True)
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    init_message = (str(to_assemble) + "\n",
-                    f'<testcase name="{to_assemble}">\n')
+    # Modifying environment to combat errors on memory leak
+    custom_env = os.environ.copy()
+    custom_env["ASAN_OPTIONS"] = "exitcode=0"
 
-    for suffix in [".s", ".o", ""]:
-        log_path.with_suffix(suffix).unlink(missing_ok=True)
+    def relevant_files(component):
+        return f"{log_path}.{component}.stderr.log \n\t {log_path}.{component}.stdout.log"
+    compiler_log_file_str=f"{relevant_files('compiler')} \n\t {log_path}.s \n\t {log_path}.s.printed"
 
     # Compile
-    compiler_result = subprocess.run(
-        [
-            COMPILER_FILE,
-            "-S", str(to_assemble),
-            "-o", f"{log_path}.s",
-        ],
-        stderr=open(f"{log_path}.compiler.stderr.log", "w"),
-        stdout=open(f"{log_path}.compiler.stdout.log", "w")
+    return_code, _, timed_out = run_subprocess(
+        cmd=[COMPILER_FILE, "-S", to_assemble, "-o", f"{log_path}.s"],
+        timeout=RUN_TIMEOUT_SECONDS,
+        env=custom_env,
+        log_path=f"{log_path}.compiler",
     )
-
-    if compiler_result.returncode != 0:
-        fail_testcase(
-            init_message,
-            f"Fail: see {log_path}.compiler.stderr.log "
-            f"and {log_path}.compiler.stdout.log",
-            log_queue
-        )
-        return 0
+    if return_code != 0:
+        msg = f"\t> Failed to compile testcase: \n\t {compiler_log_file_str}"
+        return Result(test_case_name=test_name, return_code=return_code, passed=False, timeout=timed_out, error_log=msg)
 
     # GCC Reference Output
-    gcc_result = subprocess.run(
-        [
-            "riscv64-unknown-elf-gcc",
-            "-std=c90",
-            "-pedantic",
-            "-ansi",
-            "-O0",
-            "-march=rv32imfd",
-            "-mabi=ilp32d",
-            "-o", f"{log_path}.gcc.s",
-            "-S", str(to_assemble)
-        ]
+    return_code, _, timed_out = run_subprocess(
+        cmd=[
+                "riscv64-unknown-elf-gcc", "-std=c90", "-pedantic", "-ansi", "-O0", "-march=rv32imfd", "-mabi=ilp32d",
+                "-o", f"{log_path}.gcc.s", "-S", to_assemble
+            ],
+        timeout=RUN_TIMEOUT_SECONDS,
+        log_path=f"{log_path}.reference",
     )
+    if return_code != 0:
+        msg = f"\t> Failed to generate reference: \n\t {compiler_log_file_str} \n\t {relevant_files('reference')}"
+        return Result(test_case_name=test_name, return_code=return_code, passed=False, timeout=timed_out, error_log=msg)
 
     # Assemble
-    assembler_result = subprocess.run(
-        [
-            "riscv64-unknown-elf-gcc",
-            "-march=rv32imfd", "-mabi=ilp32d",
-            "-o", f"{log_path}.o",
-            "-c", f"{log_path}.s"
-        ],
-        stderr=open(f"{log_path}.assembler.stderr.log", "w"),
-        stdout=open(f"{log_path}.assembler.stdout.log", "w")
+    return_code, _, timed_out = run_subprocess(
+        cmd=[
+                "riscv64-unknown-elf-gcc", "-march=rv32imfd", "-mabi=ilp32d",
+                "-o", f"{log_path}.o", "-c", f"{log_path}.s"
+            ],
+        timeout=RUN_TIMEOUT_SECONDS,
+        log_path=f"{log_path}.assembler",
     )
-
-    if assembler_result.returncode != 0:
-        fail_testcase(
-            init_message,
-            f"Fail: see {log_path}.assembler.stderr.log "
-            f"and {log_path}.assembler.stdout.log",
-            log_queue
-        )
-        return 0
+    if return_code != 0:
+        msg = f"\t> Failed to assemble: \n\t {compiler_log_file_str} \n\t {relevant_files('assembler')}"
+        return Result(test_case_name=test_name, return_code=return_code, passed=False, timeout=timed_out, error_log=msg)
 
     # Link
-    linker_result = subprocess.run(
-        [
-            "riscv64-unknown-elf-gcc",
-            "-march=rv32imfd", "-mabi=ilp32d", "-static",
-            "-o", f"{log_path}",
-            f"{log_path}.o", str(driver)
-        ],
-        stderr=open(f"{log_path}.linker.stderr.log", "w"),
-        stdout=open(f"{log_path}.linker.stdout.log", "w")
+    return_code, _, timed_out = run_subprocess(
+        cmd=[
+                "riscv64-unknown-elf-gcc", "-march=rv32imfd", "-mabi=ilp32d", "-static",
+                "-o", f"{log_path}", f"{log_path}.o", str(driver)
+            ],
+        timeout=RUN_TIMEOUT_SECONDS,
+        log_path=f"{log_path}.linker",
     )
-
-    if linker_result.returncode != 0:
-        fail_testcase(
-            init_message,
-            f"Fail: see {log_path}.linker.stderr.log "
-            f"and {log_path}.linker.stdout.log",
-            log_queue
-        )
-        return 0
+    if return_code != 0:
+        msg = f"\t> Failed to link driver: \n\t {compiler_log_file_str} \n\t {relevant_files('linker')}"
+        return Result(test_case_name=test_name, return_code=return_code, passed=False, timeout=timed_out, error_log=msg)
 
     # Simulate
+    return_code, _, timed_out = run_subprocess(
+        cmd=["spike", "pk", log_path],
+        timeout=RUN_TIMEOUT_SECONDS,
+        log_path=f"{log_path}.simulation",
+    )
+    if return_code != 0:
+        msg = f"\t> Failed to simulate: \n\t {compiler_log_file_str} \n\t {relevant_files('simulation')}"
+        return Result(test_case_name=test_name, return_code=return_code, passed=False, timeout=timed_out, error_log=msg)
+
+    return Result(test_case_name=test_name, return_code=return_code, passed=True, timeout=False, error_log="")
+
+def run_subprocess(
+    cmd: List[str],
+    timeout: int,
+    env: Optional[dict] = None,
+    log_path: Optional[str] = None,
+    silent: bool = False,
+) -> tuple[int, str, bool]:
+    """
+    Wrapper for subprocess.run(...) with common arguments and error handling.
+
+    Returns tuple of (return_code: int, error_message: str, timed_out: bool)
+    """
+    # None means that stdout and stderr are handled by parent, i.e., they go to console by default
+    stdout = None
+    stderr = None
+
+    if silent:
+        stdout = subprocess.DEVNULL
+        stderr = subprocess.DEVNULL
+    elif log_path:
+        stdout = open(f"{log_path}.stdout.log", "w")
+        stderr = open(f"{log_path}.stderr.log", "w")
+
     try:
-        simulation_result = subprocess.run(
-            ["spike", "pk", log_path],
-            stdout=open(f"{log_path}.simulation.log", "w"),
-            timeout=3
-        )
-    except subprocess.TimeoutExpired:
-        print("The subprocess timed out.")
-        simulation_result = subprocess.CompletedProcess(args=[], returncode=1)
+        subprocess.run(cmd, env=env, stdout=stdout, stderr=stderr, timeout=timeout, check=True)
+    except subprocess.CalledProcessError as e:
+        return e.returncode, f"{e.cmd} failed with return code {e.returncode}", False
+    except subprocess.TimeoutExpired as e:
+        return TIMEOUT_RETURNCODE, f"{e.cmd} took more than {e.timeout}", True
+    return 0, "", False
 
-    if simulation_result.returncode != 0:
-        fail_testcase(
-            init_message,
-            f"Fail: simulation did not exit with exitcode 0",
-            log_queue
-        )
-        return 0
-    else:
-        init_print_message, init_xml_message = init_message
-        log_queue.put((init_print_message + "\t> Pass",
-                       init_xml_message + "</testcase>\n"))
+def clean() -> bool:
+    """
+    Wrapper for make clean.
 
-    return 1
+    Return True if successful, False otherwise
+    """
+    print(GREEN + "Cleaning project..." + RESET)
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["make", "-C", PROJECT_LOCATION, "clean"],
+        timeout=BUILD_TIMEOUT_SECONDS,
+        silent=True,
+    )
 
+    if return_code != 0:
+        print(RED + "Error when cleaning:", error_msg + RESET)
+        return False
+    return True
 
-def empty_log_queue(
-    log_queue: queue.Queue,
+def make(with_coverage: bool, silent: bool) -> bool:
+    """
+    Wrapper for make bin/c_compiler.
+
+    Return True if successful, False otherwise
+    """
+    print(GREEN + "Running make..." + RESET)
+
+    cmd = ["make", "-C", PROJECT_LOCATION, "bin/c_compiler"]
+    if with_coverage:
+        # Run coverage if needed
+        print(GREEN + "Making with coverage..." + RESET)
+        shutil.rmtree(COVERAGE_FOLDER, ignore_errors=True)
+        cmd = ["make", "-C", PROJECT_LOCATION, "with_coverage"]
+
+    return_code, error_msg, _ = run_subprocess(cmd=cmd, timeout=BUILD_TIMEOUT_SECONDS, silent=silent)
+
+    if return_code != 0:
+        print(RED + "Error when making:", error_msg + RESET)
+        return False
+
+    return True
+
+def process_result(
+    result: Result,
+    xml_file: JUnitXMLFile,
     verbose: bool = False,
-    progress_bar: ProgressBar = None
+    progress_bar: ProgressBar = None,
 ):
-    while not log_queue.empty():
-        print_msg, xml_message = log_queue.get()
+    """
+    Processes results and updates progress bar if necessary.
+    """
+    xml_file.write(result.to_xml())
 
-        if verbose:
-            print(print_msg)
-        else:
-            if "Pass" in print_msg:
-                progress_bar.test_passed()
-            elif "Fail" in print_msg:
-                progress_bar.test_failed()
+    if verbose:
+        print(result.to_log())
+        return
 
-        with open(J_UNIT_OUTPUT_FILE, "a") as xml_file:
-            xml_file.write(xml_message)
+    if progress_bar:
+        progress_bar.update_with_value(result.passed)
 
+    return
 
-def main():
+def run_tests(args, xml_file: JUnitXMLFile):
+    """
+    Runs tests against compiler.
+    """
+    drivers = list(Path(args.dir).rglob("*_driver.c"))
+    drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
+    results = []
+
+    progress_bar = None
+    if args.short and sys.stdout.isatty():
+        progress_bar = ProgressBar(len(drivers))
+    else:
+        # Force verbose mode when not a terminal
+        args.short = False
+
+    if args.multithreading:
+        with ThreadPoolExecutor() as executor:
+            futures = [executor.submit(run_test, driver) for driver in drivers]
+            for future in as_completed(futures):
+                result = future.result()
+                results.append(result.passed)
+                process_result(result, xml_file, not args.short, progress_bar)
+
+    else:
+        for driver in drivers:
+            result = run_test(driver)
+            results.append(result.passed)
+            process_result(result, xml_file, not args.short, progress_bar)
+
+    passing = sum(results)
+    total = len(drivers)
+
+    if args.short:
+        return
+
+    print("\n>> Test Summary: " + GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET)
+
+def parse_args():
+    """"
+    Wrapper for argument parsing.
+    """
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "dir",
@@ -292,7 +414,6 @@ def main():
         help="(Optional) paths to the compiler test folders. Use this to select "
         "certain tests. Leave blank to run all tests."
     )
-
     parser.add_argument(
         "-m", "--multithreading",
         action="store_true",
@@ -301,10 +422,10 @@ def main():
         "but order is not guaranteed. Should only be used for speed."
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-s", "--short",
         action="store_true",
         default=False,
-        help="Enable verbose output into the terminal. Note that all logs will "
+        help="Disable verbose output into the terminal. Note that all logs will "
         "be stored automatically into log files regardless of this option."
     )
     parser.add_argument(
@@ -312,55 +433,45 @@ def main():
         action="version",
         version=f"BetterTesting {__version__}"
     )
-    args = parser.parse_args()
+    # Coverage cannot be perfomed without rebuilding the compiler
+    group = parser.add_mutually_exclusive_group(required=False)
+    group.add_argument(
+        "--no_clean",
+        action="store_true",
+        default=False,
+        help="Do no clean the repository before testing. This will make it "
+        "faster but it can be safer to clean if you have any compilation issues."
+    )
+    group.add_argument(
+        "--coverage",
+        action="store_true",
+        default=False,
+        help="Run with coverage if you want to know which part of your code is "
+        "executed when running your compiler. See docs/coverage.md"
+    )
+    return parser.parse_args()
 
-    try:
-        shutil.rmtree(OUTPUT_FOLDER)
-    except Exception as e:
-        print(f"Error: {e}")
+def main():
+    args = parse_args()
 
+    shutil.rmtree(OUTPUT_FOLDER, ignore_errors=True)
     Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
 
-    subprocess.run(["make", "-C", PROJECT_LOCATION, "bin/c_compiler"])
+    if not args.no_clean and not clean():
+        # Clean the repo if required and exit if this fails.
+        exit(2)
 
-    with open(J_UNIT_OUTPUT_FILE, "w") as f:
-        f.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        f.write('<testsuite name="Integration test">\n')
+    if not make(with_coverage=args.coverage, silent=args.short):
+        exit(3)
 
-    drivers = list(Path(args.dir).rglob("*_driver.c"))
-    drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
-    log_queue = queue.Queue()
-    results = []
-    progress_bar = ProgressBar(len(drivers))
-
-    if args.multithreading:
-        with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(run_test, driver, log_queue)
-                       for driver in drivers]
-
-            for future in as_completed(futures):
-                results.append(future.result())
-                empty_log_queue(log_queue, args.verbose, progress_bar)
-
-    else:
-        for driver in drivers:
-            result = run_test(driver, log_queue)
-            results.append(result)
-            empty_log_queue(log_queue, args.verbose, progress_bar)
-
-    passing = sum(results)
-    total = len(drivers)
-
-    with open(J_UNIT_OUTPUT_FILE, "a") as f:
-        f.write('</testsuite>\n')
-
-    print("\n>> Test Summary: {} Passed, {} Failed".format(
-        passing, total-passing))
-
+    with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
+        run_tests(args, xml_file)
 
 if __name__ == "__main__":
     try:
         main()
     finally:
-        # This solves dodgy terminal behaviour on multithreading
-        os.system("stty echo")
+        print(RESET, end="")
+        if sys.stdout.isatty():
+            # This solves dodgy terminal behaviour on multithreading
+            os.system("stty echo")

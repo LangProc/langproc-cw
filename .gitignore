@@ -6,5 +6,7 @@ bin/
 *.yy.cpp
 *.output
 *.gcno
+*.gcda
 coverage/
 *.d
+*.pyc
