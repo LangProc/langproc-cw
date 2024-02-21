@@ -16,8 +16,7 @@ Source files can be found in the [./src](../src) folder and header files can be 
 
 You can test your compiler by running
 [`scripts/test.py`](../scripts/test.py) from the top of this repo; the
-output should look as follows (note: the progress bar will be coloured).
-Full usage guide is found in the file header.
+output should look as follows (note: the progress bar and results will be coloured):
 
 ```console
 > user@host:langproc-cw# scripts/test.py
