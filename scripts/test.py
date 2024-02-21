@@ -307,7 +307,7 @@ def clean() -> bool:
 
     Return True if successful, False otherwise
     """
-    print("Cleaning project...")
+    print(GREEN + "Cleaning project..." + RESET)
     return_code, error_msg, _ = run_subprocess(
         cmd=["make", "-C", PROJECT_LOCATION, "clean"],
         timeout=BUILD_TIMEOUT_SECONDS,
@@ -315,7 +315,7 @@ def clean() -> bool:
     )
 
     if return_code != 0:
-        print("Error when cleaning:", error_msg)
+        print(RED + "Error when cleaning:", error_msg + RESET)
         return False
     return True
 
@@ -325,19 +325,19 @@ def make(with_coverage: bool, silent: bool) -> bool:
 
     Return True if successful, False otherwise
     """
-    print("Running make...")
+    print(GREEN + "Running make..." + RESET)
 
     cmd = ["make", "-C", PROJECT_LOCATION, "bin/c_compiler"]
     if with_coverage:
         # Run coverage if needed
-        print("Making with coverage...")
+        print(GREEN + "Making with coverage..." + RESET)
         shutil.rmtree(COVERAGE_FOLDER, ignore_errors=True)
         cmd = ["make", "-C", PROJECT_LOCATION, "with_coverage"]
 
     return_code, error_msg, _ = run_subprocess(cmd=cmd, timeout=BUILD_TIMEOUT_SECONDS, silent=silent)
 
     if return_code != 0:
-        print("Error when making:", error_msg)
+        print(RED + "Error when making:", error_msg + RESET)
         return False
 
     return True
