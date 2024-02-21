@@ -14,39 +14,37 @@ If you wish to use C++, then a basic framework for building your compiler has be
 
 Source files can be found in the [./src](../src) folder and header files can be found in the [./include](../include) folder.
 
-You can test your compiler by running
+If you have Python installed, you can test your compiler by running
 [`scripts/test.py`](../scripts/test.py) from the top of this repo; the
-output should look as follows (note: the progress bar and results will be coloured):
+output should look as follows (note: the progress bar will be coloured).
+Full usage guide is found in the file header.
 
 ```console
-> user@host:langproc-cw# scripts/test.py
+> scripts/test.py
 >
+make: Entering directory '/home/saturn691/projects/university/iac/langproc-cw'
+make: 'bin/c_compiler' is up to date.
+make: Leaving directory '/home/saturn691/projects/university/iac/langproc-cw'
 Running Tests [################################################################]
-Pass:  1 | Fail: 85 | Remaining:  0
+Pass:  1 | Fail: 87 | Remaining:  0
 See logs for more details (use -v for verbose output).
 
->> Test Summary: 1 Passed, 85 Failed
+>> Test Summary: 1 Passed, 87 Failed
+
 ```
 
-Full usage guide of [`scripts/test.py`](../scripts/test.py) is found in the file header or after running:
-
-```console
-> user@host:langproc-cw# scripts/test.py --help
-```
-
-If for any reason you run into issues with the Python script, you can also test your compiler against the provided
+If Python is not installed, you can also test your compiler against the provided
 test-suite by running [`scripts/test.sh`](../scripts/test.sh) from the top of
 this repo; the output should look as follows:
 
 ```console
-> user@host:langproc-cw# scripts/test.sh
+> scripts/test.sh
 >
 compiler_tests/_example/example.c
         > Pass
 compiler_tests/array/declare_global.c
         > Fail: simulation did not exit with exit-code 0
 ...
-Passing 1/86 tests
 ```
 
 By default, the first [`_example/example.c`](../compiler_tests/_example/example.c) test should be passing.
@@ -58,15 +56,11 @@ Program build and execution
 
 Your program should be built by running the following command in the top-level directory of your repo:
 
-```console
-> user@host:langproc-cw# make bin/c_compiler
-```
+    make bin/c_compiler
 
 The compilation function is invoked using the flag `-S`, with the source file and output file specified on the command line:
 
-```console
-> user@host:langproc-cw# bin/c_compiler -S [source-file.c] -o [dest-file.s]
-```
+    bin/c_compiler -S [source-file.c] -o [dest-file.s]
 
 You can assume that the command-line (CLI) arguments will always be in this order, and that there will be no spaces in source or destination paths.
 
@@ -163,45 +157,28 @@ It should be possible to assemble and link this code against a C run-time, and h
 
 For instance, suppose I have a file called `test_program.c` that contains:
 
-```
-int f() {
-    return 5;
-}
-```
+    int f() { return 5; }
 
 and another file called `test_program_driver.c` that contains:
 
-```
-int f();
-
-int main() {
-    return !( 5 == f() );
-}
-```
+    int f();
+    int main() { return !( 5 == f() ); }
 
 I run the compiler on the test program, like so:
 
-```console
-> user@host:langproc-cw# bin/c_compiler -S test_program.c -o test_program.s
-```
+    bin/c_compiler -S test_program.c -o test_program.s
 
 I then use GCC to assemble the generated assembly program (`test_program.s`), like so:
 
-```console
-> user@host:langproc-cw# riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -o test_program.o -c test_program.s
-```
+    riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -o test_program.o -c test_program.s
 
 I then use GCC to link the generated object file (`test_program.o`) with the driver program (`test_program_driver.c`), to produce an executable (`test_program`), like so:
 
-```console
-> user@host:langproc-cw# riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -static -o test_program test_program.o test_program_driver.c
-```
+    riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -static -o test_program test_program.o test_program_driver.c
 
 I then use spike to simulate the executable on RISC-V, like so:
 
-```console
-> user@host:langproc-cw# spike pk test_program
-```
+    spike pk test_program
 
 This command should produce the exit code `0`.
 
