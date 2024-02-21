@@ -82,8 +82,8 @@ class Result:
     def to_log(self) -> str:
         timeout = "[TIMED OUT] " if self.timeout else ""
         if self.passed:
-            return f'{self.test_case_name}\n\t> Pass\n'
-        return f'{self.test_case_name}\n{timeout + self.error_log}\n'
+            return f'{self.test_case_name}\n\t> {GREEN}Pass{RESET}\n'
+        return f'{self.test_case_name}\n{RED}{timeout + self.error_log}{RESET}\n'
 
 class JUnitXMLFile():
     def __init__(self, path: Path):
