@@ -24,8 +24,7 @@ jobs:
       - name: Build and test
         id: test
         timeout-minutes: 1
-        run: |
-          python3 -m pip install colorama && ./scripts/test.py
+        run: python3 -m pip install colorama && ./scripts/test.py
 
       - name: Perm issue fix
         if: success() || failure()
