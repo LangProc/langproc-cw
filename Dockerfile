@@ -64,4 +64,8 @@ RUN ../configure --prefix=$RISCV --host=riscv64-unknown-elf --with-arch=rv32imfd
 RUN make
 RUN make install
 
+# Install Python packages
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir colorama
+
 ENTRYPOINT [ "/bin/bash" ]
