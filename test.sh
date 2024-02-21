@@ -1,3 +1,3 @@
 #!/bin/bash
 
-./scripts/test.py $@
+. scripts/test.sh
