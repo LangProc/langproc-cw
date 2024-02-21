@@ -24,6 +24,7 @@ __author__ = "William Huynh (@saturn691), Filip Wojcicki, James Nock"
 
 import argparse
 import os
+import sys
 import shutil
 import subprocess
 from dataclasses import dataclass
