@@ -427,7 +427,7 @@ def run_tests(args, xml_file: JUnitXMLFile):
     print("\n>> Test Summary: " + GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET)
 
 def parse_args():
-    """"
+    """
     Wrapper for argument parsing.
     """
     parser = argparse.ArgumentParser()
