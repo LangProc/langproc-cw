@@ -1,5 +1,4 @@
-#ifndef LANGPROC_COMPILER_CLI_H
-#define LANGPROC_COMPILER_CLI_H
+#pragma once
 
 #include <iostream>
 #include <unistd.h>
@@ -11,5 +10,3 @@ struct CommandLineArguments
 };
 
 CommandLineArguments ParseCommandLineArgs(int argc, char **argv);
-
-#endif

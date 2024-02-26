@@ -1,5 +1,4 @@
-#ifndef AST_NODE_HPP
-#define AST_NODE_HPP
+#pragma once
 
 #include <iostream>
 #include <vector>
@@ -39,5 +38,3 @@ public:
     virtual void EmitRISC(std::ostream &stream, Context &context) const override;
     virtual void Print(std::ostream &stream) const override;
 };
-
-#endif
