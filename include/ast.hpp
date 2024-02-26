@@ -1,5 +1,4 @@
-#ifndef AST_HPP
-#define AST_HPP
+#pragma once
 
 #include <iostream>
 #include <string>
@@ -15,5 +14,3 @@
 #include "ast_context.hpp"
 
 extern Node *ParseAST(std::string file_name);
-
-#endif

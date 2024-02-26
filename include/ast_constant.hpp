@@ -1,5 +1,4 @@
-#ifndef AST_CONSTANT_HPP
-#define AST_CONSTANT_HPP
+#pragma once
 
 #include "ast_node.hpp"
 
@@ -14,5 +13,3 @@ public:
     void EmitRISC(std::ostream &stream, Context &context) const override;
     void Print(std::ostream &stream) const override;
 };
-
-#endif
