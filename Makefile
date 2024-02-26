@@ -8,7 +8,7 @@ DEPENDENCIES := $(patsubst src/%.cpp,build/%.d,$(SOURCES))
 OBJECTS := $(patsubst src/%.cpp,build/%.o,$(SOURCES))
 OBJECTS += build/parser.tab.o build/lexer.yy.o
 
-.PHONY: default clean with_coverage coverage
+.PHONY: default clean coverage
 
 default: bin/c_compiler
 
@@ -29,8 +29,6 @@ build/parser.tab.cpp build/parser.tab.hpp: src/parser.y
 build/lexer.yy.cpp: src/lexer.flex build/parser.tab.hpp
 	@mkdir -p build
 	flex -o build/lexer.yy.cpp src/lexer.flex
-
-with_coverage : bin/c_compiler
 
 coverage:
 	@rm -rf coverage/
