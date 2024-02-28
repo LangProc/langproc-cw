@@ -33,9 +33,7 @@ build/lexer.yy.cpp: src/lexer.flex build/parser.tab.hpp
 coverage:
 	@rm -rf coverage/
 	@mkdir -p coverage
-# somehow lexer and parser coverage info are available but not accurate. To exclude them use:
-# lcov -c --no-external --exclude "`pwd`/src/lexer.*" --exclude "`pwd`/src/parser.*" -d . -o coverage/cov.info
-	lcov -c --no-external -d . -o coverage/cov.info
+	lcov -c --no-external --exclude "`pwd`/src/lexer.*" --exclude "`pwd`/src/parser.*" --exclude "`pwd`/build/*" -d . -o coverage/cov.info
 	genhtml coverage/cov.info -o coverage
 	@find . -name "*.gcda" -delete
 
