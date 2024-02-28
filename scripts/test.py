@@ -462,7 +462,6 @@ def parse_args():
         version=f"BetterTesting {__version__}"
     )
     parser.add_argument(
-        "--no-clean",
         '--no_clean',
         action="store_true",
         default=False,
