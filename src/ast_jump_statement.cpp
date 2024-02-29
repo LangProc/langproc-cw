@@ -1,6 +1,8 @@
 #include "ast_jump_statement.hpp"
 
-void ReturnStatement::EmitRISC(std::ostream &stream, Context &context) const
+namespace AST {
+
+void ReturnStatement::EmitRISC(std::ostream& stream, Context& context) const
 {
     if (expression_ != nullptr)
     {
@@ -9,7 +11,7 @@ void ReturnStatement::EmitRISC(std::ostream &stream, Context &context) const
     stream << "ret" << std::endl;
 }
 
-void ReturnStatement::Print(std::ostream &stream) const
+void ReturnStatement::Print(std::ostream& stream) const
 {
     stream << "return";
     if (expression_ != nullptr)
@@ -18,4 +20,6 @@ void ReturnStatement::Print(std::ostream &stream) const
         expression_->Print(stream);
     }
     stream << ";" << std::endl;
+}
+
 }

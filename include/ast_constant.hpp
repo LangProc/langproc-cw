@@ -2,6 +2,8 @@
 
 #include "ast_node.hpp"
 
+namespace AST {
+
 class IntConstant : public Node
 {
 private:
@@ -10,6 +12,8 @@ private:
 public:
     IntConstant(int value) : value_(value) {}
 
-    void EmitRISC(std::ostream &stream, Context &context) const override;
-    void Print(std::ostream &stream) const override;
+    void EmitRISC(std::ostream& stream, Context& context) const override;
+    void Print(std::ostream& stream) const override;
 };
+
+} // namespace AST
