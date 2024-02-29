@@ -2,18 +2,18 @@
 
 #include "ast_node.hpp"
 
+namespace AST {
+
 class ReturnStatement : public Node
 {
 private:
-    Node *expression_;
+    NodePtr expression_;
 
 public:
-    ReturnStatement(Node *expression) : expression_(expression) {}
-    ~ReturnStatement()
-    {
-        delete expression_;
-    };
+    ReturnStatement(Node* expression) : expression_(expression) {}
 
-    void EmitRISC(std::ostream &stream, Context &context) const override;
-    void Print(std::ostream &stream) const override;
+    void EmitRISC(std::ostream& stream, Context& context) const override;
+    void Print(std::ostream& stream) const override;
 };
+
+} // namespace AST

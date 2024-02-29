@@ -2,17 +2,18 @@
 
 #include "ast_node.hpp"
 
+namespace AST {
+
 class DirectDeclarator : public Node
 {
 private:
-    Node *identifier_;
+    NodePtr identifier_;
 
 public:
-    DirectDeclarator(Node *identifier) : identifier_(identifier){};
-    ~DirectDeclarator()
-    {
-        delete identifier_;
-    };
-    void EmitRISC(std::ostream &stream, Context &context) const override;
-    void Print(std::ostream &stream) const override;
+    DirectDeclarator(Node* identifier) : identifier_(identifier){};
+
+    void EmitRISC(std::ostream& stream, Context& context) const override;
+    void Print(std::ostream& stream) const override;
 };
+
+} // namespace AST

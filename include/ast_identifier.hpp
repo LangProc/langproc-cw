@@ -2,6 +2,8 @@
 
 #include "ast_node.hpp"
 
+namespace AST {
+
 class Identifier : public Node
 {
 private:
@@ -9,7 +11,9 @@ private:
 
 public:
     Identifier(std::string identifier) : identifier_(identifier){};
-    ~Identifier(){};
-    void EmitRISC(std::ostream &stream, Context &context) const override;
-    void Print(std::ostream &stream) const override;
+
+    void EmitRISC(std::ostream& stream, Context& context) const override;
+    void Print(std::ostream& stream) const override;
 };
+
+} // namespace AST

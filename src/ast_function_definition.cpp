@@ -1,6 +1,8 @@
 #include "ast_function_definition.hpp"
 
-void FunctionDefinition::EmitRISC(std::ostream &stream, Context &context) const
+namespace AST {
+
+void FunctionDefinition::EmitRISC(std::ostream& stream, Context& context) const
 {
     // Emit assembler directives.
     // TODO: these are just examples ones, make sure you understand
@@ -16,10 +18,9 @@ void FunctionDefinition::EmitRISC(std::ostream &stream, Context &context) const
     }
 }
 
-void FunctionDefinition::Print(std::ostream &stream) const
+void FunctionDefinition::Print(std::ostream& stream) const
 {
-    declaration_specifiers_->Print(stream);
-    stream << " ";
+    stream << ToString(declaration_specifiers_) << " ";
 
     declarator_->Print(stream);
     stream << "() {" << std::endl;
@@ -29,4 +30,6 @@ void FunctionDefinition::Print(std::ostream &stream) const
         compound_statement_->Print(stream);
     }
     stream << "}" << std::endl;
+}
+
 }

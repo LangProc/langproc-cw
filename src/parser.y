@@ -7,20 +7,22 @@
 %code requires{
     #include "ast.hpp"
 
-    extern Node *g_root;
-    extern FILE *yyin;
+	using namespace AST;
+
+    extern Node* g_root;
+    extern FILE* yyin;
     int yylex(void);
-    void yyerror(const char *);
+    void yyerror(const char*);
 }
 
-// Represents the value associated with any kind of AST node.
 %union{
-  Node         *node;
-  NodeList     *nodes;
-  int          number_int;
-  double       number_float;
-  std::string  *string;
-  yytokentype  token;
+  Node*				node;
+  NodeList*			nodeList;
+  int          		numberInt;
+  double       		numberFloat;
+  std::string*		string;
+  TypeSpecifier 	typeSpecifier;
+  yytokentype  		token;
 }
 
 %token IDENTIFIER INT_CONSTANT FLOAT_CONSTANT STRING_LITERAL
@@ -31,22 +33,17 @@
 %token STRUCT UNION ENUM ELLIPSIS
 %token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
 
-%type <node> translation_unit external_declaration function_definition primary_expression postfix_expression argument_expression_list
+%type <node> translation_unit external_declaration function_definition primary_expression postfix_expression
 %type <node> unary_expression cast_expression multiplicative_expression additive_expression shift_expression relational_expression
 %type <node> equality_expression and_expression exclusive_or_expression inclusive_or_expression logical_and_expression logical_or_expression
-%type <node> conditional_expression assignment_expression expression constant_expression declaration declaration_specifiers init_declarator_list
-%type <node> init_declarator type_specifier struct_specifier struct_declaration_list struct_declaration specifier_qualifier_list struct_declarator_list
-%type <node> struct_declarator enum_specifier enumerator_list enumerator declarator direct_declarator pointer parameter_list parameter_declaration
-%type <node> identifier_list type_name abstract_declarator direct_abstract_declarator initializer initializer_list statement labeled_statement
-%type <node> compound_statement declaration_list expression_statement selection_statement iteration_statement jump_statement
+%type <node> conditional_expression assignment_expression expression declarator direct_declarator statement compound_statement jump_statement
 
-%type <nodes> statement_list
+%type <nodeList> statement_list
 
-%type <string> unary_operator assignment_operator storage_class_specifier
-
-%type <number_int> INT_CONSTANT STRING_LITERAL
-%type <number_float> FLOAT_CONSTANT
+%type <numberInt> INT_CONSTANT STRING_LITERAL
+%type <numberFloat> FLOAT_CONSTANT
 %type <string> IDENTIFIER
+%type <typeSpecifier> type_specifier declaration_specifiers
 
 
 %start ROOT
@@ -75,7 +72,7 @@ declaration_specifiers
 
 type_specifier
 	: INT {
-		$$ = new TypeSpecifier("int");
+		$$ = TypeSpecifier::INT;
 	}
 	;
 
@@ -123,10 +120,6 @@ primary_expression
 
 postfix_expression
 	: primary_expression
-	;
-
-argument_expression_list
-	: assignment_expression
 	;
 
 unary_expression
@@ -191,9 +184,9 @@ expression
 
 %%
 
-Node *g_root;
+Node* g_root;
 
-Node *ParseAST(std::string file_name)
+Node* ParseAST(std::string file_name)
 {
   yyin = fopen(file_name.c_str(), "r");
   if(yyin == NULL){
