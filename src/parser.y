@@ -196,7 +196,7 @@ Node* ParseAST(std::string file_name)
   }
   g_root = nullptr;
   yyparse();
-  yylex_destroy();
   fclose(yyin);
+  yylex_destroy();
   return g_root;
 }
