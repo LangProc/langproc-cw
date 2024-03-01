@@ -16,9 +16,11 @@ public:
     virtual void Print(std::ostream& stream) const = 0;
 };
 
+// If you don't feel comfortable using std::unique_ptr, you can switch NodePtr to be defined
+// as a raw pointer instead here and your project should still compile, although you'll need
+// to add destructors to avoid leaking memory
 using NodePtr = std::unique_ptr<const Node>;
 
-// Represents a list of nodes.
 class NodeList : public Node
 {
 private:
