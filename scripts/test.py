@@ -367,7 +367,10 @@ def serve_coverage_forever(host: str, port: int):
 
     httpd = HTTPServer((host, port), Handler)
     print(GREEN + "Serving coverage on" + RESET + f" http://{host}:{port}/ ... (Ctrl+C to exit)")
-    httpd.serve_forever()
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print(RED + "\nServer has been stopped!" + RESET)
 
 def process_result(
     result: Result,
@@ -459,7 +462,6 @@ def parse_args():
         version=f"BetterTesting {__version__}"
     )
     parser.add_argument(
-        "--no-clean",
         '--no_clean',
         action="store_true",
         default=False,

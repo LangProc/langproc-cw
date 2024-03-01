@@ -8,7 +8,7 @@ DEPENDENCIES := $(patsubst src/%.cpp,build/%.d,$(SOURCES))
 OBJECTS := $(patsubst src/%.cpp,build/%.o,$(SOURCES))
 OBJECTS += build/parser.tab.o build/lexer.yy.o
 
-.PHONY: default clean with_coverage coverage
+.PHONY: default clean coverage
 
 default: bin/c_compiler
 
@@ -30,14 +30,10 @@ build/lexer.yy.cpp: src/lexer.flex build/parser.tab.hpp
 	@mkdir -p build
 	flex -o build/lexer.yy.cpp src/lexer.flex
 
-with_coverage : bin/c_compiler
-
 coverage:
 	@rm -rf coverage/
 	@mkdir -p coverage
-# somehow lexer and parser coverage info are available but not accurate. To exclude them use:
-# lcov -c --no-external --exclude "`pwd`/src/lexer.*" --exclude "`pwd`/src/parser.*" -d . -o coverage/cov.info
-	lcov -c --no-external -d . -o coverage/cov.info
+	lcov -c --no-external --exclude "`pwd`/src/lexer.*" --exclude "`pwd`/src/parser.*" --exclude "`pwd`/build/*" -d . -o coverage/cov.info
 	genhtml coverage/cov.info -o coverage
 	@find . -name "*.gcda" -delete
 
