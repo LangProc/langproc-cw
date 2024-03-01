@@ -13,6 +13,7 @@
     extern FILE* yyin;
     int yylex(void);
     void yyerror(const char*);
+	int yylex_destroy(void);
 }
 
 %union{
@@ -195,5 +196,7 @@ Node* ParseAST(std::string file_name)
   }
   g_root = nullptr;
   yyparse();
+  yylex_destroy();
+  fclose(yyin);
   return g_root;
 }
