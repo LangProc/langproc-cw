@@ -1,6 +1,6 @@
 # Based on https://stackoverflow.com/a/52036564 which is well worth reading!
 
-CXXFLAGS += -std=c++20 -W -Wall -g -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -fsanitize=address -static-libasan -O0 -rdynamic --coverage -I include
+CXXFLAGS += -std=c++20 -W -Wall -g -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -O0 -rdynamic --coverage -I include
 
 SOURCES := $(wildcard src/*.cpp)
 DEPENDENCIES := $(patsubst src/%.cpp,build/%.d,$(SOURCES))
