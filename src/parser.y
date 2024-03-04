@@ -18,11 +18,11 @@
 
 %union{
   Node*				node;
-  NodeList*			nodeList;
-  int          		numberInt;
-  double       		numberFloat;
+  NodeList*			node_list;
+  int          		number_int;
+  double       		number_float;
   std::string*		string;
-  TypeSpecifier 	typeSpecifier;
+  TypeSpecifier 	type_specifier;
   yytokentype  		token;
 }
 
@@ -39,12 +39,12 @@
 %type <node> equality_expression and_expression exclusive_or_expression inclusive_or_expression logical_and_expression logical_or_expression
 %type <node> conditional_expression assignment_expression expression declarator direct_declarator statement compound_statement jump_statement
 
-%type <nodeList> statement_list
+%type <node_list> statement_list
 
-%type <numberInt> INT_CONSTANT STRING_LITERAL
-%type <numberFloat> FLOAT_CONSTANT
+%type <number_int> INT_CONSTANT STRING_LITERAL
+%type <number_float> FLOAT_CONSTANT
 %type <string> IDENTIFIER
-%type <typeSpecifier> type_specifier declaration_specifiers
+%type <type_specifier> type_specifier declaration_specifiers
 
 
 %start ROOT
