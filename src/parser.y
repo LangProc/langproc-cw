@@ -83,7 +83,7 @@ declarator
 
 direct_declarator
 	: IDENTIFIER {
-		$$ = new Identifier(*$1);
+		$$ = new Identifier(std::move(*$1));
 		delete $1;
 	}
 	| direct_declarator '(' ')' {
