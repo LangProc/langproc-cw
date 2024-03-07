@@ -63,7 +63,7 @@ external_declaration
 
 function_definition
 	: declaration_specifiers declarator compound_statement {
-		$$ = new FunctionDefinition($1, $2, $3);
+		$$ = new FunctionDefinition($1, NodePtr($2), NodePtr($3));
 	}
 	;
 
@@ -87,7 +87,7 @@ direct_declarator
 		delete $1;
 	}
 	| direct_declarator '(' ')' {
-		$$ = new DirectDeclarator($1);
+		$$ = new DirectDeclarator(NodePtr($1));
 	}
 	;
 
@@ -100,8 +100,8 @@ compound_statement
 	;
 
 statement_list
-	: statement { $$ = new NodeList($1); }
-	| statement_list statement { $1->PushBack($2); $$=$1; }
+	: statement { $$ = new NodeList(NodePtr($1)); }
+	| statement_list statement { $1->PushBack(NodePtr($2)); $$=$1; }
 	;
 
 jump_statement
@@ -109,7 +109,7 @@ jump_statement
 		$$ = new ReturnStatement(nullptr);
 	}
 	| RETURN expression ';' {
-		$$ = new ReturnStatement($2);
+		$$ = new ReturnStatement(NodePtr($2));
 	}
 	;
 
@@ -187,7 +187,7 @@ expression
 
 Node* g_root;
 
-Node* ParseAST(std::string file_name)
+NodePtr ParseAST(std::string file_name)
 {
   yyin = fopen(file_name.c_str(), "r");
   if(yyin == NULL){
@@ -198,5 +198,5 @@ Node* ParseAST(std::string file_name)
   yyparse();
   fclose(yyin);
   yylex_destroy();
-  return g_root;
+  return NodePtr(g_root);
 }

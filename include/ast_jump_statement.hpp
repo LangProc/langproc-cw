@@ -10,7 +10,7 @@ private:
     NodePtr expression_;
 
 public:
-    ReturnStatement(Node* expression) : expression_(expression) {}
+    ReturnStatement(NodePtr expression) : expression_(std::move(expression)) {}
 
     void EmitRISC(std::ostream& stream, Context& context) const override;
     void Print(std::ostream& stream) const override;

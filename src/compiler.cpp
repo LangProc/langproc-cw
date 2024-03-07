@@ -39,7 +39,7 @@ int main(int argc, char **argv)
 NodePtr Parse(const CommandLineArguments& args)
 {
     std::cout << "Parsing: " << args.compile_source_path << std::endl;
-    NodePtr root{ ParseAST(args.compile_source_path) };
+    NodePtr root = ParseAST(args.compile_source_path);
     std::cout << "AST parsing complete" << std::endl;
     return root;
 }

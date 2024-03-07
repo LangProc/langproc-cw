@@ -10,7 +10,7 @@ private:
     NodePtr identifier_;
 
 public:
-    DirectDeclarator(Node* identifier) : identifier_(identifier){};
+    DirectDeclarator(NodePtr identifier) : identifier_(std::move(identifier)){};
 
     void EmitRISC(std::ostream& stream, Context& context) const override;
     void Print(std::ostream& stream) const override;
