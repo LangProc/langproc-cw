@@ -1,6 +1,6 @@
 #include "ast_function_definition.hpp"
 
-namespace AST {
+namespace ast {
 
 void FunctionDefinition::EmitRISC(std::ostream& stream, Context& context) const
 {

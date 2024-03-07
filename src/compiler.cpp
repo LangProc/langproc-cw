@@ -4,7 +4,7 @@
 #include "cli.h"
 #include "ast.hpp"
 
-using AST::NodePtr;
+using ast::NodePtr;
 
 NodePtr Parse(const CommandLineArguments& args);
 
@@ -59,7 +59,7 @@ void Compile(const NodePtr& root, const CommandLineArguments& args)
 {
     // Create a Context. This can be used to pass around information about
     // what's currently being compiled (e.g. function scope and variable names).
-    AST::Context ctx;
+    ast::Context ctx;
 
     std::cout << "Compiling parsed AST..." << std::endl;
     std::ofstream output(args.compile_output_path, std::ios::trunc);

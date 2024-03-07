@@ -6,7 +6,7 @@
 
 #include "ast_context.hpp"
 
-namespace AST {
+namespace ast {
 
 class Node
 {
@@ -34,4 +34,4 @@ public:
     virtual void Print(std::ostream& stream) const override;
 };
 
-} // namespace AST
+} // namespace ast

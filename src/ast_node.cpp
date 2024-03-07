@@ -1,6 +1,6 @@
 #include "ast_node.hpp"
 
-namespace AST {
+namespace ast {
 
 void NodeList::PushBack(Node* item)
 {

@@ -3,7 +3,7 @@
 #include "ast_node.hpp"
 #include "ast_type_specifier.hpp"
 
-namespace AST {
+namespace ast {
 
 class FunctionDefinition : public Node
 {
@@ -19,4 +19,4 @@ public:
     void Print(std::ostream& stream) const override;
 };
 
-} // namespace AST
+} // namespace ast

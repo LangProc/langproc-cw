@@ -3,7 +3,7 @@
 #include <string_view>
 #include <stdexcept>
 
-namespace AST {
+namespace ast {
 
 enum class TypeSpecifier
 {

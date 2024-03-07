@@ -1,6 +1,6 @@
 #include "ast_direct_declarator.hpp"
 
-namespace AST {
+namespace ast {
 
 void DirectDeclarator::EmitRISC(std::ostream& stream, Context& context) const
 {
@@ -13,4 +13,4 @@ void DirectDeclarator::Print(std::ostream& stream) const
     identifier_->Print(stream);
 }
 
-} // namespace AST
+} // namespace ast

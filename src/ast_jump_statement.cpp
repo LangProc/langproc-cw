@@ -1,6 +1,6 @@
 #include "ast_jump_statement.hpp"
 
-namespace AST {
+namespace ast {
 
 void ReturnStatement::EmitRISC(std::ostream& stream, Context& context) const
 {
