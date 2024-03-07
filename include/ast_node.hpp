@@ -27,9 +27,9 @@ private:
     std::vector<NodePtr> nodes_;
 
 public:
-    NodeList(Node* first_node) { nodes_.emplace_back(first_node); }
+    NodeList(NodePtr first_node) { nodes_.push_back(std::move(first_node)); }
 
-    void PushBack(Node* item);
+    void PushBack(NodePtr item);
     virtual void EmitRISC(std::ostream& stream, Context& context) const override;
     virtual void Print(std::ostream& stream) const override;
 };

@@ -2,9 +2,9 @@
 
 namespace ast {
 
-void NodeList::PushBack(Node* item)
+void NodeList::PushBack(NodePtr item)
 {
-    nodes_.emplace_back(item);
+    nodes_.push_back(std::move(item));
 }
 
 void NodeList::EmitRISC(std::ostream& stream, Context& context) const
