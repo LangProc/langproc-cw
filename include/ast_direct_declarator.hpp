@@ -2,7 +2,7 @@
 
 #include "ast_node.hpp"
 
-namespace AST {
+namespace ast {
 
 class DirectDeclarator : public Node
 {
@@ -16,4 +16,4 @@ public:
     void Print(std::ostream& stream) const override;
 };
 
-} // namespace AST
+} // namespace ast

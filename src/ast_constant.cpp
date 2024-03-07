@@ -1,6 +1,6 @@
 #include "ast_constant.hpp"
 
-namespace AST {
+namespace ast {
 
 void IntConstant::EmitRISC(std::ostream& stream, Context& context) const
 {
@@ -12,4 +12,4 @@ void IntConstant::Print(std::ostream& stream) const
     stream << value_;
 }
 
-} // namespace AST
+} // namespace ast

@@ -3,19 +3,19 @@
 %code requires{
     #include "ast.hpp"
 
-    extern Node *g_root;
-    extern FILE *yyin;
+    extern Node* g_root;
+    extern FILE* yyin;
     int yylex(void);
     void yyerror(const char *);
 }
 
 // Represents the value associated with any kind of AST node.
 %union{
-  Node         *node;
-  NodeList     *nodes;
+  Node*        node;
+  NodeList*    nodes;
   int          number_int;
   double       number_float;
-  std::string  *string;
+  std::string* string;
   yytokentype  token;
 }
 

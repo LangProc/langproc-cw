@@ -1,6 +1,6 @@
 #include "ast_identifier.hpp"
 
-namespace AST {
+namespace ast {
 
 void Identifier::EmitRISC(std::ostream& stream, Context& context) const
 {

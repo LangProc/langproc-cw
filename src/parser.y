@@ -7,7 +7,7 @@
 %code requires{
     #include "ast.hpp"
 
-	using namespace AST;
+	using namespace ast;
 
     extern Node* g_root;
     extern FILE* yyin;
