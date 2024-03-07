@@ -19,6 +19,7 @@ public:
 // If you don't feel comfortable using std::unique_ptr, you can switch NodePtr to be defined
 // as a raw pointer instead here and your project should still compile, although you'll need
 // to add destructors to avoid leaking memory
+// (and get rid of the now unnecessary std::move-s)
 using NodePtr = std::unique_ptr<const Node>;
 
 class NodeList : public Node
