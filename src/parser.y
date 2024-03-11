@@ -11,6 +11,7 @@
     extern FILE *yyin;
     int yylex(void);
     void yyerror(const char *);
+	int yylex_destroy(void);
 }
 
 // Represents the value associated with any kind of AST node.
@@ -202,5 +203,7 @@ Node *ParseAST(std::string file_name)
   }
   g_root = nullptr;
   yyparse();
+  fclose(yyin);
+  yylex_destroy();
   return g_root;
 }
