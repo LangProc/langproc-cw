@@ -4,41 +4,17 @@
 #include "cli.h"
 #include "ast.hpp"
 
-Node *Parse(CommandLineArguments &args)
-{
-    std::cout << "Parsing: " << args.compile_source_path << std::endl;
-    auto root = ParseAST(args.compile_source_path);
-    std::cout << "AST parsing complete" << std::endl;
-    return root;
-}
+using ast::NodePtr;
+
+NodePtr Parse(const CommandLineArguments& args);
 
 // Output the pretty print version of what was parsed to the .printed output
 // file.
-void PrettyPrint(Node *root, CommandLineArguments &args)
-{
-    auto output_path = args.compile_output_path + ".printed";
-
-    std::cout << "Printing parsed AST..." << std::endl;
-    std::ofstream output(output_path, std::ios::trunc);
-    root->Print(output);
-    output.close();
-    std::cout << "Printed parsed AST to: " << output_path << std::endl;
-}
+void PrettyPrint(const NodePtr& root, const CommandLineArguments& args);
 
 // Compile from the root of the AST and output this to the
 // args.compiledOutputPath file.
-void Compile(Node *root, CommandLineArguments &args)
-{
-    // Create a Context. This can be used to pass around information about
-    // what's currently being compiled (e.g. function scope and variable names).
-    Context ctx;
-
-    std::cout << "Compiling parsed AST..." << std::endl;
-    std::ofstream output(args.compile_output_path, std::ios::trunc);
-    root->EmitRISC(output, ctx);
-    output.close();
-    std::cout << "Compiled to: " << args.compile_output_path << std::endl;
-}
+void Compile(const NodePtr& root, const CommandLineArguments& args);
 
 int main(int argc, char **argv)
 {
@@ -58,8 +34,36 @@ int main(int argc, char **argv)
 
     PrettyPrint(ast_root, command_line_arguments);
     Compile(ast_root, command_line_arguments);
+}
 
-    // Clean up afterwards.
-    delete ast_root;
-    return 0;
+NodePtr Parse(const CommandLineArguments& args)
+{
+    std::cout << "Parsing: " << args.compile_source_path << std::endl;
+    NodePtr root = ParseAST(args.compile_source_path);
+    std::cout << "AST parsing complete" << std::endl;
+    return root;
+}
+
+void PrettyPrint(const NodePtr& root, const CommandLineArguments& args)
+{
+    auto output_path = args.compile_output_path + ".printed";
+
+    std::cout << "Printing parsed AST..." << std::endl;
+    std::ofstream output(output_path, std::ios::trunc);
+    root->Print(output);
+    output.close();
+    std::cout << "Printed parsed AST to: " << output_path << std::endl;
+}
+
+void Compile(const NodePtr& root, const CommandLineArguments& args)
+{
+    // Create a Context. This can be used to pass around information about
+    // what's currently being compiled (e.g. function scope and variable names).
+    ast::Context ctx;
+
+    std::cout << "Compiling parsed AST..." << std::endl;
+    std::ofstream output(args.compile_output_path, std::ios::trunc);
+    root->EmitRISC(output, ctx);
+    output.close();
+    std::cout << "Compiled to: " << args.compile_output_path << std::endl;
 }
