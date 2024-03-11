@@ -1,18 +1,23 @@
-#ifndef AST_TYPE_SPECIFIER
-#define AST_TYPE_SPECIFIER
+#pragma once
 
-#include "ast_node.hpp"
+#include <string_view>
+#include <stdexcept>
 
-class TypeSpecifier : public Node
+namespace ast {
+
+enum class TypeSpecifier
 {
-private:
-    std::string type_;
-
-public:
-    TypeSpecifier(std::string type) : type_(type){};
-    ~TypeSpecifier(){};
-    void EmitRISC(std::ostream &stream, Context &context) const override;
-    void Print(std::ostream &stream) const override;
+    INT
 };
 
-#endif
+constexpr std::string_view ToString(TypeSpecifier type)
+{
+    switch (type)
+    {
+    case TypeSpecifier::INT:
+        return "int";
+    }
+    throw std::runtime_error("Unexpected type specifier");
+}
+
+}

@@ -2,9 +2,9 @@
 #include <iostream>
 #include <vector>
 
-const char *ARRAY_OF_NUMBERS[] = { "1", "2" , "99" };
+const char* ARRAY_OF_NUMBERS[] = { "1", "2" , "99" };
 
-static int process_arguments(int argc, const char *argv[])
+static int process_arguments(int argc, const char* argv[])
 {
   std::vector<int> numbers(argc - 1);
   for (int i = 1 ; i < argc ; i++) {
