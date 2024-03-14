@@ -196,7 +196,7 @@ I then use GCC to assemble the generated assembly program (`test_program.s`), li
 I then use GCC to link the generated object file (`test_program.o`) with the driver program (`test_program_driver.c`), to produce an executable (`test_program`), like so:
 
 ```console
-> user@host:langproc-cw# riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -o test_program.o -c test_program.s
+> user@host:langproc-cw# riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -static -o test_program test_program.o test_program_driver.c
 ```
 
 I then use spike to simulate the executable on RISC-V, like so:
