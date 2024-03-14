@@ -7,7 +7,7 @@ Makefile, run the tests and store the outputs in bin/output.
 This script will also generate a JUnit XML file, which can be used to integrate
 with CI/CD pipelines.
 
-Usage: test.py [-h] [-m] [-s] [--version] [--no_clean | --coverage] [dir]
+Usage: test.py [-h] [-m] [-s] [--version] [--no_clean] [--coverage] [dir]
 
 Example usage: scripts/test.py compiler_tests/_example
 
@@ -32,6 +32,7 @@ from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional
+from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 
 RED = "\033[31m"
@@ -321,28 +322,55 @@ def clean() -> bool:
         return False
     return True
 
-def make(with_coverage: bool, silent: bool) -> bool:
+def make(silent: bool) -> bool:
     """
     Wrapper for make bin/c_compiler.
 
     Return True if successful, False otherwise
     """
     print(GREEN + "Running make..." + RESET)
-
-    cmd = ["make", "-C", PROJECT_LOCATION, "bin/c_compiler"]
-    if with_coverage:
-        # Run coverage if needed
-        print(GREEN + "Making with coverage..." + RESET)
-        shutil.rmtree(COVERAGE_FOLDER, ignore_errors=True)
-        cmd = ["make", "-C", PROJECT_LOCATION, "with_coverage"]
-
-    return_code, error_msg, _ = run_subprocess(cmd=cmd, timeout=BUILD_TIMEOUT_SECONDS, silent=silent)
-
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["make", "-C", PROJECT_LOCATION, "bin/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, silent=silent
+    )
     if return_code != 0:
         print(RED + "Error when making:", error_msg + RESET)
         return False
 
     return True
+
+def coverage() -> bool:
+    """
+    Wrapper for make coverage.
+
+    Return True if successful, False otherwise
+    """
+    print(GREEN + "Running make coverage..." + RESET)
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["make", "-C", PROJECT_LOCATION, "coverage"], timeout=BUILD_TIMEOUT_SECONDS, silent=True
+    )
+    if return_code != 0:
+        print(RED + "Error when making coverage:", error_msg + RESET)
+        return False
+    return True
+
+def serve_coverage_forever(host: str, port: int):
+    """
+    Starts a HTTP server which serves the coverage folder forever until Ctrl+C
+    is pressed.
+    """
+    class Handler(SimpleHTTPRequestHandler):
+        def __init__(self, *args, directory=None, **kwargs):
+            super().__init__(*args, directory=COVERAGE_FOLDER, **kwargs)
+
+        def log_message(self, format, *args):
+            pass
+
+    httpd = HTTPServer((host, port), Handler)
+    print(GREEN + "Serving coverage on" + RESET + f" http://{host}:{port}/ ... (Ctrl+C to exit)")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print(RED + "\nServer has been stopped!" + RESET)
 
 def process_result(
     result: Result,
@@ -402,7 +430,7 @@ def run_tests(args, xml_file: JUnitXMLFile):
     print("\n>> Test Summary: " + GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET)
 
 def parse_args():
-    """"
+    """
     Wrapper for argument parsing.
     """
     parser = argparse.ArgumentParser()
@@ -433,16 +461,14 @@ def parse_args():
         action="version",
         version=f"BetterTesting {__version__}"
     )
-    # Coverage cannot be perfomed without rebuilding the compiler
-    group = parser.add_mutually_exclusive_group(required=False)
-    group.add_argument(
-        "--no_clean",
+    parser.add_argument(
+        '--no_clean',
         action="store_true",
         default=False,
-        help="Do no clean the repository before testing. This will make it "
+        help="Don't clean the repository before testing. This will make it "
         "faster but it can be safer to clean if you have any compilation issues."
     )
-    group.add_argument(
+    parser.add_argument(
         "--coverage",
         action="store_true",
         default=False,
@@ -461,11 +487,16 @@ def main():
         # Clean the repo if required and exit if this fails.
         exit(2)
 
-    if not make(with_coverage=args.coverage, silent=args.short):
+    if not make(silent=args.short):
         exit(3)
 
     with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
         run_tests(args, xml_file)
+
+    if args.coverage:
+        if not coverage():
+            exit(4)
+        serve_coverage_forever('0.0.0.0', 8000)
 
 if __name__ == "__main__":
     try:

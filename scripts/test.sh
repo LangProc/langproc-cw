@@ -10,16 +10,9 @@ if [ "${DONT_CLEAN:-}" != "1" ]; then
     make clean
 fi
 
-if [ "${COVERAGE:-}" == "1" ]; then
-    rm -rf coverage
-    set -e
-    make with_coverage
-    set +e
-else
-    set -e
-    make bin/c_compiler
-    set +e
-fi
+set -e
+make bin/c_compiler
+set +e
 
 mkdir -p bin
 mkdir -p bin/output

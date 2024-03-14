@@ -111,6 +111,7 @@ Here is a list of intermediate features that you might like to implement once th
 * the `enum` keyword
 * `switch` statements
 * the `break` and `continue` keywords
+* ternary operator (`x ? y : z`)
 
 Here is a list of more advanced features like you might like to implement once the basic and intermediate features are working.
 
