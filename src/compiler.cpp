@@ -28,7 +28,7 @@ int main(int argc, char **argv)
     // Check something was actually returned by parseAST().
     if (ast_root == nullptr)
     {
-        std::cerr << "The root of the AST was a null pointer. ";
+        std::cerr << "The root of the AST is a null pointer. ";
         std::cerr << "Likely the root was never initialised correctly during parsing." << std::endl;
         return 3;
     }
