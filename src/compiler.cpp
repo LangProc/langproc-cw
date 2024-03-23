@@ -59,7 +59,6 @@ void PrettyPrint(const NodePtr& root, const std::string& compile_output_path)
 
     std::ofstream output(output_path, std::ios::trunc);
     root->Print(output);
-    output.close();
 
     std::cout << "Printed parsed AST to: " << output_path << std::endl;
 }
@@ -74,7 +73,6 @@ void Compile(const NodePtr& root, const std::string& compile_output_path)
 
     std::ofstream output(compile_output_path, std::ios::trunc);
     root->EmitRISC(output, ctx);
-    output.close();
 
     std::cout << "Compiled to: " << compile_output_path << std::endl;
 }
