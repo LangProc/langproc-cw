@@ -1,7 +1,7 @@
 Main coursework: A compiler for the C language
 ==============================================
 
-Your program should read C source code from a file, and write corresponding RISC-V assembly to another file.
+Your program should read C source code from a given file, and write corresponding RISC-V assembly to another given file.
 
 Environment
 -----------
@@ -12,7 +12,7 @@ Developing your compiler
 
 If you wish to use C++, then a basic framework for building your compiler has been provided. You are strongly recommended to check out its structure [here](./basic_compiler.md).
 
-Source files can be found in the [./src](../src) folder and header files can be found in the [./include](../include) folder.
+Source files can be found in the [./src](../src) directory and header files can be found in the [./include](../include) directory.
 
 You can test your compiler by running
 [`scripts/test.py`](../scripts/test.py) from the top of this repo; the
@@ -71,9 +71,7 @@ The compilation function is invoked using the flag `-S`, with the source file an
 > user@host:langproc-cw# bin/c_compiler -S [source-file.c] -o [dest-file.s]
 ```
 
-You can assume that the command-line (CLI) arguments will always be in this order, and that there will be no spaces in source or destination paths.
-
-NOTE: the provided starting point in this repository already functions as specified above, so these CLI arguments should work out of the box (unless you decide not to use the provided base compiler).
+You can assume that the command-line (CLI) arguments will always be in this order, and that there will be no spaces in source or destination paths. Note that the provided starting point in this repository already functions as specified above, so these CLI arguments should work out of the box (unless you decide not to use the provided base compiler).
 
 Input
 -----
