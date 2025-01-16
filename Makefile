@@ -1,8 +1,19 @@
 # Based on https://stackoverflow.com/a/52036564 which is well worth reading!
 
-CXXFLAGS += -std=c++20 -W -Wall -g -Wno-unused-parameter -Wno-unused-variable -Wno-unused-function -fsanitize=address -static-libasan -O0 -rdynamic --coverage -I include
+CXXFLAGS := -std=c++20 # use the 2020 version of the C++ standard
+CXXFLAGS += -g # generate debugging information
+CXXFLAGS += -Wall # enable most warnings, except those about ...
+CXXFLAGS += -Wno-unused-parameter # ... unused function parameters, ...
+CXXFLAGS += -Wno-unused-variable # ... unused variables, ...
+CXXFLAGS += -Wno-unused-function # ... or unused functions.
+CXXFLAGS += -fsanitize=address # enable address sanitization
+CXXFLAGS += -static-libasan # statically link with Address Sanitizer
+CXXFLAGS += -O0 # perform minimal optimisations
+CXXFLAGS += -rdynamic # to get more helpful traces when debugging
+CXXFLAGS += --coverage # enable code coverage
+CXXFLAGS += -I include # look for header files in the `include` directory
 
-SOURCES := $(wildcard src/*.cpp)
+SOURCES := $(wildcard src/*.cpp) # all .cpp files are to be considered source files
 DEPENDENCIES := $(patsubst src/%.cpp,build/%.d,$(SOURCES))
 
 OBJECTS := $(patsubst src/%.cpp,build/%.o,$(SOURCES))
