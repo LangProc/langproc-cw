@@ -1,14 +1,11 @@
-Main coursework: A compiler for the C language
-==============================================
+# Main coursework: A compiler for the C language
 
 Your program should read C source code from a given file, and write corresponding RISC-V assembly to another given file.
 
-Environment
------------
+## Environment
 [How to set up your environment?](./environment_guide.md)
 
-Developing your compiler
-------------------------
+## Developing your compiler
 
 If you wish to use C++, then a basic framework for building your compiler has been provided. You are strongly recommended to check out its structure [here](./basic_compiler.md).
 
@@ -56,8 +53,7 @@ By default, the first [`_example/example.c`](../compiler_tests/_example/example.
 
 This basic framework is only able to compile a very simple program, as described [here](./basic_compiler.md).
 
-Program build and execution
----------------------------
+## Program build and execution
 
 Your program should be built by running the following command in the top-level directory of your repo:
 
@@ -73,8 +69,7 @@ The compilation function is invoked using the flag `-S`, with the source file an
 
 You can assume that the command-line (CLI) arguments will always be in this order, and that there will be no spaces in source or destination paths. Note that the provided starting point in this repository already functions as specified above, so these CLI arguments should work out of the box (unless you decide not to use the provided base compiler).
 
-Input
------
+## Input
 
 The input file will be pre-processed [ANSI C](https://en.wikipedia.org/wiki/ANSI_C), also called C90 or C89. It is what is generally thought of as "classic" or "normal" C, but not the _really_ old one without function prototypes (you may never have come across that). C90 is still often used in embedded systems, and pretty much the entire Linux kernel is in C90.
 
@@ -84,8 +79,7 @@ The source code will not contain any compiler-specific or platform-specific exte
 
 The test inputs will be a set of files of increasing complexity and variety. The test inputs will not have syntax errors or other programming errors, so your code does not need to handle these gracefully.
 
-Features
--------
+## Features
 
 Here is a list of basic features that you might like to implement first.
 
@@ -117,7 +111,7 @@ Here is a list of more advanced features like you might like to implement once t
 * calling externally-defined functions (i.e. the file being compiled declares a function, but its definition is provided in a different file that is linked in later on)
 * functions that take more than 8 parameters
 * mutually recursive function calls
-* locally scoped variable declarations (e.g. a variable that is declared inside the body of a while loop, such as `while(...) { int x = ...; ... }`.
+* locally scoped variable declarations (e.g. a variable that is declared inside the body of a while loop, such as `while(...) { int x = ...; ... }`).
 * the `typedef` keyword
 * the `sizeof(...)` function (which takes either a type or a variable)
 * taking the address of a variable using the `&` operator
@@ -145,8 +139,7 @@ Here is a (partial) list of features that will not be tested.
 * the `void` type is not tested explicitly, but it appears in some helper functions in the test cases, so your compiler cannot break when it encounters this keyword
 * the `static` keyword
 
-Test cases
-----------
+## Test cases
 
 All test inputs will be valid; that is, you can assume the absence of programmer errors like syntax faults, type mismatches, and array out-of-bounds errors. The entire compilation and testing process (including compilation, assembly, linking, and RISC-V simulation) is expected to complete within ten seconds per program (which should be plenty of time!), and is expected not to use an inordinate amount of memory or disk space. There is no requirement for the generated assembly to be optimised in any way -- the only requirement is that it produces the correct answer.
 
@@ -154,10 +147,9 @@ The [compiler_tests](../compiler_tests) contains a large number of example input
 
 The split between test cases last year can be seen below. Do not assume it will stay the same this year, but you can use it as a rough estimate of what to focus on in case you are running short on time. **Remember that tests for advanced features will also test basic features, so you should implement the basic features first (e.g. without working functions the array tests will fail).**
 
-![Testcase distribution](./testcase_distribution.png)
+![Testcase distribution](./assets/testcase_distribution.png)
 
-Output Format
--------------
+## Output Format
 
 The output format should be RISC-V assembly code.
 
@@ -206,12 +198,10 @@ I then use spike to simulate the executable on RISC-V, like so:
 
 This command should produce the exit code `0`.
 
-Assembler directives
----------------
+## Assembler directives
 [You will need to consider assembler directives in your output](./assembler_directives.md)
 
-Useful links
-------------
+## Useful links
 * [Godbolt](https://godbolt.org/z/vMMnWbsff) - Great tool for viewing what a real (`gcc` in this case) RISC-V compiler would produce for a given snippet of C code. This link is pre-configured for the correct architecture (`RV32IMFD`) and ABI (`ILP32D`) that the coursework targets. Code optimisation is also disabled to best mimic what you might want your compiler to output. You can replicate Godbolt locally by running `riscv64-unknown-elf-gcc -std=c90 -pedantic -ansi -O0 -march=rv32imfd -mabi=ilp32d -S [source-file.c] -o [dest-file.s]`, which might make debugging and directives analysis easier for some.
 
 * [Interactive RISC-V simulator](https://creatorsim.github.io/creator) - Might be helpful when trying to work out the behaviour of certain instructions that Godbolt emits.
@@ -222,10 +212,10 @@ Useful links
 
 * [RISC-V Assembler Reference](https://michaeljclark.github.io/asm.html) - Very useful resource containing information about structuring your output assembly files and most importantly the assembler directives - if you don't know the meaning behind `.data`, `.text`, or `.word` then definitely check this out as well as experiment with Godbolt to see how it actually emits them.
 
-Getting started
----------------
+## Getting started
 [How to get started? (previous students' perspectives)](./starting_guide.md)
 
-Coverage information
------------
+## Coverage information
 [Do you want to know which part of your code is executed when running your compiler on a file?](./coverage.md)
+
+
