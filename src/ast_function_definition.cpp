@@ -20,7 +20,7 @@ void FunctionDefinition::EmitRISC(std::ostream& stream, Context& context) const
 
 void FunctionDefinition::Print(std::ostream& stream) const
 {
-    stream << ToString(declaration_specifiers_) << " ";
+    stream << declaration_specifiers_ << " ";
 
     declarator_->Print(stream);
     stream << "() {" << std::endl;
