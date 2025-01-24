@@ -10,7 +10,7 @@ int f() {
 
 The compiler is able to traverse the following AST related to the above program. In order to expand its capabilities, you should develop the parser and the corresponding code generation at the same time -- you are advised not to fully implement one before the other.
 
-![int_main_return_tree](./int_main_return_5_tree.png)
+![int_main_return_tree](./assets/int_main_return_5_tree.png)
 
 
 The lexer and parser are loosely based on the "official" grammar covered [here](https://www.lysator.liu.se/c/ANSI-C-grammar-l.html) and [here](https://www.lysator.liu.se/c/ANSI-C-grammar-y.html) respectively. While they should suffice for a significant portions of features, you might need to improve them to implement the more advanced ones. If you find the grammar too complicated to understand, it is also perfectly fine to create your own simple grammar and build upon it as you add more features.

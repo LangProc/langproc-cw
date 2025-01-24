@@ -1,4 +1,4 @@
-#include <cli.h>
+#include <cli.hpp>
 
 CommandLineArguments ParseCommandLineArgs(int argc, char **argv)
 {

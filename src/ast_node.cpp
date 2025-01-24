@@ -1,21 +1,15 @@
 #include "ast_node.hpp"
 
-Node::~Node()
+namespace ast {
+
+void NodeList::PushBack(NodePtr item)
 {
-    for (auto branch : branches_)
-    {
-        delete branch;
-    }
+    nodes_.push_back(std::move(item));
 }
 
-void NodeList::PushBack(Node *item)
+void NodeList::EmitRISC(std::ostream& stream, Context& context) const
 {
-    nodes_.push_back(item);
-}
-
-void NodeList::EmitRISC(std::ostream &stream, Context &context) const
-{
-    for (auto node : nodes_)
+    for (const auto& node : nodes_)
     {
         if (node == nullptr)
         {
@@ -25,9 +19,9 @@ void NodeList::EmitRISC(std::ostream &stream, Context &context) const
     }
 }
 
-void NodeList::Print(std::ostream &stream) const
+void NodeList::Print(std::ostream& stream) const
 {
-    for (auto node : nodes_)
+    for (const auto& node : nodes_)
     {
         if (node == nullptr)
         {
@@ -35,4 +29,6 @@ void NodeList::Print(std::ostream &stream) const
         }
         node->Print(stream);
     }
+}
+
 }
