@@ -1,4 +1,4 @@
-2023/24 Compilers Coursework
+2024/25 Compilers Coursework
 ==============================
 
 There are two components to the coursework:
@@ -18,7 +18,7 @@ Each group gets a bare private repository. It is up to you if you want to clone 
 Submission
 ==========
 
-The deadline for submitting your C compiler is **Friday 22 March 2024 at 23:59**. There is no deadline for the project management component; instead, this will be assessed by a short oral viva that will be organised in Summer term.
+The deadline for submitting your C compiler is **Friday 21 March 2024 at 15:00**. There is no deadline for the project management component; instead, this will be assessed by a short oral viva that will be organised in Summer term.
 
 Submission will be via GitHub (code) and Teams (commit hash), as in the labs.
 
@@ -66,9 +66,4 @@ Changelog
 Acknowledgements
 ================
 
-* The coursework was originally designed by [David Thomas](https://www.southampton.ac.uk/people/5z9bmb/professor-david-thomas), who lectured this module until 2017-18. It is nowadays maintained by [John Wickerson](https://johnwickerson.github.io/), to whom any feedback should be sent.
-* Thanks to [Yann Herklotz](https://yannherklotz.com/) for making various improvements to the compiler-testing scripts.
-* Thanks to [Archie Crichton](https://www.doc.ic.ac.uk/~ac11018/) for providing a basic "getting started" compiler.
-* Thanks to [James Nock](https://www.linkedin.com/in/jpnock) for overhauling the scripts for configuring the development environment, for writing detailed instructions for setting this up on various operating systems, and for creating GitHub actions capable of automatically testing compilers.
-* Thanks to [Quentin Corradi](https://www.imperial.ac.uk/people/q.corradi22) for setting up coverage testing and writing a getting-started guide for that.
-* Thanks to [Filip Wojcicki](https://www.linkedin.com/in/filip-wojcicki) for overhauling the coursework specification and providing a new getting-started guide.
+The coursework was originally designed by [David Thomas](https://www.southampton.ac.uk/people/5z9bmb/professor-david-thomas), who lectured this module until 2017-18. It is nowadays maintained by [John Wickerson](https://johnwickerson.github.io/), to whom any feedback should be sent. I'd like to thank Quentin Corradi, Archie Crichton, Yann Herklotz, William Huynh, James Nock, Simon Staal, and Filip Wojcicki for making many contributions to this repository over several years, such as improving the compiler-testing scripts, providing a basic "getting started" compiler, writing instructions for setting up development environments on a variety of operating systems, configuring automation using GitHub actions, and setting up coverage testing.
