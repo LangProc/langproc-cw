@@ -24,7 +24,7 @@ For simplicity, I will be assuming that you are in a
 [Unix](https://en.wikipedia.org/wiki/Unix)-based environment.
 
 In the case that the tools here will not fit your problems / needs,  it
-_does_ help to simply lookup "How to fix XXXX" in a search
+_does_ help to simply lookup "How to fix XXXX" (or just the error message you get) in a search
 engine. You might be surprised by the results (This is how I found out about
 valgrind, one of the tools presented below).
 
@@ -33,17 +33,19 @@ valgrind, one of the tools presented below).
 If you have programmed in languages like Python or Java, you will be
 familiar with backtraces when your program crashes.
 
-```
+### In Python ([example-backtrace-1.py](./example-backtrace-1.py))
+```console
 fyquah@olaf$ python3 example-backtrace-1.py
-# in python (example-1.py)
 Traceback (most recent call last):
   File "example-1.py", line 9, in <module>
     main()
   File "example-1.py", line 5, in main
     x += a[i]
 IndexError: list index out of range
+```
 
-# in Java (Example2.java)
+### In Java ([ExampleBacktrace2.java](./ExampleBacktrace2.java))
+```console
 fyquah@olaf$ java Example2
 Exception in thread "main" java.lang.StackOverflowError
 	at Example2.fibonaci(Example2.java:5)
@@ -52,52 +54,36 @@ Exception in thread "main" java.lang.StackOverflowError
         ....
 	at Example2.fibonaci(Example2.java:5)
 	at Example2.fibonaci(Example2.java:5)
+```
 
-# In C++, however ... :(  <-- this is a sad emoji
-fyquah@olaf: debugging $ ./example-backtrace-3
+### In C++, however ... ([example-backtrace-3.cpp](./example-backtrace-3.cpp)) 
+```console
+fyquah@olaf$ ./example-backtrace-3
 Segmentation fault
 ```
 
 Having a backtraces is incredibly helpful, as it helps you pinpoint where in
 the code did the program crash. To get something similar in C/C++:
 
-- Make sure you compile your object files with the `-g` flag. Read the g++'s
-  manual pages (`man g++`) to see what this flag does. There are many ways
-  to encode source information within binaries, one of the most popular
-  ways is to use [DWARF](http://dwarfstd.org) (You are not required to
-  understand how DWARF works, but nevertheless,
-  [this introduction on DWARF](http://dwarfstd.org/doc/Debugging%20using%20DWARF-2012.pdf)
-  is quite an entertaining read)
-- Compilers allow you to compile your code with different levels of
-  optimisation, e.g. `-O0` for fast compilation or `-O3` for agressive
-  optimisation. When debugging, DO NOT compile with `-O3`. While debuggers may still work,
-  they will most likely not yield much useful information.
+- Make sure you compile your object files with the `-g` flag. This essentially compiles your code with debug symbols, which will make the information available to a debugger like `gdb`.   
+  - If you'd like, read `g++`'s manual pages (`man g++`) to learn more about what this flag does. There are many ways to encode source information within binaries, one of the most popular ways is to use [DWARF](http://dwarfstd.org) (You are not required to understand how DWARF works, but nevertheless, [this introduction on DWARF](http://dwarfstd.org/doc/Debugging%20using%20DWARF-2012.pdf) is quite an entertaining read)
+- Compilers allow you to compile your code with different levels of optimisation, e.g. `-O0` for fast compilation or `-O3` for aggressive optimisation. When debugging, compile with `-O0`. While debuggers may still work with optimisation enabled (i.e. `-O1` or higher), they will most likely not yield much useful information.
 - Execute your binary with a [debugger](https://en.wikipedia.org/wiki/Debugger)
 
 Your choice of debuggers are as follows:
 
-- On Linux, the GNU debugger (commonly referred to as `gdb`) should work out
-  of the box. The EE lab machines are setup with `gdb`. However, should you need
-  to install it yourself, most Linux distributions will have `gdb` as part of their
-  package managers and can easily be installed using `apt-get`.
-- On MacOS, you can either use `lldb`, using this
-  [command translation table](https://lldb.llvm.org/lldb-gdb.html)
-  OR you can also try installing `gdb` and
-  [code signing it](https://gist.github.com/gravitylow/fb595186ce6068537a6e9da6d8b5b96d).
-  It is recommended to stick with `lldb` as code signing `gdb`
-  can be a troublesome process.
+- On Linux, the GNU debugger (commonly referred to as `gdb`) should work out of the box and is pre-installed in the Docker container. However, should you need to install it yourself, most Linux distributions will have `gdb` as part of their package managers and can easily be installed using `apt-get`.
+  - Most IDEs will provide debugger support via gdb integration. If you're using VSCode, we've already provided a debugging configuration in [launch.json](../.vscode/launch.json), which will run your compiler on [example.c](../compiler_tests/_example/example.c). You can change the testcase it runs on by specifying it in the `args` list. See [the VSCode docs](https://code.visualstudio.com/docs/editor/debugging) on how you can use it, it essentially gives you the same functionality as `gdb` on the command line, but with a much nicer user interface.
+- On MacOS, you can either use `lldb`, using this [command translation table](https://lldb.llvm.org/lldb-gdb.html) OR you can also try installing `gdb` and [code signing it](https://gist.github.com/gravitylow/fb595186ce6068537a6e9da6d8b5b96d). It is recommended to stick with `lldb` as code signing `gdb` can be a troublesome process.
 
-*The following text will assume you are using gdb.*
+*The following text will assume you are using `gdb` on the command line.*
 
-There is a little program called [example-backtrace-3.cpp](./example-backtrace-3.cpp) which
-takes a list of numbers as its input arguments sorts them, and outputs the
-last element of the list. There is a bug in the program that will result in
-a segmentaion fault (Exercise: Spot the bug).
+There is a little program called [example-backtrace-3.cpp](./example-backtrace-3.cpp) which takes a list of numbers as its input arguments sorts them, and outputs the last element of the list. There is a bug in the program that will result in a segmentation fault (Exercise: Spot the bug).
 
 To view a backtrace when running a program, 
 
-```bash
-fyquah@olaf: debugging $ gdb --args ./example-3
+```console
+fyquah@olaf$ gdb --args ./example-3
 GNU gdb (GDB) 8.0
 Copyright (C) 2017 Free Software Foundation, Inc.
 License GPLv3+: GNU GPL version 3 or later <http://gnu.org/licenses/gpl.html>
@@ -128,11 +114,9 @@ Program received signal SIGSEGV, Segmentation fault.
 
 This follows the following steps: 
 
-- Start `gdb` whilst specifying the target binary (and optionally
-  command line arguments)
+- Start `gdb` whilst specifying the target binary (and optionally command line arguments)
 - Call `run` to execute the program
-- Your program crashes (or suceededs, in which it you don't need to do
-  anything)
+- Your program crashes (or suceededs, in which it you don't need to do anything)
 - Call `bt` 
 - Marvel in the abilities of debuggers -- "You can do that in C++??"
 - (Optional) Print some variables to figure out the source of the problem
@@ -147,7 +131,7 @@ There is a lot more you can do with  gdb, like printing variables, calling
 functions, inserting breakpoints or even manually step through your code.
 A little demo of some of its features:
 
-```bash
+```console
 (gdb) call (int) printf("%d\n", argc)
 1
 $11 = 2
@@ -164,51 +148,28 @@ $14 = {<std::_Vector_base<int, std::allocator<int> >> = {_M_impl = {<std::alloca
 $1 = 99
 ```
 
-I hope this convinces you that figuring out how to use GDB is better than
-writing random print statements in your program. 
+I hope this convinces you that figuring out how to use GDB is better than writing random print statements in your program. 
 
-- It saves you a lot of time because you don't have to insert random
-  print statements until you find the source of the bug. (Think `O(log N)`
-  vs `O(1)`)
-- It saves you a lot of time because you don't have to remove the print
-  statements later
-- It saves you a lot of time because you can thoroughly examine the problem
-  at the crash site.
-- It saves you a lot of time because you don't have to add print statements
-  at the crash site to figure out the variables' values.
-- It saves you a lot of time because you don't have to remove those
-  print statements too.
+- It saves you a lot of time because you don't have to insert random print statements until you find the source of the bug. (Think `O(log N)` vs `O(1)`)
+- It saves you a lot of time because you don't have to remove the print statements later
+- It saves you a lot of time because you can thoroughly examine the problem at the crash site.
+- It saves you a lot of time because you don't have to add print statements at the crash site to figure out the variables' values.
+- It saves you a lot of time because you don't have to remove those print statements too.
 
-GDB is an extremely powerful tool, that you can use to debug embedded
-applications over USB or running applications over the network. One of
-the most interesting "inception-like" use cases I have heard of is getting
-the values of registers in a coprocessor, in a VM, nested within 3 ssh
-sessions.
+GDB is an extremely powerful tool, that you can use to debug embedded applications over USB or running applications over the network. One of the most interesting "inception-like" use cases I have heard of is getting the values of registers in a coprocessor, in a VM, nested within 3 ssh sessions.
 
 ## Valgrind
 
-[Valgrind](http://valgrind.org) is a dynamic analysis tool to help with various
-issues, such as threading bugs, memory management issues, cache-profiling
-and heap-profiling. We are primarily interested in memory checking (Memcheck)
-using dynamic analysis that helps us detect memory errors. Valgrind is available
-in most linux distributions.
+[Valgrind](http://valgrind.org) is a dynamic analysis tool to help with various issues, such as threading bugs, memory management issues, cache-profiling and heap-profiling. We are primarily interested in memory checking (Memcheck) using dynamic analysis that helps us detect memory errors. Valgrind is available in most linux distributions.
 
-Valgrind, unfortunately, is not available in EEE lab machines. However, it
-is available with package managers in most linux distribution. You should be
-able to install valgrind from package managers, eg:
-`sudo apt-get install valgrind`. You can also
-[download valgrind](http://valgrind.org/downloads/current.html) and compile
-it from source.
+Valgrind should come pre-installed in your Docker container, and you should be able to install `valgrind` from package managers, eg: `sudo apt-get install valgrind` on most linux distributions. You can also [download valgrind](http://valgrind.org/downloads/current.html) and compile it from source.
 
-Consider the example in [example-leak.c](./example-leak.c). There are two
-two problems with the code: (1) `n5->left` and `n5->right` are not
-assigned appropriately and (2) `n5` is not allocated enough memory (as `sizeof(int)` <
-`sizeof(struct tree_t)`. Surprisingly enough, the code doesn't always crash.
+Consider the example in [example-leak.c](./example-leak.c). There are two two problems with the code: (1) `n5->left` and `n5->right` are not assigned appropriately and (2) `n5` is not allocated enough memory (as `sizeof(int)` < `sizeof(struct tree_t)`. Surprisingly enough, the code doesn't always crash.
 
-```bash
-fyquah@olaf: debugging $ make example-leak
+```console
+fyquah@olaf$ make example-leak
 cc -Wall -g example-leak.c -o example-leak
-fyquah@olaf: debugging $ ./example-leak 
+fyquah@olaf$ ./example-leak 
         6
     5
         8
@@ -217,21 +178,12 @@ fyquah@olaf: debugging $ ./example-leak
     7
 ```
 
-There are various explainations you can give as to why this program doesn't
-crash, but this is not a behaviour you should not rely upon.
-[This stackoverflow post](https://stackoverflow.com/questions/8029584/why-does-malloc-initialize-the-values-to-0-in-gcc/8029624#8029624)
-gives insight as to why the values are zero-ed out and why there wasn't a
-segmentation fault, which explains why the program the pointer didn't end up
-derefencing a jiberrish pointer. As to why the memory access didn't result
-in a segmentation fault due to accessing unallocated memory, try to recall
-how memory and page tables are organised in an operating system).
+There are various explainations you can give as to why this program doesn't crash, but this is not a behaviour you should not rely upon. [This stackoverflow post](https://stackoverflow.com/questions/8029584/why-does-malloc-initialize-the-values-to-0-in-gcc/8029624#8029624) gives insight as to why the values are zero-ed out and why there wasn't a segmentation fault, which explains why the program the pointer didn't end up dereferencing a gibberish pointer. As to why the memory access didn't result in a segmentation fault due to accessing unallocated memory, try to recall how memory and page tables are organised in an operating system).
 
-To rectify this memory problem, we can use valgrind
-to diagnose the source of the problem:
+To rectify this memory problem, we can use valgrind to diagnose the source of the problem:
 
-
-```bash
-fyquah@olaf: debugging $ valgrind ./example-leak
+```console
+fyquah@olaf$ valgrind ./example-leak
 ==7177== Memcheck, a memory error detector
 ==7177== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
 ==7177== Using Valgrind-3.13.0 and LibVEX; rerun with -h for copyright info
@@ -282,19 +234,15 @@ fyquah@olaf: debugging $ valgrind ./example-leak
 
 There are two main things happening:
 
-1. There are two error messages about the addresses with an incorrect amount of 
-   memory allocated. This is an extremely good demonstration of the power of
-   valgrind - (a) It tells you when. (Thought exercise: Where did the numbers,
-   "Address 0x5203228 is 4 bytes" and "Address 0x5203230 is 12 bytes"
-   come from?)
+1. There are two error messages about the addresses with an incorrect amount of memory allocated. This is an extremely good demonstration of the power of valgrind - (a) It tells you when. (Thought exercise: Where did the numbers, "Address 0x5203228 is 4 bytes" and "Address 0x5203230 is 12 bytes" come from?)
 2. Memory leak (as expected), as we are not de-allocating memory ourselves.
 
 Let's fix the `malloc` call and set the argument to the right size, then
 see what happens:
 
-```
-fyquah@olaf: debugging $ make example-leak
-fyquah@olaf: debugging $ valgrind ./example-leak
+```console
+fyquah@olaf$ make example-leak
+fyquah@olaf$ valgrind ./example-leak
 ==7892== Memcheck, a memory error detector
 ==7892== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
 ==7892== Using Valgrind-3.13.0 and LibVEX; rerun with -h for copyright info
@@ -346,9 +294,9 @@ valgrind alone and it is more likely that gdb will be more useful
 Anyways, if we fix the assignments (by assigning `n5->left` and `n5->right`
 to NULL), we are left with:
 
-```bash
-fyquah@olaf: debugging $ make example-leak
-fyquah@olaf: debugging $ valgrind ./example-leak
+```console
+fyquah@olaf$ make example-leak
+fyquah@olaf$ valgrind ./example-leak
 ==8192== Memcheck, a memory error detector
 ==8192== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
 ==8192== Using Valgrind-3.13.0 and LibVEX; rerun with -h for copyright info
@@ -377,72 +325,44 @@ fyquah@olaf: debugging $ valgrind ./example-leak
 ==8192== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
 ```
 
-The only problem left will be memory leaks. It is not reported as an error
-because it is often the case that heap memory freed simply by program
-termination is sufficient.
+The only problem left will be memory leaks. It is not reported as an error because this heap memory is still freed by the operating system once the program terminates, but it is bad practice, and can easily be avoided by following the [RAII paradigm](https://en.wikipedia.org/wiki/Resource_acquisition_is_initialization).
 
-Unless you are writing your compiler in C (or C++ that looks like C), the
-main avenue in which you will bump into the memory block size issue is in the
-following type of code:
+Unless you are writing your compiler in C (or C++ that looks like C), the main avenue in which you will bump into the memory block size issue is in the following type of code:
 
 ```C++
 class Statement : public Node {
  ...
 }
 
-static void
-some_function()
+static void some_function()
 {
   Node *node = node;
-  Statement *stmt = (Staement*) node;  // This is an invariant: I know what I am doing
+  Statement *stmt = (Statement*) node;  // This is an invariant: I know what I am doing
 }
 ```
 
-In most cases, you actually don't know what you are doing. For that reason,
-you really should avoid such casts when you can. Unfortunately, compiler
-authors, inevitably, write compilers with a lot of hand-maintained
-invariants. When you see yourself writing a type-cast as such in your code,
-it is worth asking yourself whether it is possible to modify your code slightly
-to avoid this cast altogether. If that's not trivially possible and you have
-to perform type-casting, use `static_cast<>` or `dynamic_cast<>`
-(See [this stackoverflow post](https://stackoverflow.com/a/1255015)
-for an explaination on their differences).
+In most cases, you actually don't know what you are doing. For that reason, you really should avoid such casts when you can. Unfortunately, compiler authors, inevitably, write compilers with a lot of hand-maintained invariants. When you see yourself writing a type-cast as such in your code, it is worth asking yourself whether it is possible to modify your code slightly to avoid this cast altogether. If that's not trivially possible and you have to perform type-casting, use `static_cast<>` or `dynamic_cast<>` (See [this stackoverflow post](https://stackoverflow.com/a/1255015) for an explanation on their differences).
 
 ## Static Analysis
 
-Valgrind and GDB falls under the category of dynamic analysis, where 
-the program is run and information gained at runtime is used to search for errors.
-Another common form of program analysis is [static analysis](https://en.wikipedia.org/wiki/Static_program_analysis),
-where the analysers checks for problems in your code without
-executing it. There are a lot of tools available (for free!) to perform
-such types of analysis. Some are built into modern IDEs such as XCode, while 
-others require some form of setup. We will limit our discussion to one
-specific tool, the [clang static analyser](https://clang-analyzer.llvm.org/).
+Valgrind and GDB falls under the category of dynamic analysis, where  the program is run and information gained at runtime is used to search for errors. Another common form of program analysis is [static analysis](https://en.wikipedia.org/wiki/Static_program_analysis), where the analysers checks for problems in your code without executing it. There are a lot of tools available (for free!) to perform such types of analysis. Some are built into modern IDEs such as XCode, while 
+others require some form of setup. We will limit our discussion to one specific tool, the [clang static analyser](https://clang-analyzer.llvm.org/).
 
-The clang static analyser generates a really nice web UI for you to navigate
-through errors. Static analyser tools in general have very low
-false positive rates. That is, they may not necessarily report all errors,
-but all errors they report are very likely to be genuine errors.
+The clang static analyser generates a really nice web UI for you to navigate through errors. Static analyser tools in general have very low false positive rates. That is, they may not necessarily report all errors, but all errors they report are very likely to be genuine errors.
 
-Similar to valgrind, the clang static analyser is not setup in the EEE lab
-machines. To install the clang static analyser, you should install
-[clang](https://clang.llvm.org/) using your package manager. In Ubuntu,
-it ought to be as simple as `sudo apt-get install clang`. (Compiling
+Similar to valgrind, the clang static analyser should also be included in your Docker container. To install the clang static analyser yourself, you should install [clang](https://clang.llvm.org/) using your package manager. In Ubuntu, it ought to be as simple as `sudo apt-get install clang`. (Compiling
 clang from source is a bit tricky, and not recommended).
 
 Setting up the clang static analyser is surprisingly simple:
 
 0. Install the `clang` and `llvm` toolchains on your local setup.
 1. Run `scan-build make your_make_target`
-2. Wait for compilation. You will notice that compilation is noticeably
-   slower due to the static analyser running simultaneously to the compiler.
-3. You will get a message telling you how many errors were found and how to
-   view them.
-4. You can either call `scan-view` as instructed, or simply navigate to
-   `/tmp/scan-build-XXXXXXX/index.html` on your web browser.
+2. Wait for compilation. You will notice that compilation is noticeably slower due to the static analyser running simultaneously to the compiler.
+3. You will get a message telling you how many errors were found and how to view them.
+4. You can either call `scan-view` as instructed, or simply navigate to `/tmp/scan-build-XXXXXXX/index.html` on your web browser.
 
-```
-fyquah@olaf: project $ scan-build make
+```console
+fyquah@olaf$ scan-build make
 scan-build: Using '/usr/bin/clang-4.0' for static analysis
 flex -o src/c_lexer.yy.c src/c_lexer.lex
 .... (snip) ...

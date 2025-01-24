@@ -21,7 +21,9 @@ RUN apt-get update && apt-get install -y --fix-missing \
     device-tree-compiler \
     lcov \
     nano \
-    valgrind
+    valgrind \
+    clang \
+    bear
 
 # Install RISC-V Toolchain
 WORKDIR /tmp
