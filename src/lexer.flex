@@ -7,6 +7,9 @@
   extern "C" int fileno(FILE *stream);
 
   #include "parser.tab.hpp"
+
+  // Suppress warning about unused function
+  [[maybe_unused]] static void yyunput (int c, char * yy_bp );
 %}
 
 D	  [0-9]

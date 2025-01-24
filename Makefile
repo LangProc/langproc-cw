@@ -2,10 +2,9 @@
 
 CXXFLAGS := -std=c++20 # use the 2020 version of the C++ standard
 CXXFLAGS += -g # generate debugging information
-CXXFLAGS += -Wall # enable most warnings, except those about ...
-CXXFLAGS += -Wno-unused-parameter # ... unused function parameters, ...
-CXXFLAGS += -Wno-unused-variable # ... unused variables, ...
-CXXFLAGS += -Wno-unused-function # ... or unused functions.
+CXXFLAGS += -Wall # enable most warnings
+CXXFLAGS += -Wextra # enable extra warnings
+CXXFLAGS += -Werror # treat all warnings as errors
 CXXFLAGS += -fsanitize=address # enable address sanitization
 CXXFLAGS += -static-libasan # statically link with Address Sanitizer
 CXXFLAGS += -O0 # perform minimal optimisations
