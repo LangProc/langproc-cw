@@ -2,7 +2,7 @@
 
 namespace ast {
 
-void Identifier::EmitRISC(std::ostream& stream, Context& context) const
+void Identifier::EmitRISC(std::ostream& stream, Context&) const
 {
     stream << identifier_;
 }
