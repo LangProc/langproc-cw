@@ -4,21 +4,21 @@
 // rename parser_full.y to parser.y once you're happy with
 // how this example works.
 
-%code requires{
-    #include "ast.hpp"
-
+%code requires {
+	#include "ast.hpp"
 	using namespace ast;
 
-    extern Node* g_root;
-    extern FILE* yyin;
-    int yylex(void);
-    void yyerror(const char*);
+	extern Node* g_root;
+	extern FILE* yyin;
+
+	int yylex(void);
+	void yyerror(const char*);
 	int yylex_destroy(void);
 }
 
-%union{
-  Node*				node;
-  NodeList*			node_list;
+%union {
+  Node*				    node;
+  NodeList*			  node_list;
   int          		number_int;
   double       		number_float;
   std::string*		string;
@@ -51,7 +51,7 @@
 %%
 
 ROOT
-    : translation_unit { g_root = $1; }
+	: translation_unit { g_root = $1; }
 
 translation_unit
 	: external_declaration { $$ = $1; }
@@ -190,13 +190,16 @@ Node* g_root;
 NodePtr ParseAST(std::string file_name)
 {
   yyin = fopen(file_name.c_str(), "r");
-  if(yyin == NULL){
+  if (yyin == nullptr) {
     std::cerr << "Couldn't open input file: " << file_name << std::endl;
-    exit(1);
+    std::exit(1);
   }
+
   g_root = nullptr;
   yyparse();
+
   fclose(yyin);
   yylex_destroy();
+
   return NodePtr(g_root);
 }
