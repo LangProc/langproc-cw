@@ -1,15 +1,17 @@
 %option noyywrap
+%option yylineno
 
 %{
   // A lot of this lexer is based off the ANSI C grammar:
-  // https://www.lysator.liu.se/c/ANSI-C-grammar-l.html#MUL-ASSIGN
-  // Avoid error "error: `fileno' was not declared in this scope"
+  // https://www.lysator.liu.se/c/ANSI-C-grammar-l.html
+
+  // Avoids error "error: `fileno' was not declared in this scope"
   extern "C" int fileno(FILE *stream);
 
   #include "parser.tab.hpp"
 
   // Suppress warning about unused function
-  [[maybe_unused]] static void yyunput (int c, char * yy_bp );
+  [[maybe_unused]] static void yyunput (int c, char * yy_bp);
 %}
 
 D	  [0-9]
@@ -120,8 +122,9 @@ L?\"(\\.|[^\\"])*\"	{/* TODO process string literal */; return(STRING_LITERAL);}
 
 %%
 
-void yyerror (char const *s)
+void yyerror (const char *s)
 {
-  fprintf(stderr, "Lexing error: %s\n", s);
-  exit(1);
+  std::cerr << "Error: " << s << " at line " << yylineno;
+  std::cerr << " near '" << yytext << "'" << std::endl;
+  std::exit(1);
 }
