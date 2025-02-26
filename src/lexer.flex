@@ -118,13 +118,6 @@ L?\"(\\.|[^\\"])*\"	{/* TODO process string literal */; return(STRING_LITERAL);}
 "?"			   {return('?');}
 
 [ \a\b\t\v\f\n\r]		{/* ignore new lines and special sequences */}
-.			              {/* ignore bad characters */}
+.			              {std::cerr << "Unknown token: " << yytext << std::endl; return(UNKNOWN);}
 
 %%
-
-void yyerror (const char *s)
-{
-  std::cerr << "Error: " << s << " at line " << yylineno;
-  std::cerr << " near '" << yytext << "'" << std::endl;
-  std::exit(1);
-}
