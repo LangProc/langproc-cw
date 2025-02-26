@@ -8,6 +8,8 @@
 	#include "ast.hpp"
 	using namespace ast;
 
+	extern int yylineno;
+	extern char* yytext;
 	extern Node* g_root;
 	extern FILE* yyin;
 
@@ -15,6 +17,9 @@
 	void yyerror(const char*);
 	int yylex_destroy(void);
 }
+
+%define parse.error detailed
+%define parse.lac full
 
 %union {
   Node*				    node;
@@ -33,6 +38,7 @@
 %token CHAR SHORT INT LONG SIGNED UNSIGNED FLOAT DOUBLE CONST VOLATILE VOID
 %token STRUCT UNION ENUM ELLIPSIS
 %token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
+%token UNKNOWN
 
 %type <node> translation_unit external_declaration function_definition primary_expression postfix_expression
 %type <node> unary_expression cast_expression multiplicative_expression additive_expression shift_expression relational_expression
@@ -184,6 +190,13 @@ expression
 	;
 
 %%
+
+void yyerror (const char *s)
+{
+  std::cerr << "Error: " << s << " at line " << yylineno;
+  std::cerr << " near '" << yytext << "'" << std::endl;
+  std::exit(1);
+}
 
 Node* g_root;
 
