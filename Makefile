@@ -18,9 +18,9 @@ DEPENDENCIES := $(patsubst src/%.cpp,build/%.d,$(SOURCES))
 OBJECTS := $(patsubst src/%.cpp,build/%.o,$(SOURCES))
 OBJECTS += build/parser.tab.o build/lexer.yy.o
 
-.PHONY: default clean coverage
+.PHONY: default clean coverage remove_old_gcda
 
-default: bin/c_compiler
+default: remove_old_gcda bin/c_compiler
 
 bin/c_compiler: $(OBJECTS)
 	@mkdir -p bin
@@ -45,6 +45,9 @@ coverage:
 	@mkdir -p coverage
 	lcov -c --no-external --exclude "`pwd`/src/lexer.*" --exclude "`pwd`/src/parser.*" --exclude "`pwd`/build/*" -d . -o coverage/cov.info
 	genhtml coverage/cov.info -o coverage
+	@find . -name "*.gcda" -delete
+
+remove_old_gcda:
 	@find . -name "*.gcda" -delete
 
 clean :
