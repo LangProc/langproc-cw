@@ -1,19 +1,24 @@
 // Adapted from: https://www.lysator.liu.se/c/ANSI-C-grammar-y.html
 
-%code requires{
-    #include "ast.hpp"
-
+%code requires {
+	#include "ast.hpp"
 	using namespace ast;
 
-    extern Node* g_root;
-    extern FILE* yyin;
-    int yylex(void);
-    void yyerror(const char*);
+	extern int yylineno;
+	extern char* yytext;
+	extern Node* g_root;
+	extern FILE* yyin;
+
+	int yylex(void);
+	void yyerror(const char*);
 	int yylex_destroy(void);
 }
 
+%define parse.error detailed
+%define parse.lac full
+
 // Represents the value associated with any kind of AST node.
-%union{
+%union {
   Node*        	node;
   NodeList*    	node_list;
   int          	number_int;
@@ -30,6 +35,7 @@
 %token CHAR SHORT INT LONG SIGNED UNSIGNED FLOAT DOUBLE CONST VOLATILE VOID
 %token STRUCT UNION ENUM ELLIPSIS
 %token CASE DEFAULT IF ELSE SWITCH WHILE DO FOR GOTO CONTINUE BREAK RETURN
+%token UNKNOWN
 
 %type <node> translation_unit external_declaration function_definition primary_expression postfix_expression argument_expression_list
 %type <node> unary_expression cast_expression multiplicative_expression additive_expression shift_expression relational_expression
@@ -462,18 +468,28 @@ jump_statement
 
 %%
 
+void yyerror (const char *s)
+{
+  std::cerr << "Error: " << s << " at line " << yylineno;
+  std::cerr << " near '" << yytext << "'" << std::endl;
+  std::exit(1);
+}
+
 Node* g_root;
 
 NodePtr ParseAST(std::string file_name)
 {
   yyin = fopen(file_name.c_str(), "r");
-  if(yyin == NULL){
+  if (yyin == nullptr) {
     std::cerr << "Couldn't open input file: " << file_name << std::endl;
-    exit(1);
+    std::exit(1);
   }
+
   g_root = nullptr;
   yyparse();
+
   fclose(yyin);
   yylex_destroy();
+
   return NodePtr(g_root);
 }

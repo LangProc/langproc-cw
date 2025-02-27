@@ -42,7 +42,7 @@ int main(int argc, char **argv)
 
 NodePtr Parse(const std::string& compile_source_path)
 {
-    std::cout << "Parsing ..." << compile_source_path << std::endl;
+    std::cout << "Parsing " << compile_source_path << "..." << std::endl;
 
     NodePtr root = ParseAST(compile_source_path);
 
