@@ -5,8 +5,10 @@ CXXFLAGS += -g # generate debugging information
 CXXFLAGS += -Wall # enable most warnings
 CXXFLAGS += -Wextra # enable extra warnings
 CXXFLAGS += -Werror # treat all warnings as errors
-CXXFLAGS += -fsanitize=address # enable address sanitization
+CXXFLAGS += -fsanitize=address -fsanitize-recover=address # enable address sanitization
 CXXFLAGS += -static-libasan # statically link with Address Sanitizer
+CXXFLAGS += -fsanitize=leak # enable leak sanitization
+CXXFLAGS += -fsanitize=undefined # enable undefined behaviour sanitization
 CXXFLAGS += -O0 # perform minimal optimisations
 CXXFLAGS += -rdynamic # to get more helpful traces when debugging
 CXXFLAGS += --coverage # enable code coverage
