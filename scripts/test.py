@@ -27,6 +27,7 @@ import sys
 import argparse
 import shutil
 import subprocess
+from glob import glob
 from dataclasses import dataclass
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from pathlib import Path
@@ -37,11 +38,12 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 RED = "\033[31m"
 GREEN = "\033[32m"
+YELLOW = "\033[33m"
 RESET = "\033[0m"
 
 if not sys.stdout.isatty():
     # Don't output colours when we're not in a TTY
-    RED, GREEN, RESET = "", "", ""
+    RED, GREEN, YELLOW, RESET = "", "", "", ""
 
 # "File" will suggest the absolute path to the file, including the extension.
 SCRIPT_LOCATION = Path(__file__).resolve().parent
@@ -61,17 +63,18 @@ TIMEOUT_RETURNCODE = 124
 class Result:
     """Class for keeping track of each test case result"""
     test_case_name: str
-    passed: bool
     return_code: int
     timeout: bool
     error_log: Optional[str]
 
+    def passed(self) -> bool:
+        return self.return_code == 0
+
     def to_xml(self) -> str:
-        if self.passed:
-            return (
-                f'<testcase name="{self.test_case_name}">\n'
-                f'</testcase>\n'
-            )
+        if self.passed():
+            return f'<testcase name="{self.test_case_name}">\n' \
+                + ('' if self.error_log is None else f'<system-out>{self.error_log}</system-out>\n') \
+                + f'</testcase>\n'
 
         timeout = "[TIMED OUT] " if self.timeout else ""
         attribute = xmlquoteattr(timeout + self.error_log)
@@ -84,9 +87,11 @@ class Result:
 
     def to_log(self) -> str:
         timeout = "[TIMED OUT] " if self.timeout else ""
-        if self.passed:
+        if self.return_code != 0:
+            return f'{self.test_case_name}\n{RED}{timeout + self.error_log}{RESET}\n'
+        if self.error_log is None:
             return f'{self.test_case_name}\n\t> {GREEN}Pass{RESET}\n'
-        return f'{self.test_case_name}\n{RED}{timeout + self.error_log}{RESET}\n'
+        return f'{self.test_case_name}\n\t> {YELLOW}{self.error_log}{RESET}\n'
 
 class JUnitXMLFile():
     def __init__(self, path: Path):
@@ -204,13 +209,13 @@ def run_test(driver: Path) -> Result:
     shutil.rmtree(log_path.parent, ignore_errors=True)
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
+    def relevant_files(component):
+        return f"\n\t {log_path}.{component}.stderr.log \n\t {log_path}.{component}.stdout.log"
+
     # Modifying environment to combat errors on memory leak
     custom_env = os.environ.copy()
-    custom_env["ASAN_OPTIONS"] = "exitcode=0"
-
-    def relevant_files(component):
-        return f"{log_path}.{component}.stderr.log \n\t {log_path}.{component}.stdout.log"
-    compiler_log_file_str=f"{relevant_files('compiler')} \n\t {log_path}.s \n\t {log_path}.s.printed"
+    custom_env["ASAN_OPTIONS"] = f"halt_on_error=0:log_path={log_path}.asan.log"
+    custom_env["UBSAN_OPTIONS"] = f"log_path={log_path}.ubsan.log"
 
     # Compile
     return_code, _, timed_out = run_subprocess(
@@ -219,9 +224,12 @@ def run_test(driver: Path) -> Result:
         env=custom_env,
         log_path=f"{log_path}.compiler",
     )
+    sanitizer_file_list = glob(f"{log_path}.*san.log.*")
+    compiler_log_file_str = f"{relevant_files('compiler')} \n\t {log_path}.s \n\t {log_path}.s.printed" \
+        + "".join("\n\t " + p for p in sanitizer_file_list)
     if return_code != 0:
-        msg = f"\t> Failed to compile testcase: \n\t {compiler_log_file_str}"
-        return Result(test_case_name=test_name, return_code=return_code, passed=False, timeout=timed_out, error_log=msg)
+        msg = f"\t> Failed to compile testcase: {compiler_log_file_str}"
+        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
 
     # GCC Reference Output
     return_code, _, timed_out = run_subprocess(
@@ -233,8 +241,8 @@ def run_test(driver: Path) -> Result:
         log_path=f"{log_path}.reference",
     )
     if return_code != 0:
-        msg = f"\t> Failed to generate reference: \n\t {compiler_log_file_str} \n\t {relevant_files('reference')}"
-        return Result(test_case_name=test_name, return_code=return_code, passed=False, timeout=timed_out, error_log=msg)
+        msg = f"\t> Failed to generate reference: {compiler_log_file_str} {relevant_files('reference')}"
+        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
 
     # Assemble
     return_code, _, timed_out = run_subprocess(
@@ -246,8 +254,8 @@ def run_test(driver: Path) -> Result:
         log_path=f"{log_path}.assembler",
     )
     if return_code != 0:
-        msg = f"\t> Failed to assemble: \n\t {compiler_log_file_str} \n\t {relevant_files('assembler')}"
-        return Result(test_case_name=test_name, return_code=return_code, passed=False, timeout=timed_out, error_log=msg)
+        msg = f"\t> Failed to assemble: {compiler_log_file_str} {relevant_files('assembler')}"
+        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
 
     # Link
     return_code, _, timed_out = run_subprocess(
@@ -259,8 +267,8 @@ def run_test(driver: Path) -> Result:
         log_path=f"{log_path}.linker",
     )
     if return_code != 0:
-        msg = f"\t> Failed to link driver: \n\t {compiler_log_file_str} \n\t {relevant_files('linker')}"
-        return Result(test_case_name=test_name, return_code=return_code, passed=False, timeout=timed_out, error_log=msg)
+        msg = f"\t> Failed to link driver: {compiler_log_file_str} {relevant_files('linker')}"
+        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
 
     # Simulate
     return_code, _, timed_out = run_subprocess(
@@ -269,10 +277,11 @@ def run_test(driver: Path) -> Result:
         log_path=f"{log_path}.simulation",
     )
     if return_code != 0:
-        msg = f"\t> Failed to simulate: \n\t {compiler_log_file_str} \n\t {relevant_files('simulation')}"
-        return Result(test_case_name=test_name, return_code=return_code, passed=False, timeout=timed_out, error_log=msg)
+        msg = f"\t> Failed to simulate: {compiler_log_file_str} {relevant_files('simulation')}"
+        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
 
-    return Result(test_case_name=test_name, return_code=return_code, passed=True, timeout=False, error_log="")
+    msg = "Sanitizer warnings: " + " ".join(sanitizer_file_list) if len(sanitizer_file_list) != 0 else None
+    return Result(test_case_name=test_name, return_code=return_code, timeout=False, error_log=msg)
 
 def run_subprocess(
     cmd: List[str],
@@ -330,8 +339,10 @@ def make(silent: bool) -> bool:
     Return True if successful, False otherwise
     """
     print(GREEN + "Running make..." + RESET)
+    custom_env = os.environ.copy()
+    custom_env["DEBUG"] = "1"
     return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", PROJECT_LOCATION, "build/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, silent=silent
+        cmd=["make", "-C", PROJECT_LOCATION, "build/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, silent=silent, env=custom_env
     )
     if return_code != 0:
         print(RED + "Error when running make:", error_msg + RESET)
@@ -369,8 +380,10 @@ def coverage() -> bool:
     Return True if successful, False otherwise
     """
     print(GREEN + "Running make coverage..." + RESET)
+    custom_env = os.environ.copy()
+    custom_env["DEBUG"] = "1"
     return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", PROJECT_LOCATION, "coverage"], timeout=BUILD_TIMEOUT_SECONDS, silent=True
+        cmd=["make", "-C", PROJECT_LOCATION, "coverage"], timeout=BUILD_TIMEOUT_SECONDS, silent=True, env=custom_env
     )
     if return_code != 0:
         print(RED + "Error when running make coverage:", error_msg + RESET)
@@ -412,7 +425,7 @@ def process_result(
         return
 
     if progress_bar:
-        progress_bar.update_with_value(result.passed)
+        progress_bar.update_with_value(result.passed())
 
     return
 
@@ -436,13 +449,13 @@ def run_tests(args, xml_file: JUnitXMLFile):
             futures = [executor.submit(run_test, driver) for driver in drivers]
             for future in as_completed(futures):
                 result = future.result()
-                results.append(result.passed)
+                results.append(result.passed())
                 process_result(result, xml_file, not args.short, progress_bar)
 
     else:
         for driver in drivers:
             result = run_test(driver)
-            results.append(result.passed)
+            results.append(result.passed())
             process_result(result, xml_file, not args.short, progress_bar)
 
     passing = sum(results)
