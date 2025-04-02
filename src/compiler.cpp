@@ -1,5 +1,6 @@
 #include <fstream>
 #include <iostream>
+#include <csignal>
 
 #include "cli.hpp"
 #include "ast.hpp"
@@ -15,8 +16,20 @@ void PrettyPrint(const NodePtr& root, const std::string& compile_output_path);
 // Compile from the root of the AST and output this to the compiledOutputPath file.
 void Compile(const NodePtr& root, const std::string& compile_output_path);
 
+// This hooks the SIGSEGV (segmentation fault) signal to dump coverage info
+extern "C" void __gcov_dump();
+void (*prev_handler)(int) = 0;
+void sigsegv_handler(int signo)
+{
+    __gcov_dump();
+	prev_handler(signo);
+}
+
 int main(int argc, char **argv)
 {
+	// Hook SIGSEGV to dump coverage info
+	prev_handler = signal(SIGSEGV, sigsegv_handler);
+
     // Parse CLI arguments to fetch the source file to compile and the path to output to.
     // This retrives [source-file.c] and [dest-file.s], when the compiler is invoked as follows:
     // ./bin/c_compiler -S [source-file.c] -o [dest-file.s]

@@ -49,7 +49,7 @@ for DRIVER in compiler_tests/${SPECIFIC_FOLDER}/*_driver.c; do
     printf '%s\n' "<testcase name=\"${TO_ASSEMBLE}\">" >> "${J_UNIT_OUTPUT_FILE}"
 
     OUT="${LOG_FILE_BASE}"
-    ASAN_OPTIONS=exitcode=0 timeout --foreground 15s ./bin/c_compiler -S "${TO_ASSEMBLE}" -o "${OUT}.s" 2> "${LOG_FILE_BASE}.compiler.stderr.log" > "${LOG_FILE_BASE}.compiler.stdout.log"
+    ASAN_OPTIONS=halt_on_error=0:log_path=${LOG_FILE_BASE}.asan.log UBSAN_OPTIONS=log_path=${LOG_FILE_BASE}.ubsan.log timeout --foreground 15s ./bin/c_compiler -S "${TO_ASSEMBLE}" -o "${OUT}.s" 2> "${LOG_FILE_BASE}.compiler.stderr.log" > "${LOG_FILE_BASE}.compiler.stdout.log"
     if [ $? -ne 0 ]; then
         fail_testcase "Failed to compile testcase: \n\t ${LOG_FILE_BASE}.compiler.stderr.log \n\t ${LOG_FILE_BASE}.compiler.stdout.log \n\t ${OUT}.s \n\t ${OUT}.s.printed"
         continue
@@ -68,15 +68,22 @@ for DRIVER in compiler_tests/${SPECIFIC_FOLDER}/*_driver.c; do
     fi
 
     timeout --foreground 15s spike pk "${OUT}" > "${LOG_FILE_BASE}.simulation.log"
-    if [ $? -eq 0 ]; then
-        echo -e "\t> Pass"
-        (( PASSING++ ))
-        printf '\n'
-
-        printf '%s\n' "</testcase>" >> "${J_UNIT_OUTPUT_FILE}"
-    else
+    if [ $? -ne 0 ]; then
         fail_testcase "Failed to simulate: simulation did not exit with code 0: \n\t ${LOG_FILE_BASE}.compiler.stderr.log \n\t ${LOG_FILE_BASE}.compiler.stdout.log \n\t ${LOG_FILE_BASE}.simulation.log \n\t ${OUT}.s \n\t ${OUT}.s.printed"
+        continue
     fi
+
+    (( PASSING++ ))
+    if [ $(find ${LOG_PATH} -name ${BASE_NAME}.*san.log.* | wc -l) -ne 0 ]; then
+        FILES=${LOG_FILE_BASE}.*san.log.*
+        MSG="Sanitizer warnings: ${FILES}"
+        echo -e "\t> ${MSG}"
+        printf '<system-out>%s</system-out>\n' "${MSG}" >> "${J_UNIT_OUTPUT_FILE}"
+    else
+        echo -e "\t> Pass"
+    fi
+    echo "</testcase>" >> "${J_UNIT_OUTPUT_FILE}"
+    printf '\n'
 done
 
 if [ "${COVERAGE:-}" == "1" ]; then
