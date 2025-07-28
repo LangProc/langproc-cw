@@ -1,7 +1,10 @@
 FROM ubuntu:22.04
 
 # Install dependencies
-RUN apt-get update && apt-get install -y --fix-missing \
+RUN rm -rf /var/lib/apt/lists/* && \
+    apt-get clean && \
+    apt-get update && \
+    apt-get install -y --fix-missing \
     git \
     lsb-release \
     python3 \
