@@ -4,16 +4,15 @@
 
 namespace ast {
 
-class ReturnStatement : public Node
-{
-private:
-    NodePtr expression_;
+class ReturnStatement : public Node {
+ private:
+  NodePtr expression_;
 
-public:
-    ReturnStatement(NodePtr expression) : expression_(std::move(expression)) {}
+ public:
+  ReturnStatement(NodePtr expression) : expression_(std::move(expression)) {}
 
-    void EmitRISC(std::ostream& stream, Context& context) const override;
-    void Print(std::ostream& stream) const override;
+  void EmitRISC(std::ostream& stream, Context& context) const override;
+  void Print(std::ostream& stream) const override;
 };
 
-} // namespace ast
+}  // namespace ast
