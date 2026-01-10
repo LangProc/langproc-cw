@@ -46,10 +46,11 @@ if not sys.stdout.isatty():
 # "File" will suggest the absolute path to the file, including the extension.
 SCRIPT_LOCATION = Path(__file__).resolve().parent
 PROJECT_LOCATION = SCRIPT_LOCATION.joinpath("..").resolve()
+BUILD_FOLDER = PROJECT_LOCATION.joinpath("build").resolve()
 OUTPUT_FOLDER = PROJECT_LOCATION.joinpath("bin/output").resolve()
 J_UNIT_OUTPUT_FILE = PROJECT_LOCATION.joinpath("bin/junit_results.xml").resolve()
 COMPILER_TEST_FOLDER = PROJECT_LOCATION.joinpath("compiler_tests").resolve()
-COMPILER_FILE = PROJECT_LOCATION.joinpath("bin/c_compiler").resolve()
+COMPILER_FILE = PROJECT_LOCATION.joinpath("build/c_compiler").resolve()
 COVERAGE_FOLDER = PROJECT_LOCATION.joinpath("coverage").resolve()
 
 BUILD_TIMEOUT_SECONDS = 60
@@ -324,13 +325,34 @@ def clean() -> bool:
 
 def make(silent: bool) -> bool:
     """
-    Wrapper for make bin/c_compiler.
+    Wrapper for make build/c_compiler.
 
     Return True if successful, False otherwise
     """
     print(GREEN + "Running make..." + RESET)
     return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", PROJECT_LOCATION, "bin/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, silent=silent
+        cmd=["make", "-C", PROJECT_LOCATION, "build/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, silent=silent
+    )
+    if return_code != 0:
+        print(RED + "Error when making:", error_msg + RESET)
+        return False
+
+    return True
+
+def cmake(silent: bool) -> bool:
+    """
+    Wrapper for cmake --build build
+
+    Return True if successful, False otherwise
+    """
+    print(GREEN + "Running make..." + RESET)
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["cmake", "-S", PROJECT_LOCATION, "-B", BUILD_FOLDER],
+        timeout=BUILD_TIMEOUT_SECONDS,
+        silent=silent
+    )
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["cmake", "--build", BUILD_FOLDER], timeout=BUILD_TIMEOUT_SECONDS, silent=silent
     )
     if return_code != 0:
         print(RED + "Error when making:", error_msg + RESET)
@@ -475,6 +497,12 @@ def parse_args():
         help="Run with coverage if you want to know which part of your code is "
         "executed when running your compiler. See docs/coverage.md"
     )
+    parser.add_argument(
+        "--use_make",
+        action="store_true",
+        default=False,
+        help="Use make to build the project instead of cmake."
+    )
     return parser.parse_args()
 
 def main():
@@ -482,13 +510,18 @@ def main():
 
     shutil.rmtree(OUTPUT_FOLDER, ignore_errors=True)
     Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
+    Path(BUILD_FOLDER).mkdir(parents=True, exist_ok=True)
 
     if not args.no_clean and not clean():
         # Clean the repo if required and exit if this fails.
         exit(2)
 
-    if not make(silent=args.short):
-        exit(3)
+    if args.use_make:
+        if not make(silent=args.short):
+            exit(3)
+    else:
+        if not cmake(silent=args.short):
+            exit(3)
 
     with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
         run_tests(args, xml_file)

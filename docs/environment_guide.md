@@ -63,7 +63,7 @@ Test successful
     ```console
     root@ad12f00322f6:/code# ./scripts/toolchain_test.sh
 
-    g++ -std=c++20 -W -Wall -g -I include -o bin/c_compiler src/cli.cpp src/compiler.cpp
+    g++ -std=c++20 -W -Wall -g -I include -o build/c_compiler src/cli.cpp src/compiler.cpp
 
     Compiling: compiler_tests/_example/example.c
     Compiled to: bin/riscv_example.s
