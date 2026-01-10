@@ -42,6 +42,7 @@ Test successful
 
 8) You might also benefit from installing VS Code extensions for C++, Lex, and Yacc for better text highlighting and easier debugging. For example, you can press F5 to start the integrated VS Code debugger. By default, this attempts to compile [compiler_tests/_example/example.c](../compiler_tests/_example/example.c), as specified in [.vscode/launch.json](../.vscode/launch.json).
 
+9) You might also like to modify the [autoformatter settings](../.clang-format) to your preference. More information can be found here: https://clang.llvm.org/docs/ClangFormat.html. This has been configured to automatically format on save. You can turn it off by modifying [.vscode/settings.json](../.vscode/settings.json).
 
 ### Another Editor + Docker
 
