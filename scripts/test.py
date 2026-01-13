@@ -7,7 +7,7 @@ Makefile, run the tests and store the outputs in bin/output.
 This script will also generate a JUnit XML file, which can be used to integrate
 with CI/CD pipelines.
 
-Usage: test.py [-h] [-m] [-s] [--version] [--no_clean] [--coverage] [dir]
+Usage: test.py [-h] [-m] [-s] [--version] [--no_clean] [--coverage] [--use_cmake] [dir]
 
 Example usage: scripts/test.py compiler_tests/_example
 
@@ -498,29 +498,29 @@ def parse_args():
         "executed when running your compiler. See docs/coverage.md"
     )
     parser.add_argument(
-        "--use_make",
+        "--use_cmake",
         action="store_true",
         default=False,
-        help="Use make to build the project instead of cmake."
+        help="Use cmake to build the project instead of make."
     )
     return parser.parse_args()
 
 def main():
     args = parse_args()
 
-    shutil.rmtree(OUTPUT_FOLDER, ignore_errors=True)
-    Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
-    Path(BUILD_FOLDER).mkdir(parents=True, exist_ok=True)
-
     if not args.no_clean and not clean():
         # Clean the repo if required and exit if this fails.
         exit(2)
 
-    if args.use_make:
-        if not make(silent=args.short):
+    shutil.rmtree(OUTPUT_FOLDER, ignore_errors=True)
+    Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
+    Path(BUILD_FOLDER).mkdir(parents=True, exist_ok=True)
+
+    if args.use_cmake:
+        if not cmake(silent=args.short):
             exit(3)
     else:
-        if not cmake(silent=args.short):
+        if not make(silent=args.short):
             exit(3)
 
     with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
