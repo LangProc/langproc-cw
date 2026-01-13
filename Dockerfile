@@ -25,7 +25,11 @@ RUN apt-get update && apt-get install -y --fix-missing \
     clang \
     ccache \
     cmake \
+    clangd-15 \
     bear
+
+# Set clangd as the default language server
+RUN update-alternatives --install /usr/bin/clangd clangd /usr/bin/clangd-15 100
 
 # Install RISC-V Toolchain
 WORKDIR /tmp

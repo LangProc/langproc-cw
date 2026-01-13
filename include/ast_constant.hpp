@@ -4,16 +4,15 @@
 
 namespace ast {
 
-class IntConstant : public Node
-{
-private:
-    int value_;
+class IntConstant : public Node {
+ private:
+  int value_;
 
-public:
-    IntConstant(int value) : value_(value) {}
+ public:
+  IntConstant(int value) : value_(value) {}
 
-    void EmitRISC(std::ostream& stream, Context& context) const override;
-    void Print(std::ostream& stream) const override;
+  void EmitRISC(std::ostream& stream, Context& context) const override;
+  void Print(std::ostream& stream) const override;
 };
 
-} // namespace ast
+}  // namespace ast
