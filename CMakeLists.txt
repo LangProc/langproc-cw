@@ -1,6 +1,7 @@
 # CMake allows faster rebuilds and generates compile_commands.json
 # which is required by clangd for code navigation and refactoring.
 # Basic workflow: https://stackoverflow.com/questions/7859623/how-do-i-use-cmake
+# To use this with the Python script, add the flag --use_cmake
 
 cmake_minimum_required(VERSION 3.20)
 
