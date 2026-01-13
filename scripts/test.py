@@ -501,7 +501,9 @@ def parse_args():
         "--use_cmake",
         action="store_true",
         default=False,
-        help="Use cmake to build the project instead of make."
+        help="Use CMake to build the project instead of make. This will result "
+        "in faster builds and tests, however, CMake is not part of the course, "
+        "and you may run into issues."
     )
     return parser.parse_args()
 
