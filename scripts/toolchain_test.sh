@@ -6,12 +6,12 @@
 set -euo pipefail
 
 make build/c_compiler
-rm -f bin/riscv_example.s
-./build/c_compiler -S "compiler_tests/_example/example.c" -o "bin/riscv_example.s"
-riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -o "bin/riscv_example" "bin/riscv_example.s" "compiler_tests/_example/example_driver.c"
+rm -f build/riscv_example.s
+./build/c_compiler -S "compiler_tests/_example/example.c" -o "build/riscv_example.s"
+riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -o "build/riscv_example" "build/riscv_example.s" "compiler_tests/_example/example_driver.c"
 
 set +e
-spike pk "bin/riscv_example"
+spike pk "build/riscv_example"
 if [ $? -eq 0 ]; then
     echo "Test successful"
 else
@@ -19,4 +19,4 @@ else
 fi
 set -e
 
-rm -f bin/riscv_example
+rm -f build/riscv_example

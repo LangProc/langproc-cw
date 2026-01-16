@@ -34,21 +34,6 @@ Full usage guide of [`scripts/test.py`](../scripts/test.py) is found in the file
 > user@host:langproc-cw# scripts/test.py --help
 ```
 
-If for any reason you run into issues with the Python script, you can also test your compiler against the provided
-test-suite by running [`scripts/test.sh`](../scripts/test.sh) from the top of
-this repo; the output should look as follows:
-
-```console
-> user@host:langproc-cw# scripts/test.sh
->
-compiler_tests/_example/example.c
-        > Pass
-compiler_tests/array/declare_global.c
-        > Fail: simulation did not exit with exit-code 0
-...
-Passing 1/86 tests
-```
-
 By default, the first [`_example/example.c`](../compiler_tests/_example/example.c) test should be passing.
 
 This basic framework is only able to compile a very simple program, as described [here](./basic_compiler.md).

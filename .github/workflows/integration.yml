@@ -36,6 +36,6 @@ jobs:
         if: success() || failure()
         with:
           name: Test results
-          path: bin/junit_results.xml
+          path: build/junit_results.xml
           reporter: java-junit
           fail-on-error: false
