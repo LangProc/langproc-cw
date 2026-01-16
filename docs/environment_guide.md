@@ -30,9 +30,9 @@ Many students develop their compiler in VS Code, as this has good support for co
 Parsing: compiler_tests/_example/example.c
 AST parsing complete
 Printing parsed AST...
-Printed parsed AST to: bin/riscv_example.s.printed
+Printed parsed AST to: build/riscv_example.s.printed
 Compiling parsed AST...
-Compiled to: bin/riscv_example.s
+Compiled to: build/riscv_example.s
 bbl loader
 Hello from RISC-V
 Test function produced value: 8.700000
@@ -67,14 +67,14 @@ Test successful
     g++ -std=c++20 -W -Wall -g -I include -o build/c_compiler src/cli.cpp src/compiler.cpp
 
     Compiling: compiler_tests/_example/example.c
-    Compiled to: bin/riscv_example.s
+    Compiled to: build/riscv_example.s
 
     Parsing: compiler_tests/_example/example.c
     AST parsing complete
     Printing parsed AST...
-    Printed parsed AST to: bin/riscv_example.s.printed
+    Printed parsed AST to: build/riscv_example.s.printed
     Compiling parsed AST...
-    Compiled to: bin/riscv_example.s
+    Compiled to: build/riscv_example.s
     bbl loader
     Hello from RISC-V
     Test function produced value: 8.700000

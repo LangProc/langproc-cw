@@ -21,7 +21,7 @@ int main(int argc, char** argv) {
   // Parse CLI arguments to fetch the source file to compile and the path to
   // output to. This retrives [source-file.c] and [dest-file.s], when the
   // compiler is invoked as follows:
-  // ./bin/c_compiler -S [source-file.c] -o [dest-file.s]
+  // ./build/c_compiler -S [source-file.c] -o [dest-file.s]
   const auto [compile_source_path, compile_output_path] =
       ParseCommandLineArgs(argc, argv);
 

@@ -53,4 +53,3 @@ remove_old_gcda:
 clean :
 	@rm -rf coverage/
 	@rm -rf build/
-	@rm -rf bin/

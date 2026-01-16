@@ -5,12 +5,12 @@
             "name": "Debug c_compiler",
             "type": "cppdbg",
             "request": "launch",
-            "program": "${workspaceFolder}/bin/c_compiler",
+            "program": "${workspaceFolder}/build/c_compiler",
             "args": [
                 "-S",
                 "compiler_tests/_example/example.c",
                 "-o",
-                "bin/debug.s",
+                "build/debug.s",
             ],
             "cwd": "${workspaceFolder}",
             "environment": [
