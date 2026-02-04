@@ -23,6 +23,8 @@ RUN apt-get update && apt-get install -y --fix-missing \
     nano \
     valgrind \
     clang \
+    ccache \
+    cmake \
     clangd-15 \
     bear
 

@@ -2,17 +2,17 @@
 
 """
 A wrapper script to run all the compiler tests. This script will call the
-Makefile, run the tests and store the outputs in bin/output.
+Makefile, run the tests and store the outputs in build/output.
 
 This script will also generate a JUnit XML file, which can be used to integrate
 with CI/CD pipelines.
 
-Usage: test.py [-h] [-m] [-s] [--version] [--no_clean] [--coverage] [dir]
+Usage: test.py [-h] [-m] [-s] [--version] [--no_clean] [--coverage] [--use_cmake] [dir]
 
 Example usage: scripts/test.py compiler_tests/_example
 
 This will print out a progress bar and only run the example tests.
-The output would be placed into bin/output/_example/example/.
+The output would be placed into build/output/_example/example/.
 
 For more information, run scripts/test.py --help
 """
@@ -46,10 +46,11 @@ if not sys.stdout.isatty():
 # "File" will suggest the absolute path to the file, including the extension.
 SCRIPT_LOCATION = Path(__file__).resolve().parent
 PROJECT_LOCATION = SCRIPT_LOCATION.joinpath("..").resolve()
-OUTPUT_FOLDER = PROJECT_LOCATION.joinpath("bin/output").resolve()
-J_UNIT_OUTPUT_FILE = PROJECT_LOCATION.joinpath("bin/junit_results.xml").resolve()
+BUILD_FOLDER = PROJECT_LOCATION.joinpath("build").resolve()
+OUTPUT_FOLDER = PROJECT_LOCATION.joinpath("build/output").resolve()
+J_UNIT_OUTPUT_FILE = PROJECT_LOCATION.joinpath("build/junit_results.xml").resolve()
 COMPILER_TEST_FOLDER = PROJECT_LOCATION.joinpath("compiler_tests").resolve()
-COMPILER_FILE = PROJECT_LOCATION.joinpath("bin/c_compiler").resolve()
+COMPILER_FILE = PROJECT_LOCATION.joinpath("build/c_compiler").resolve()
 COVERAGE_FOLDER = PROJECT_LOCATION.joinpath("coverage").resolve()
 
 BUILD_TIMEOUT_SECONDS = 60
@@ -196,7 +197,7 @@ def run_test(driver: Path) -> Result:
     relative_path = to_assemble.relative_to(COMPILER_TEST_FOLDER)
 
     # Construct the path where logs would be stored, without the suffix
-    # e.g. .../bin/output/_example/example/example
+    # e.g. .../build/output/_example/example/example
     log_path = Path(OUTPUT_FOLDER).joinpath(relative_path.parent, to_assemble.stem, to_assemble.stem)
 
     # Recreate the directory
@@ -324,13 +325,34 @@ def clean() -> bool:
 
 def make(silent: bool) -> bool:
     """
-    Wrapper for make bin/c_compiler.
+    Wrapper for make build/c_compiler.
 
     Return True if successful, False otherwise
     """
     print(GREEN + "Running make..." + RESET)
     return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", PROJECT_LOCATION, "bin/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, silent=silent
+        cmd=["make", "-C", PROJECT_LOCATION, "build/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, silent=silent
+    )
+    if return_code != 0:
+        print(RED + "Error when making:", error_msg + RESET)
+        return False
+
+    return True
+
+def cmake(silent: bool) -> bool:
+    """
+    Wrapper for cmake --build build
+
+    Return True if successful, False otherwise
+    """
+    print(GREEN + "Running make..." + RESET)
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["cmake", "-S", PROJECT_LOCATION, "-B", BUILD_FOLDER],
+        timeout=BUILD_TIMEOUT_SECONDS,
+        silent=silent
+    )
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["cmake", "--build", BUILD_FOLDER], timeout=BUILD_TIMEOUT_SECONDS, silent=silent
     )
     if return_code != 0:
         print(RED + "Error when making:", error_msg + RESET)
@@ -475,20 +497,33 @@ def parse_args():
         help="Run with coverage if you want to know which part of your code is "
         "executed when running your compiler. See docs/coverage.md"
     )
+    parser.add_argument(
+        "--use_cmake",
+        action="store_true",
+        default=False,
+        help="Use CMake to build the project instead of make. This will result "
+        "in faster builds and tests, however, CMake is not part of the course, "
+        "and you may run into issues."
+    )
     return parser.parse_args()
 
 def main():
     args = parse_args()
 
-    shutil.rmtree(OUTPUT_FOLDER, ignore_errors=True)
-    Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
-
     if not args.no_clean and not clean():
         # Clean the repo if required and exit if this fails.
         exit(2)
 
-    if not make(silent=args.short):
-        exit(3)
+    shutil.rmtree(OUTPUT_FOLDER, ignore_errors=True)
+    Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
+    Path(BUILD_FOLDER).mkdir(parents=True, exist_ok=True)
+
+    if args.use_cmake and not args.coverage:
+        if not cmake(silent=args.short):
+            exit(3)
+    else:
+        if not make(silent=args.short):
+            exit(3)
 
     with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
         run_tests(args, xml_file)

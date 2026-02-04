@@ -20,10 +20,10 @@ OBJECTS += build/parser.tab.o build/lexer.yy.o
 
 .PHONY: default clean coverage remove_old_gcda
 
-default: remove_old_gcda bin/c_compiler
+default: remove_old_gcda build/c_compiler
 
-bin/c_compiler: $(OBJECTS)
-	@mkdir -p bin
+build/c_compiler: $(OBJECTS)
+	@mkdir -p build
 	g++ $(CXXFLAGS) -o $@ $^
 
 -include $(DEPENDENCIES)
@@ -53,4 +53,3 @@ remove_old_gcda:
 clean :
 	@rm -rf coverage/
 	@rm -rf build/
-	@rm -rf bin/
