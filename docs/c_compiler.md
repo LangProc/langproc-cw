@@ -19,7 +19,7 @@ output should look as follows (note: the progress bar and results will be colour
 > user@host:langproc-cw# scripts/test.py
 >
 make: Entering directory '/home/saturn691/projects/university/iac/langproc-cw'
-make: 'bin/c_compiler' is up to date.
+make: 'build/c_compiler' is up to date.
 make: Leaving directory '/home/saturn691/projects/university/iac/langproc-cw'
 Running Tests [################################################################]
 Pass:  1 | Fail: 85 | Remaining:  0
@@ -34,21 +34,6 @@ Full usage guide of [`scripts/test.py`](../scripts/test.py) is found in the file
 > user@host:langproc-cw# scripts/test.py --help
 ```
 
-If for any reason you run into issues with the Python script, you can also test your compiler against the provided
-test-suite by running [`scripts/test.sh`](../scripts/test.sh) from the top of
-this repo; the output should look as follows:
-
-```console
-> user@host:langproc-cw# scripts/test.sh
->
-compiler_tests/_example/example.c
-        > Pass
-compiler_tests/array/declare_global.c
-        > Fail: simulation did not exit with exit-code 0
-...
-Passing 1/86 tests
-```
-
 By default, the first [`_example/example.c`](../compiler_tests/_example/example.c) test should be passing.
 
 This basic framework is only able to compile a very simple program, as described [here](./basic_compiler.md).
@@ -58,13 +43,13 @@ This basic framework is only able to compile a very simple program, as described
 Your program should be built by running the following command in the top-level directory of your repo:
 
 ```console
-> user@host:langproc-cw# make bin/c_compiler
+> user@host:langproc-cw# make build/c_compiler
 ```
 
 The compilation function is invoked using the flag `-S`, with the source file and output file specified on the command line:
 
 ```console
-> user@host:langproc-cw# bin/c_compiler -S [source-file.c] -o [dest-file.s]
+> user@host:langproc-cw# build/c_compiler -S [source-file.c] -o [dest-file.s]
 ```
 
 You can assume that the command-line (CLI) arguments will always be in this order, and that there will be no spaces in source or destination paths. Note that the provided starting point in this repository already functions as specified above, so these CLI arguments should work out of the box (unless you decide not to use the provided base compiler).
@@ -177,7 +162,7 @@ int main() {
 I run the compiler on the test program, like so:
 
 ```console
-> user@host:langproc-cw# bin/c_compiler -S test_program.c -o test_program.s
+> user@host:langproc-cw# build/c_compiler -S test_program.c -o test_program.s
 ```
 
 I then use GCC to assemble the generated assembly program (`test_program.s`), like so:

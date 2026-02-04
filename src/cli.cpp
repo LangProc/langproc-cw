@@ -13,7 +13,7 @@ CommandLineArguments ParseCommandLineArgs(int argc, char **argv) {
   // Prevent opterr messages from being outputted.
   opterr = 0;
 
-  // ./bin/c_compiler -S [source-file.c] -o [dest-file.s]
+  // ./build/c_compiler -S [source-file.c] -o [dest-file.s]
   CommandLineArguments cli_args;
   int opt;
   while ((opt = getopt(argc, argv, "S:o:")) != -1) {
