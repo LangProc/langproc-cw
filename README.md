@@ -1,4 +1,4 @@
-2024/25 Compilers Coursework
+2025/26 Compilers Coursework
 ==============================
 
 There are two components to the coursework:
@@ -18,14 +18,19 @@ Each group gets a bare private repository. It is up to you if you want to clone 
 Submission
 ==========
 
-The deadline for submitting your C compiler is **Friday 21 March 2025 at 15:00**. There is no deadline for the project management component; instead, this will be assessed by a short oral viva that will be organised in Summer term.
+The deadline for submitting your C compiler is **Friday 20 March 2026 at 15:00**. There is no deadline for the project management component; instead, this will be assessed by a short oral viva that will be organised in Summer term.
 
-Submission will be via GitHub (code) and Teams (commit hash), as in the labs.
+Submission will be via GitHub (code) and my Excel spreadsheet (commit hash), as in the labs.
 
-All submissions will be tested functionally -- there is no expectation for your compiler to *optimise* its input. Moreover, your compiler will only be tested on *valid* inputs, so you do not need to handle faulty inputs in a graceful way.
+Your compiler will only be tested on *valid* inputs, so you do not need to handle faulty inputs in a graceful way.
+
+There is no expectation for your compiler to *optimise* its input -- it should simply generate code that calculates the correct answer. However -- new for 2025-26 -- there is a very small number of test cases that will only pass if your compiler has the ability to remove dead code. This is simply to provide a stretch goal for the (very few) teams who want to implement some optimisations and would like to be recognised for it. If you do not implement any optimisations, not passing these test-cases won't have an appreciable effect on your mark.
 
 Changelog
 =========
+
+* New for 2025/2026:
+    * We have added a couple of tests that are designed to check whether your compiler is able to remove dead code.
 
 * New for 2023/2024:
 
@@ -66,4 +71,4 @@ Changelog
 Acknowledgements
 ================
 
-The coursework was originally designed by [David Thomas](https://www.southampton.ac.uk/people/5z9bmb/professor-david-thomas), who lectured this module until 2017-18. It is nowadays maintained by [John Wickerson](https://johnwickerson.github.io/), to whom any feedback should be sent. I'd like to thank Quentin Corradi, Archie Crichton, Yann Herklotz, William Huynh, James Nock, Simon Staal, and Filip Wojcicki for making many contributions to this repository over several years, such as improving the compiler-testing scripts, providing a basic "getting started" compiler, writing instructions for setting up development environments on a variety of operating systems, configuring automation using GitHub actions, and setting up coverage testing.
+The coursework was originally designed by [David Thomas](https://www.southampton.ac.uk/people/5z9bmb/professor-david-thomas), who lectured this module until 2017-18. It is nowadays maintained by [John Wickerson](https://johnwickerson.github.io/), to whom any feedback should be sent. I'd like to thank Quentin Corradi, Archie Crichton, Yann Herklotz, William Huynh, James Nock, Simon Staal, Pierce Wiegerling, and Filip Wojcicki for making many contributions to this repository over several years, such as improving the compiler-testing scripts, providing a basic "getting started" compiler, writing instructions for setting up development environments on a variety of operating systems, configuring automation using GitHub actions, adding test-cases, and setting up coverage testing.
