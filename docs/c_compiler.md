@@ -205,4 +205,7 @@ This command should produce the exit code `0`.
 ## Coverage information
 [Do you want to know which part of your code is executed when running your compiler on a file?](./coverage.md)
 
+## Compiler extensions
+[Have you finished your compiler and you are looking for possible extensions?](./extension_ideas.md)
+
 
