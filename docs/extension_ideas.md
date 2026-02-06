@@ -26,28 +26,21 @@ Below are some constructs that extend your compiler toward fuller C90 coverage. 
 ### 2.3 Function pointers
 ### 2.4 `union`
 ### 2.5 Implicit and explicit casting
-### 2.6 Macros
-
-A practical progression:
-
-1. Object-like macros (`#define X 123`)
-2. Function-like macros (`#define MAX(a,b) ...`)
-3. `#undef`, `#include` (partial), and hygiene pitfalls
-
-### 2.7 Preprocessor
+### 2.6 Preprocessor and macros
 
 A full C preprocessor is a project in itself. If you want a sane scope:
 
 * Start with:
-
   * `#include` of local files
   * `#define/#undef`
   * `#if 0` / `#ifdef` (simple conditionals)
-* Later:
 
+* Later:
   * full expression evaluation in `#if`
   * macro argument expansion rules
   * stringification (`#`) and token pasting (`##`)
+
+A lot of external test suites require a preprocessor, because they don't use preprocessed C. Hence, you could also use an existing C preprocessor (e.g., [TCPP](https://github.com/bnoazx005/tcpp)), crediting accordingly.
 
 ---
 
@@ -111,7 +104,22 @@ Example:
 
 * `x * 8 → x << 3`
 
-#### (D) Instruction-level dead code elimination (DCE)
+#### (D) Register allocation
+
+A big, classic step, should be very interesting to implement.
+
+A good progression:
+
+1. **Naive**: spill everything to stack (baseline)
+2. **Local allocation**: reuse a small set of registers within a basic block
+3. **Linear scan** allocation (often simpler than graph coloring)
+4. **Graph coloring** allocation (classic “hard but rewarding”)
+
+Key enabling analysis:
+
+* **liveness analysis** (what values are live-out of each instruction / block)
+
+#### (E) Instruction-level dead code elimination (DCE)
 
 Remove computations whose results are never used.
 
@@ -125,7 +133,7 @@ return t1
 
 `t2 = c + d` is dead and can be removed.
 
-#### (E) Copy propagation
+#### (F) Copy propagation
 
 Turn:
 
@@ -140,7 +148,7 @@ into:
 t2 = x + 5
 ```
 
-#### (F) Local common subexpression elimination (CSE)
+#### (G) Local common subexpression elimination (CSE)
 
 Within a basic block:
 
@@ -156,7 +164,7 @@ t1 = a + b
 t2 = t1
 ```
 
-#### (G) CFG simplification (block/edge cleanup)
+#### (H) CFG simplification (block/edge cleanup)
 
 * Remove unreachable blocks
 * Merge blocks with single predecessor/successor
@@ -164,7 +172,7 @@ t2 = t1
 
 
 
-#### (H) Peephole optimisation
+#### (I) Peephole optimisation
 
 After codegen (regardless of other optimisations), look for small instruction patterns to simplify.
 
@@ -184,7 +192,7 @@ add r1, 0
 
 Remove it.
 
-#### (I) Loop-invariant code motion (LICM)
+#### (J) Loop-invariant code motion (LICM)
 
 Move computations out of loops when they don’t depend on loop iteration.
 
@@ -208,7 +216,7 @@ for (i=0; i<n; i++) {
 
 Requires CFG + dominance-ish reasoning (or a simpler “good enough” heuristic).
 
-#### (J) Loop unrolling (trade-offs: I-cache vs control overhead)
+#### (K) Loop unrolling (trade-offs: I-cache vs control overhead)
 
 Duplicate the loop body multiple times per iteration to reduce loop control overhead (branches, index updates) and to expose more opportunities for other optimisations (e.g., constant folding, CSE, better register reuse).
 
@@ -244,22 +252,6 @@ Common heuristics:
 - Only unroll when the loop body is “small” (few IR instructions)
 - Only unroll when trip count is known or likely large enough
 - Keep unroll factors low (2 or 4) for a first implementation
-
-
-#### (K) Register allocation
-
-A big, classic step, should be very interesting to implement.
-
-A good progression:
-
-1. **Naive**: spill everything to stack (baseline)
-2. **Local allocation**: reuse a small set of registers within a basic block
-3. **Linear scan** allocation (often simpler than graph coloring)
-4. **Graph coloring** allocation (classic “hard but rewarding”)
-
-Key enabling analysis:
-
-* **liveness analysis** (what values are live-out of each instruction / block)
 
 ---
 
