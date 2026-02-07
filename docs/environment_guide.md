@@ -27,7 +27,7 @@ Many students develop their compiler in VS Code, as this has good support for co
 >
 [...]
 
-Parsing: compiler_tests/_example/example.c
+Parsing: tests/_example/example.c
 AST parsing complete
 Printing parsed AST...
 Printed parsed AST to: build/riscv_example.s.printed
@@ -40,7 +40,7 @@ Example function returned: 5
 Test successful
 ```
 
-8) You might also benefit from installing VS Code extensions for C++, Lex, and Yacc for better text highlighting and easier debugging. For example, you can press F5 to start the integrated VS Code debugger. By default, this attempts to compile [compiler_tests/_example/example.c](../compiler_tests/_example/example.c), as specified in [.vscode/launch.json](../.vscode/launch.json).
+8) You might also benefit from installing VS Code extensions for C++, Lex, and Yacc for better text highlighting and easier debugging. For example, you can press F5 to start the integrated VS Code debugger. By default, this attempts to compile [tests/_example/example.c](../tests/_example/example.c), as specified in [.vscode/launch.json](../.vscode/launch.json).
 
 9) You might also like to modify the [autoformatter settings](../.clang-format) to your preference. More information can be found here: https://clang.llvm.org/docs/ClangFormat.html. This has been configured to automatically format on save. You can turn it off by modifying [.vscode/settings.json](../.vscode/settings.json).
 
@@ -66,10 +66,10 @@ Test successful
 
     g++ -std=c++20 -W -Wall -g -I include -o build/c_compiler src/cli.cpp src/compiler.cpp
 
-    Compiling: compiler_tests/_example/example.c
+    Compiling: tests/_example/example.c
     Compiled to: build/riscv_example.s
 
-    Parsing: compiler_tests/_example/example.c
+    Parsing: tests/_example/example.c
     AST parsing complete
     Printing parsed AST...
     Printed parsed AST to: build/riscv_example.s.printed

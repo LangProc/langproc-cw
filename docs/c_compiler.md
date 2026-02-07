@@ -34,7 +34,7 @@ Full usage guide of [`scripts/test.py`](../scripts/test.py) is found in the file
 > user@host:langproc-cw# scripts/test.py --help
 ```
 
-By default, the first [`_example/example.c`](../compiler_tests/_example/example.c) test should be passing.
+By default, the first [`_example/example.c`](../tests/_example/example.c) test should be passing.
 
 This basic framework is only able to compile a very simple program, as described [here](./basic_compiler.md).
 
@@ -130,7 +130,7 @@ All test inputs will be valid; that is, you can assume the absence of programmer
 
 There is no requirement for the generated assembly to be optimised in any way -- the only requirement is that it produces the correct answer. However, for the very small number of students who would _like_ to go "above and beyond" by implementing some optimisations, and would like to be recognised for this, we have (in 2025-26) added a very small number of test cases that will only pass if the compiler has some ability to remove dead code. If you do not implement any optimisations, failing these test cases will not have an appreciable impact on your final mark. 
 
-The [compiler_tests](../compiler_tests) contains a large number of example inputs, divided into various categories, that you might like to use as testcases. Your compiler will be assessed on these "seen" inputs together with a further set of "unseen" inputs that are of a similar form. It is worth emphasising that it is not expected that many compilers will correctly compile all of the "seen" inputs (let alone the "unseen" ones!). You are encouraged to focus on compiling the "basic" features (as listed above) first, before moving on to more advanced features if you have time.
+The [tests](../tests) contains a large number of example inputs, divided into various categories, that you might like to use as testcases. Your compiler will be assessed on these "seen" inputs together with a further set of "unseen" inputs that are of a similar form. It is worth emphasising that it is not expected that many compilers will correctly compile all of the "seen" inputs (let alone the "unseen" ones!). You are encouraged to focus on compiling the "basic" features (as listed above) first, before moving on to more advanced features if you have time.
 
 The split between test cases last year can be seen below. Do not assume it will stay the same this year, but you can use it as a rough estimate of what to focus on in case you are running short on time. **Remember that tests for advanced features will also test basic features, so you should implement the basic features first (e.g. without working functions the array tests will fail).**
 
