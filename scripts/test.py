@@ -9,7 +9,7 @@ with CI/CD pipelines.
 
 Usage: test.py [-h] [-m] [-s] [--version] [--no_clean] [--coverage] [--use_cmake] [dir]
 
-Example usage: scripts/test.py compiler_tests/_example
+Example usage: scripts/test.py tests/_example
 
 This will print out a progress bar and only run the example tests.
 The output would be placed into build/output/_example/example/.
@@ -49,7 +49,7 @@ PROJECT_LOCATION = SCRIPT_LOCATION.joinpath("..").resolve()
 BUILD_FOLDER = PROJECT_LOCATION.joinpath("build").resolve()
 OUTPUT_FOLDER = PROJECT_LOCATION.joinpath("build/output").resolve()
 J_UNIT_OUTPUT_FILE = PROJECT_LOCATION.joinpath("build/junit_results.xml").resolve()
-COMPILER_TEST_FOLDER = PROJECT_LOCATION.joinpath("compiler_tests").resolve()
+COMPILER_TEST_FOLDER = PROJECT_LOCATION.joinpath("tests").resolve()
 COMPILER_FILE = PROJECT_LOCATION.joinpath("build/c_compiler").resolve()
 COVERAGE_FOLDER = PROJECT_LOCATION.joinpath("coverage").resolve()
 
