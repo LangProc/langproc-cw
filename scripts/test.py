@@ -334,7 +334,7 @@ def make(silent: bool) -> bool:
         cmd=["make", "-C", PROJECT_LOCATION, "build/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, silent=silent
     )
     if return_code != 0:
-        print(RED + "Error when making:", error_msg + RESET)
+        print(RED + "Error when running make:", error_msg + RESET)
         return False
 
     return True
@@ -345,9 +345,11 @@ def cmake(silent: bool) -> bool:
 
     Return True if successful, False otherwise
     """
-    print(GREEN + "Running make..." + RESET)
+    print(GREEN + "Running cmake..." + RESET)
+    
+    # -DCMAKE_BUILD_TYPE=Release is equal to -O3
     return_code, error_msg, _ = run_subprocess(
-        cmd=["cmake", "-S", PROJECT_LOCATION, "-B", BUILD_FOLDER],
+        cmd=["cmake", "-S", PROJECT_LOCATION, "-B", BUILD_FOLDER, "-DCMAKE_BUILD_TYPE=Release"],
         timeout=BUILD_TIMEOUT_SECONDS,
         silent=silent
     )
@@ -355,7 +357,7 @@ def cmake(silent: bool) -> bool:
         cmd=["cmake", "--build", BUILD_FOLDER], timeout=BUILD_TIMEOUT_SECONDS, silent=silent
     )
     if return_code != 0:
-        print(RED + "Error when making:", error_msg + RESET)
+        print(RED + "Error when running cmake:", error_msg + RESET)
         return False
 
     return True
@@ -371,7 +373,7 @@ def coverage() -> bool:
         cmd=["make", "-C", PROJECT_LOCATION, "coverage"], timeout=BUILD_TIMEOUT_SECONDS, silent=True
     )
     if return_code != 0:
-        print(RED + "Error when making coverage:", error_msg + RESET)
+        print(RED + "Error when running make coverage:", error_msg + RESET)
         return False
     return True
 
