@@ -5,6 +5,8 @@ This document collects optional extensions you can implement in **any order once
 The point of implementing the extensions is not to improve your grade as they have minimal effect on design style and code readability portion of the coursework, where you can achieve maximum marks without any of the below. The idea is simply to provide ambitious students with some topics to read about and try implementing to improve their compiler skills and end up with a more impressive project to put on a CV.
 
 ---
+---
+
 ## 1) Ensuring correctness with tougher tests
 
 A good start is to add new test cases under `compiler_tests/`. Any new tests you place there will be automatically picked up by the existing testing script.
@@ -14,19 +16,50 @@ If you want a large source of additional programs (beyond hand-written tests), t
 - Curated “torture” test suites, e.g. the [GCC c-torture](https://github.com/llvm/llvm-test-suite/tree/main/SingleSource/Regression/C/gcc-c-torture) tests mirrored in the LLVM test-suite
 
 
-- Random C program generation, e.g. [Csmith](https://github.com/csmith-project/csmith?utm_source=chatgpt.com)
+- Random C program generation, e.g. [Csmith](https://github.com/csmith-project/csmith)
+
+---
 ---
 
 ## 2) Implement language features beyond the specification
 
 Below are some constructs that extend your compiler toward fuller C90 coverage. The order is *roughly* from easier to harder / more interesting.
 
-### 2.1 `short` and `long` integer types
-### 2.2 `goto`
-### 2.3 Function pointers
-### 2.4 `union`
-### 2.5 Implicit and explicit casting
-### 2.6 Preprocessor and macros
+### `short` and `long` integer types
+
+By implementing these, you should now support all C90 types:
+- `char` / `unsigned char`
+- `short` / `unsigned short`
+- `int` / `unsigned int`
+- `long` / `unsigned long`
+- `float`
+- `double`
+
+### `union`
+
+`union` share most functionality with `struct`, so you should abstract these similarities.
+
+### Explicit and implicit casting
+
+You should start with explicit casting on the integer types, as it is simpler and can help with implicit casting.
+
+### Variable length arrays (VLA)
+
+Stack allocated VLAs like:
+
+```c
+float values[n];
+```
+
+### `goto`
+
+As `goto` interferes with scopes and register allocation (especially [variable length arrays](https://en.cppreference.com/w/c/language/goto.html)), start with `goto` in the same scope starting after declarations, then `goto` into outer scope, then `goto` crossing initialisation (except variable length arrays), and finally generalised `goto`.
+
+### Function pointers
+
+Function pointers require very careful type handling.
+
+### Preprocessor and macros
 
 A full C preprocessor is a project in itself. If you want a sane scope:
 
@@ -43,35 +76,48 @@ A full C preprocessor is a project in itself. If you want a sane scope:
 A lot of external test suites require a preprocessor, because they don't use preprocessed C. Hence, you could also use an existing C preprocessor (e.g., [TCPP](https://github.com/bnoazx005/tcpp)), crediting accordingly.
 
 ---
+---
 
-## 3) Introduce a real IR and implement optimisations
-
-Currently, your compiler most likely goes “AST → assembly” directly, adding a middle-end is one of the most educational upgrades you can make.
-
-Modern compilers like [**LLVM**](llvm.org) use a dedicated intermediate representation (IR). LLVM IR is a typed, SSA-based representation used as a common code format across optimisation and code generation phases.
-
-### 3.1 Reason behind IR
-
-A good IR (even a custom one) makes it easier to:
-
-* build a control-flow graph (CFG)
-* run local and global analyses (liveness, dominance, reaching definition, etc.)
-* implement optimisations as independent passes
-* keep front-end concerns separate from backend instruction emission
-
-A very reasonable IR for a compiler is **three-address code (3AC)** with:
-
-* temporaries (`t1 = t2 + t3`)
-* explicit labels / jumps
-* basic blocks forming a CFG
-
-SSA is what real IRs use, so you can treat it as an ambitious goal, but it is not strictly necessary for the following optimisations.
-
-### 3.2 Optimisation ideas
+## 3) Optimisations and Intermediate Representation (IR)
 
 It is a good idea to put your custom optimisations behind a flag, e.g. `-O1`, so that they don't interfere with our automated testing.
 
-#### (A) Constant folding
+### Peephole optimisations
+
+[Peephole optimisations](https://en.wikipedia.org/wiki/Peephole_optimization) happen after codegen, before emitting assembly. They do not depend on any IR analysis, so they are a good option if you are not planning on implementing any custom IR. The goal is to check across small windows of instruction to find patterns to simplify with equivalent logic.
+
+Examples to remove:
+
+```asm
+mov r1, r1
+```
+
+or:
+
+```asm
+add r1, 0
+```
+
+Examples of substitutions:
+
+```asm
+li r1, 4
+mul r2, r2, r1
+```
+
+becomes:
+
+```asm
+slli r2, r2, 2
+```
+
+---
+
+### Simple optimisations
+
+These optimisations are simple enough that you could do them without introducing an IR. However, they do benefit from even a simple IR, so consider that if you think you have enough time to work on IR first.
+
+#### Constant folding
 
 Evaluate constant expressions at compile time.
 
@@ -87,7 +133,7 @@ After:
 int f() { return 10; }
 ```
 
-#### (B) Algebraic simplification
+#### Algebraic simplification
 
 Rewrite equivalent forms to cheaper ones.
 
@@ -96,7 +142,7 @@ Rewrite equivalent forms to cheaper ones.
 * `x * 0 → 0`
 * `x - x → 0`
 
-#### (C) Strength reduction
+#### Strength reduction
 
 Replace expensive ops with cheaper ones (where correct).
 
@@ -104,7 +150,40 @@ Example:
 
 * `x * 8 → x << 3`
 
-#### (D) Register allocation
+---
+
+### Introducing an Intermediate Representation (IR)
+
+Your compiler most likely goes “AST → assembly” directly and adding a middle-end is one of the most educational upgrades you can make.
+
+Modern compilers like [**LLVM**](llvm.org) use a dedicated intermediate representation. LLVM IR is a typed, [SSA-based](https://en.wikipedia.org/wiki/Static_single-assignment_form) representation used as a common code format across optimisation and code generation phases. However, you can perform a lot of optimisations even with a simple custom IR.
+
+#### Reason behind IR
+
+A good IR (even a custom one) makes it easier to:
+
+* build a control-flow graph (CFG)
+* run local and global analyses (liveness, dominance, reaching definition, etc.)
+* implement optimisations as independent passes
+* keep front-end concerns separate from backend instruction emission
+
+#### Your custom IR
+
+A very reasonable IR for a compiler is [**three-address code (3AC)**](https://en.wikipedia.org/wiki/Three-address_code) with:
+
+* 3 operands, assignment and operator (`t1 := t2 + t3`)
+* data as sized integers and floats
+* explicit labels / jumps
+* function calls
+* basic blocks forming a CFG
+
+SSA is what real IRs use, so you can treat it as an ambitious goal, but it is not strictly necessary for the following optimisations.
+
+---
+
+### Advanced (IR-dependent) optimisations
+
+#### Register allocation
 
 A big, classic step, should be very interesting to implement.
 
@@ -119,104 +198,7 @@ Key enabling analysis:
 
 * **liveness analysis** (what values are live-out of each instruction / block)
 
-#### (E) Instruction-level dead code elimination (DCE)
-
-Remove computations whose results are never used.
-
-IR-ish example:
-
-```text
-t1 = a + b
-t2 = c + d
-return t1
-```
-
-`t2 = c + d` is dead and can be removed.
-
-#### (F) Copy propagation
-
-Turn:
-
-```text
-t1 = x
-t2 = t1 + 5
-```
-
-into:
-
-```text
-t2 = x + 5
-```
-
-#### (G) Local common subexpression elimination (CSE)
-
-Within a basic block:
-
-```text
-t1 = a + b
-t2 = a + b
-```
-
-Rewrite to:
-
-```text
-t1 = a + b
-t2 = t1
-```
-
-#### (H) CFG simplification (block/edge cleanup)
-
-* Remove unreachable blocks
-* Merge blocks with single predecessor/successor
-* Simplify `if (0)` / `while (0)` patterns after constant folding
-
-
-
-#### (I) Peephole optimisation
-
-After codegen (regardless of other optimisations), look for small instruction patterns to simplify.
-
-Example:
-
-```asm
-mov r1, r1
-```
-
-Remove it.
-
-Or:
-
-```asm
-add r1, 0
-```
-
-Remove it.
-
-#### (J) Loop-invariant code motion (LICM)
-
-Move computations out of loops when they don’t depend on loop iteration.
-
-Before:
-
-```c
-for (i=0; i<n; i++) {
-  t = a*b;   // invariant
-  x[i] = t + i;
-}
-```
-
-After:
-
-```c
-t = a*b;
-for (i=0; i<n; i++) {
-  x[i] = t + i;
-}
-```
-
-Requires CFG + dominance-ish reasoning (or a simpler “good enough” heuristic).
-
-#### (K) Loop unrolling (trade-offs: I-cache vs control overhead)
+#### Loop unrolling
 
 Duplicate the loop body multiple times per iteration to reduce loop control overhead (branches, index updates) and to expose more opportunities for other optimisations (e.g., constant folding, CSE, better register reuse).
 
@@ -253,13 +235,104 @@ Common heuristics:
 - Only unroll when trip count is known or likely large enough
 - Keep unroll factors low (2 or 4) for a first implementation
 
+#### Tail-call optimisation (TCO)
+
+A [*tail call*](https://en.wikipedia.org/wiki/Tail_call) is a function call that happens as the final action of a function, e.g. `return f(x);`.
+In this case, the current stack frame is no longer needed after the call. **Tail-call optimisation** replaces the *call*+*return* sequence with a *jump* (or an equivalent “tail call”) that *reuses the current stack frame*, preventing stack growth in tail-recursive code.
+
+Example (tail recursion):
+
+```c
+int fact_tr(int n, int acc) {
+  if (n <= 1) return acc;
+  return fact_tr(n - 1, n * acc);   /* tail call */
+}
+```
+
+With TCO, `fact_tr` can run in constant stack space (similar to a loop), even for large `n`.
+
+#### Instruction-level dead code elimination (DCE)
+
+Remove computations whose results are never used.
+
+IR-ish example:
+
+```text
+t1 = a + b
+t2 = c + d
+return t1
+```
+
+`t2 = c + d` is dead and can be removed.
+
+#### Copy propagation
+
+Turn:
+
+```text
+t1 = x
+t2 = t1 + 5
+```
+
+into:
+
+```text
+t2 = x + 5
+```
+
+#### Local common subexpression elimination (CSE)
+
+Within a basic block:
+
+```text
+t1 = a + b
+t2 = a + b
+```
+
+Rewrite to:
+
+```text
+t1 = a + b
+t2 = t1
+```
+
+#### CFG simplification (block/edge cleanup)
+
+* Remove unreachable blocks
+* Merge blocks with single predecessor/successor
+
+#### Loop-invariant code motion (LICM)
+
+Move computations out of loops when they don’t depend on loop iteration.
+
+Before:
+
+```c
+for (i=0; i<n; i++) {
+  t = a*b;   // invariant
+  x[i] = t + i;
+}
+```
+
+After:
+
+```c
+t = a*b;
+for (i=0; i<n; i++) {
+  x[i] = t + i;
+}
+```
+
+Requires CFG + dominance-ish reasoning (or a simpler “good enough” heuristic).
+
+---
 ---
 
-## 4) Diagnostics and error handling
+## 4) Type checking, diagnostics and error handling
 
 A compiler that reports errors well is dramatically nicer to use and debug.
 
-### 4.1 Differentiate syntax vs semantic errors
+### Differentiate syntax vs semantic errors
 
 * **Syntax errors**: grammar/token stream issues (parser-level)
 
@@ -268,7 +341,7 @@ A compiler that reports errors well is dramatically nicer to use and debug.
 
   * e.g., undeclared identifier, type mismatch, calling something that isn’t a function, invalid lvalue, wrong number of arguments
 
-### 4.2 Source locations (line/column)
+### Source locations (line/column)
 
 If you track positions in the lexer and propagate them into AST nodes, you can print:
 
@@ -285,7 +358,7 @@ error: type mismatch in assignment
         ^
 ```
 
-### 4.3 Error recovery (report multiple errors)
+### Error recovery (report multiple errors)
 
 Instead of stopping at the first error, you can:
 
@@ -294,7 +367,7 @@ Instead of stopping at the first error, you can:
 
 This is harder than it sounds, but even limited recovery can be very helpful.
 
-### 4.4 Warnings (optional but valuable)
+### Warnings
 
 A few high-value warnings:
 
@@ -302,4 +375,7 @@ A few high-value warnings:
 * unreachable code after `return`
 * suspicious comparisons (e.g., always true/false due to constants)
 * implicit narrowing conversions (once you implement casts/promotions)
+* array out of bound access
+* suspicious casts (`void*`, pointer size change, function pointer casts, pointer level change [`int**` → `int*`], pointer/array casts, complex data type casts betwen `union`/`struct`/`enum`, `int` → `enum`, `float` →`int`).
+* suspicious mix of operations (pointer and arithmetics, pointer as array index, indexing non array pointer, dereferencing function pointer, calling data pointer).
 
