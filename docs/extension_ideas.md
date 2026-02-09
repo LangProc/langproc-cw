@@ -27,8 +27,8 @@ Below are some constructs that extend your compiler toward fuller C90 coverage. 
 
 ### `short` and `long` integer types
 
-By implementing these, you should now support all C90 types:
-- `char` / `unsigned char`
+By implementing these, you should now support all [C90 arithmetic types](https://en.cppreference.com/w/c/language/arithmetic_types.html):
+- `char` / `unsigned char` / `signed char`
 - `short` / `unsigned short`
 - `int` / `unsigned int`
 - `long` / `unsigned long`
@@ -253,7 +253,7 @@ With TCO, `fact_tr` can run in constant stack space (similar to a loop), even fo
 
 #### Instruction-level dead code elimination (DCE)
 
-Remove computations whose results are never used.
+Remove computations whose results are never used. Beware of side-effects which cannot be removed: `*x = 0` may be dead code, but in many cases removing it is invalid.
 
 IR-ish example:
 
@@ -303,7 +303,7 @@ t2 = t1
 
 #### Loop-invariant code motion (LICM)
 
-Move computations out of loops when they don’t depend on loop iteration.
+Move computations out of loops when they don’t depend on loop iteration. Again, beware of side-effects which cannot be removed: `*x = 0` may be loop-invariant, but in many cases removing it is invalid.
 
 Before:
 
