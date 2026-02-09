@@ -7,7 +7,7 @@ CXXFLAGS += -Wextra # enable extra warnings
 CXXFLAGS += -Werror # treat all warnings as errors
 CXXFLAGS += -fsanitize=address # enable address sanitization
 CXXFLAGS += -static-libasan # statically link with Address Sanitizer
-CXXFLAGS += -O0 # perform minimal optimisations
+CXXFLAGS += -O3 # perform optimisations
 CXXFLAGS += -rdynamic # to get more helpful traces when debugging
 CXXFLAGS += --coverage # enable code coverage
 CXXFLAGS += -I include # look for header files in the `include` directory
