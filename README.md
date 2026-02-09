@@ -24,7 +24,7 @@ Submission will be via GitHub (code) and my Excel spreadsheet (commit hash), as 
 
 Your compiler will only be tested on *valid* inputs, so you do not need to handle faulty inputs in a graceful way.
 
-There is no expectation for your compiler to *optimise* its input -- it should simply generate code that calculates the correct answer. However -- new for 2025-26 -- there is a very small number of test cases that will only pass if your compiler has the ability to remove dead code. This is simply to provide a stretch goal for the (very few) teams who want to implement some optimisations and would like to be recognised for it. If you do not implement any optimisations, not passing these test-cases won't have an appreciable effect on your mark.
+There is no expectation for your compiler to *optimise* its input for the vast majority of the test cases -- it should simply generate code that calculates the correct answer. However -- new for 2025-26 -- there is a very small number of test cases that will only pass if your compiler has the ability to remove dead code. This is simply to provide a stretch goal for the (very few) teams who want to implement some optimisations and would like to be recognised for it. If you do not implement any optimisations, not passing these test-cases won't have an appreciable effect on your mark.
 
 Changelog
 =========
