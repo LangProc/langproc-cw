@@ -342,7 +342,7 @@ A compiler that reports errors well is dramatically nicer to use and debug.
   * e.g., undeclared identifier, type mismatch, calling something that isn’t a function, invalid lvalue, wrong number of arguments
 
 ### Source locations (line/column)
-
+  
 If you track positions in the lexer and propagate them into AST nodes, you can print:
 
 * file, line, column
@@ -357,6 +357,9 @@ error: type mismatch in assignment
     x = y + 1;
         ^
 ```
+
+When C code is produced by a preprocessor or another tool (flex/yacc), the resulting file may include `#line` directives (or equivalent line markers). These tell the compiler to report diagnostics as if the code came from a different **source file / line number** than the physical location in the generated output. This is important for user experience: errors should point to the original `.c` rather than the generated file.
+
 
 ### Error recovery (report multiple errors)
 
