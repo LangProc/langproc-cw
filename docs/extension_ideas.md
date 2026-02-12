@@ -53,7 +53,11 @@ float values[n];
 
 ### `goto`
 
-As `goto` interferes with scopes and register allocation (especially [variable length arrays](https://en.cppreference.com/w/c/language/goto.html)), start with `goto` in the same scope starting after declarations, then `goto` into outer scope, then `goto` crossing initialisation (except variable length arrays), and finally generalised `goto`.
+`goto` interferes with scopes and register allocation; especially [variable length arrays](https://en.cppreference.com/w/c/language/goto.html).
+* You should start with implementing `goto` jumping to the same scope without jumping over variable declarations.
+* Then `goto` jumping into outer scopes (still without jumping over variable declarations).
+* Then `goto` jumping over variable declarations; except for variable length arrays as it is simply not correct.
+* And finally generalised `goto`.
 
 ### Function pointers
 
