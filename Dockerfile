@@ -72,5 +72,6 @@ WORKDIR /tmp/riscv-pk/build
 RUN ../configure --prefix=$RISCV --host=riscv64-unknown-elf --with-arch=rv32imfd --with-abi=ilp32d
 RUN make
 RUN make install
+RUN rm -rf /tmp/riscv-pk
 
 ENTRYPOINT [ "/bin/bash" ]
