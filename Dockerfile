@@ -66,7 +66,7 @@ RUN spike --help
 WORKDIR /tmp
 RUN git clone https://github.com/riscv-software-src/riscv-pk.git
 WORKDIR /tmp/riscv-pk
-RUN git checkout 573c858d9071a2216537f71de651a814f76ee76d
+RUN git checkout 9c61d29846d8521d9487a57739330f9682d5b542
 RUN mkdir build
 WORKDIR /tmp/riscv-pk/build
 RUN ../configure --prefix=$RISCV --host=riscv64-unknown-elf --with-arch=rv32imfd --with-abi=ilp32d
