@@ -31,24 +31,44 @@ RUN apt-get update && apt-get install -y --fix-missing \
 # Set clangd as the default language server
 RUN update-alternatives --install /usr/bin/clangd clangd /usr/bin/clangd-15 100
 
-# Install RISC-V Toolchain
+# Install RISC-V Toolchain (xPack) + compatibility symlinks for riscv64-unknown-elf-*
+ARG XPACK_RISCV_VER=15.2.0-1
+
 WORKDIR /tmp
 RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; arch="${arch##*-}"; \
-    url=; \
+    arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
-    'arm64') \
-    curl --output riscv-gnu-toolchain.tar.gz -L "https://github.com/langproc/langproc-2022-cw/releases/download/v1.0.0/riscv-gnu-toolchain-2022-09-21-ubuntu-22.04-arm64.tar.gz" \
-    ;; \
-    *) curl --output riscv-gnu-toolchain.tar.gz -L "https://github.com/langproc/langproc-2022-cw/releases/download/v1.0.0/riscv-gnu-toolchain-2022-09-21-ubuntu-22.04-amd64.tar.gz" \
-    ;; \
-    esac;
-RUN rm -rf /opt/riscv
-RUN tar -xzf riscv-gnu-toolchain.tar.gz --directory /opt
-ENV PATH="/opt/riscv/bin:${PATH}"
+      amd64) xarch="linux-x64" ;; \
+      arm64) xarch="linux-arm64" ;; \
+      *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
+    esac; \
+    \
+    base="https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack/releases/download/v${XPACK_RISCV_VER}"; \
+    tgz="xpack-riscv-none-elf-gcc-${XPACK_RISCV_VER}-${xarch}.tar.gz"; \
+    sha="${tgz}.sha"; \
+    \
+    curl -L --fail -o "$tgz" "${base}/${tgz}"; \
+    curl -L --fail -o "$sha" "${base}/${sha}"; \
+    sha256sum -c "$sha"; \
+    \
+    rm -rf /opt/riscv; \
+    mkdir -p /opt; \
+    tar -xzf "$tgz" -C /opt; \
+    mv "/opt/xpack-riscv-none-elf-gcc-${XPACK_RISCV_VER}" /opt/riscv; \
+    rm -f "$tgz" "$sha"; \
+    \
+    # Compatibility: keep existing course scripts working (riscv64-unknown-elf-* prefix)
+    for tool in gcc g++ cpp ar as ld nm objcopy objdump ranlib readelf size strip; do \
+      ln -sf "/opt/riscv/bin/riscv-none-elf-${tool}" "/opt/riscv/bin/riscv64-unknown-elf-${tool}"; \
+    done; \
+    \
+    # Sanity checks: both names should work
+    riscv-none-elf-gcc --version; \
+    riscv64-unknown-elf-gcc --version; \
+    riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -x c - -c -o /tmp/t.o <<'EOF'\nint main(){return 0;}\nEOF
+
 ENV RISCV="/opt/riscv"
-RUN rm -rf riscv-gnu-toolchain.tar.gz
-RUN riscv64-unknown-elf-gcc --help
+ENV PATH="/opt/riscv/bin:${PATH}"
 
 # Install Spike RISC-V ISA Simulator
 WORKDIR /tmp
