@@ -25,7 +25,7 @@ RUN apt-get update && apt-get install -y --fix-missing \
     clang \
     ccache \
     cmake \
-    clangd-15 \
+    clangd-18 \
     bear
 
 # Set clangd as the default language server
