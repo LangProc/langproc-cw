@@ -357,18 +357,24 @@ def cmake(silent: bool) -> bool:
     Return True if successful, False otherwise
     """
     print(GREEN + "Running cmake..." + RESET)
-    
+
+    # cmake configure + generate
     # -DCMAKE_BUILD_TYPE=Release is equal to -O3
     return_code, error_msg, _ = run_subprocess(
         cmd=["cmake", "-S", PROJECT_LOCATION, "-B", BUILD_FOLDER, "-DCMAKE_BUILD_TYPE=Release"],
         timeout=BUILD_TIMEOUT_SECONDS,
         silent=silent
     )
+    if return_code != 0:
+        print(RED + "Error when running cmake (configure + generate):", error_msg + RESET)
+        return False
+
+    # cmake compile
     return_code, error_msg, _ = run_subprocess(
         cmd=["cmake", "--build", BUILD_FOLDER], timeout=BUILD_TIMEOUT_SECONDS, silent=silent
     )
     if return_code != 0:
-        print(RED + "Error when running cmake:", error_msg + RESET)
+        print(RED + "Error when running cmake (compile):", error_msg + RESET)
         return False
 
     return True
