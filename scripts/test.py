@@ -357,18 +357,24 @@ def cmake(silent: bool) -> bool:
     Return True if successful, False otherwise
     """
     print(GREEN + "Running cmake..." + RESET)
-    
+
+    # cmake configure + generate
     # -DCMAKE_BUILD_TYPE=Release is equal to -O3
     return_code, error_msg, _ = run_subprocess(
         cmd=["cmake", "-S", PROJECT_LOCATION, "-B", BUILD_FOLDER, "-DCMAKE_BUILD_TYPE=Release"],
         timeout=BUILD_TIMEOUT_SECONDS,
         silent=silent
     )
+    if return_code != 0:
+        print(RED + "Error when running cmake (configure + generate):", error_msg + RESET)
+        return False
+
+    # cmake compile
     return_code, error_msg, _ = run_subprocess(
         cmd=["cmake", "--build", BUILD_FOLDER], timeout=BUILD_TIMEOUT_SECONDS, silent=silent
     )
     if return_code != 0:
-        print(RED + "Error when running cmake:", error_msg + RESET)
+        print(RED + "Error when running cmake (compile):", error_msg + RESET)
         return False
 
     return True
@@ -525,26 +531,35 @@ def parse_args():
 def main():
     args = parse_args()
 
-    if not args.no_clean and not clean():
-        # Clean the repo if required and exit if this fails.
-        exit(2)
+    # Clean the repo if required
+    if not args.no_clean:
+        clean_success = clean()
+        if not clean_success:
+            exit(2)
 
     shutil.rmtree(OUTPUT_FOLDER, ignore_errors=True)
     Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
     Path(BUILD_FOLDER).mkdir(parents=True, exist_ok=True)
 
+    # Build the compiler using cmake or make
     if args.use_cmake and not args.coverage:
-        if not cmake(silent=args.short):
-            exit(3)
+        build_sucess = cmake(silent=args.short)
     else:
-        if not make(silent=args.short):
-            exit(3)
+        if args.use_cmake and args.coverage:
+            print(RED + "Coverage is not supported with CMake. Switching to make." + RESET)
+        build_sucess = make(silent=args.short)
 
+    if not build_sucess:
+        exit(3)
+
+    # Run the tests and save the results into JUnit XML file
     with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
         run_tests(args, xml_file)
 
+    # Find coverage if required. Note, that the coverage server will be blocking
     if args.coverage:
-        if not coverage():
+        coverage_success = coverage()
+        if not coverage_success:
             exit(4)
         serve_coverage_forever('0.0.0.0', 8000)
 
