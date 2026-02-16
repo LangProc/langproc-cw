@@ -214,7 +214,7 @@ def run_test(driver: Path) -> Result:
 
     # Modifying environment to combat errors on memory leak
     custom_env = os.environ.copy()
-    custom_env["ASAN_OPTIONS"] = f"halt_on_error=0:log_path={log_path}.asan.log"
+    custom_env["ASAN_OPTIONS"] = f"log_path={log_path}.asan.log"
     custom_env["UBSAN_OPTIONS"] = f"log_path={log_path}.ubsan.log"
 
     # Compile
