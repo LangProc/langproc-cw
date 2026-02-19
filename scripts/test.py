@@ -537,19 +537,20 @@ def main():
         if not clean_success:
             exit(2)
 
+    # Prepare the output and build folders
     shutil.rmtree(OUTPUT_FOLDER, ignore_errors=True)
     Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
     Path(BUILD_FOLDER).mkdir(parents=True, exist_ok=True)
 
     # Build the compiler using cmake or make
     if args.use_cmake and not args.coverage:
-        build_sucess = cmake(silent=args.short)
+        build_success = cmake(silent=args.short)
     else:
         if args.use_cmake and args.coverage:
             print(RED + "Coverage is not supported with CMake. Switching to make." + RESET)
-        build_sucess = make(silent=args.short)
+        build_success = make(silent=args.short)
 
-    if not build_sucess:
+    if not build_success:
         exit(3)
 
     # Run the tests and save the results into JUnit XML file
