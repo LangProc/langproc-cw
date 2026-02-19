@@ -435,39 +435,39 @@ def process_result(
 
     return
 
-def run_tests(args, xml_file: JUnitXMLFile):
+def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, silent: bool):
     """
     Runs tests against compiler.
     """
-    drivers = list(Path(args.dir).rglob("*_driver.c"))
+    drivers = list(directory.rglob("*_driver.c"))
     drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
     results = []
 
     progress_bar = None
-    if args.short and sys.stdout.isatty():
+    if silent and sys.stdout.isatty():
         progress_bar = ProgressBar(len(drivers))
     else:
         # Force verbose mode when not a terminal
-        args.short = False
+        silent = False
 
-    if args.multithreading:
+    if multithreading:
         with ThreadPoolExecutor() as executor:
             futures = [executor.submit(run_test, driver) for driver in drivers]
             for future in as_completed(futures):
                 result = future.result()
                 results.append(result.passed())
-                process_result(result, xml_file, not args.short, progress_bar)
+                process_result(result, xml_file, not silent, progress_bar)
 
     else:
         for driver in drivers:
             result = run_test(driver)
             results.append(result.passed())
-            process_result(result, xml_file, not args.short, progress_bar)
+            process_result(result, xml_file, not silent, progress_bar)
 
     passing = sum(results)
     total = len(drivers)
 
-    if args.short:
+    if silent:
         return
 
     print("\n>> Test Summary: " + GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET)
@@ -555,7 +555,7 @@ def main():
 
     # Run the tests and save the results into JUnit XML file
     with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
-        run_tests(args, xml_file)
+        run_tests(directory=Path(args.dir), xml_file=xml_file, multithreading=args.multithreading, silent=args.short)
 
     # Find coverage if required. Note, that the coverage server will be blocking
     if args.coverage:
