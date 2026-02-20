@@ -187,7 +187,7 @@ class ProgressBar:
             self.failed += 1
         self.update()
 
-def run_test(driver: Path) -> Result:
+def run_test(driver: Path, validate_tests: Optional[bool] = False) -> Result:
     """
     Run an instance of a test case.
 
@@ -221,9 +221,15 @@ def run_test(driver: Path) -> Result:
     custom_env["ASAN_OPTIONS"] = f"log_path={log_path}.asan.log"
     custom_env["UBSAN_OPTIONS"] = f"log_path={log_path}.ubsan.log"
 
+    # Compile the test case into assembly using the custom compiler or GCC for self validation
+    if validate_tests:
+        compile_cmd = [GCC, "-std=c90", "-pedantic", "-ansi", "-O0", GCC_ARCH, GCC_ABI, "-S", to_assemble, "-o", f"{log_path}.s"]
+    else:
+        compile_cmd = [COMPILER_FILE, "-S", to_assemble, "-o", f"{log_path}.s"]
+
     # Compile
     return_code, _, timed_out = run_subprocess(
-        cmd=[COMPILER_FILE, "-S", to_assemble, "-o", f"{log_path}.s"],
+        cmd=compile_cmd,
         timeout=RUN_TIMEOUT_SECONDS,
         env=custom_env,
         log_path=f"{log_path}.compiler",
@@ -430,7 +436,7 @@ def process_result(
 
     return
 
-def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, verbose: bool):
+def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, verbose: bool, validate_tests: Optional[bool] = False) -> bool:
     """
     Runs tests against compiler.
     """
@@ -447,7 +453,7 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
 
     if multithreading:
         with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(run_test, driver) for driver in drivers]
+            futures = [executor.submit(run_test, driver, validate_tests=validate_tests) for driver in drivers]
             for future in as_completed(futures):
                 result = future.result()
                 results.append(result.passed())
@@ -455,7 +461,7 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
 
     else:
         for driver in drivers:
-            result = run_test(driver)
+            result = run_test(driver, validate_tests=validate_tests)
             results.append(result.passed())
             process_result(result, xml_file, verbose, progress_bar)
 
@@ -521,6 +527,13 @@ def parse_args():
         "in faster builds and tests, however, CMake is not part of the course, "
         "and you may run into issues."
     )
+    parser.add_argument(
+        "--validate_tests",
+        action="store_true",
+        default=False,
+        help="Use GCC to validate tests instead of testing the custom compiler. "
+        "This is used for CI/CD pipeline, not for normal student usage."
+    )
     return parser.parse_args()
 
 def main():
@@ -550,7 +563,7 @@ def main():
 
     # Run the tests and save the results into JUnit XML file
     with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
-        status = run_tests(directory=Path(args.dir), xml_file=xml_file, multithreading=args.multithreading, verbose=not args.silent)
+        status = run_tests(directory=Path(args.dir), xml_file=xml_file, multithreading=args.multithreading, verbose=not args.silent, validate_tests=args.validate_tests)
 
     # Find coverage if required. Note, that the coverage server will be blocking
     if args.coverage:
@@ -558,6 +571,10 @@ def main():
         if not coverage_success:
             exit(4)
         serve_coverage_forever('0.0.0.0', 8000)
+
+    # Overwrite the status to 0 for normal usage
+    if not args.validate_tests:
+        status = 0
 
     return status
 
