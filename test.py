@@ -186,7 +186,7 @@ class ProgressBar:
             self.failed += 1
         self.update()
 
-def run_test(driver: Path, validate_tests: Optional[bool] = False) -> Result:
+def run_test(driver: Path, validate_tests: bool = False) -> Result:
     """
     Run an instance of a test case.
 
@@ -435,7 +435,7 @@ def process_result(
 
     return
 
-def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, verbose: bool, validate_tests: Optional[bool] = False) -> bool:
+def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, verbose: bool, validate_tests: bool = False) -> bool:
     """
     Runs tests against compiler.
     """
