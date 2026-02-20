@@ -20,27 +20,21 @@ Many students develop their compiler in VS Code, as this has good support for co
 6) After a delay you will now be in the container environment.
     - The delay will vary based on how fast you can download around 1GB over your Internet connection.
     - For those interested, VS Code reads the container configuration from the [.devcontainer/devcontainer.json](../.devcontainer/devcontainer.json) file.
-7) Test that your tools are correctly set up by running `./scripts/toolchain_test.sh` in the VS Code terminal, which is accessible via `Terminal -> New Terminal`. Your output should look something like this:
+7) Test that your tools are correctly set up by running `./test.py --validate_tests` in the VS Code terminal, which is accessible via `Terminal -> New Terminal`. Your output should look something like this:
 
 ```console
-> user@host:langproc-cw# ./scripts/toolchain_test.sh
+> user@host:langproc-cw# ./test.py --validate_tests
 >
 [...]
 
-Parsing: tests/_example/example.c
-AST parsing complete
-Printing parsed AST...
-Printed parsed AST to: build/riscv_example.s.printed
-Compiling parsed AST...
-Compiled to: build/riscv_example.s
-bbl loader
-Hello from RISC-V
-Test function produced value: 8.700000
-Example function returned: 5
-Test successful
+tests/types/unsigned.c
+        > Pass
+
+
+>> Test Summary: 86 Passed, 0 Failed
 ```
 
-8) You might also benefit from installing VS Code extensions for C++, Lex, and Yacc for better text highlighting and easier debugging. For example, you can press F5 to start the integrated VS Code debugger. By default, this attempts to compile [tests/_example/example.c](../tests/_example/example.c), as specified in [.vscode/launch.json](../.vscode/launch.json).
+8) You might also benefit from installing VS Code extensions for C++, [Lex, and Yacc](https://marketplace.visualstudio.com/items?itemName=daohong-emilio.yash) for better text highlighting and easier debugging. For example, you can press F5 to start the integrated VS Code debugger. By default, this attempts to compile [tests/_example/example.c](../tests/_example/example.c), as specified in [.vscode/launch.json](../.vscode/launch.json).
 
 9) You might also like to modify the [autoformatter settings](../.clang-format) to your preference. More information can be found here: https://clang.llvm.org/docs/ClangFormat.html. This has been configured to automatically format on save. You can turn it off by modifying [.vscode/settings.json](../.vscode/settings.json).
 
@@ -58,26 +52,16 @@ Test successful
     docker run --rm -it -v "${PWD}:/code" -w "/code" --name "compilers_env" compilers_image
     ```
 
-6) You should now be inside the LangProc tools container, where you can run `./scripts/toolchain_test.sh` inside the `/code` directory to check that your tools are working correctly. Note that the directory containing this file, as well as any subdirectories, are mounted inside this container under the path `/code`. The output of running the command should look something like this:
+6) You should now be inside the LangProc tools container, where you can run `./test.py --validate_tests` inside the `/code` directory to check that your tools are working correctly. Note that the directory containing this file, as well as any subdirectories, are mounted inside this container under the path `/code`. The output of running the command should look something like this:
+
+```console
+> user@host:langproc-cw# ./test.py --validate_tests
+>
+[...]
+
+tests/types/unsigned.c
+        > Pass
 
 
-    ```console
-    root@ad12f00322f6:/code# ./scripts/toolchain_test.sh
-
-    g++ -std=c++20 -W -Wall -g -I include -o build/c_compiler src/cli.cpp src/compiler.cpp
-
-    Compiling: tests/_example/example.c
-    Compiled to: build/riscv_example.s
-
-    Parsing: tests/_example/example.c
-    AST parsing complete
-    Printing parsed AST...
-    Printed parsed AST to: build/riscv_example.s.printed
-    Compiling parsed AST...
-    Compiled to: build/riscv_example.s
-    bbl loader
-    Hello from RISC-V
-    Test function produced value: 8.700000
-    Example function returned: 5
-    Test successful
-    ```
+>> Test Summary: 86 Passed, 0 Failed
+```
