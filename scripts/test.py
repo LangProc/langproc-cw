@@ -18,7 +18,7 @@ For more information, run scripts/test.py --help
 """
 
 
-__version__ = "0.2.0"
+__version__ = "1.0.0"
 __author__ = "William Huynh (@saturn691), Filip Wojcicki, James Nock"
 
 
@@ -288,7 +288,7 @@ def run_subprocess(
     timeout: int,
     env: Optional[dict] = None,
     log_path: Optional[str] = None,
-    silent: bool = False,
+    verbose: bool = True,
 ) -> tuple[int, str, bool]:
     """
     Wrapper for subprocess.run(...) with common arguments and error handling.
@@ -299,7 +299,7 @@ def run_subprocess(
     stdout = None
     stderr = None
 
-    if silent:
+    if not verbose:
         stdout = subprocess.DEVNULL
         stderr = subprocess.DEVNULL
     elif log_path:
@@ -324,7 +324,7 @@ def clean() -> bool:
     return_code, error_msg, _ = run_subprocess(
         cmd=["make", "-C", PROJECT_LOCATION, "clean"],
         timeout=BUILD_TIMEOUT_SECONDS,
-        silent=True,
+        verbose=False,
     )
 
     if return_code != 0:
@@ -332,7 +332,7 @@ def clean() -> bool:
         return False
     return True
 
-def make(silent: bool) -> bool:
+def make(verbose: bool) -> bool:
     """
     Wrapper for make build/c_compiler.
 
@@ -342,7 +342,7 @@ def make(silent: bool) -> bool:
     custom_env = os.environ.copy()
     custom_env["DEBUG"] = "1"
     return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", PROJECT_LOCATION, "build/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, silent=silent, env=custom_env
+        cmd=["make", "-C", PROJECT_LOCATION, "build/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, verbose=verbose, env=custom_env
     )
     if return_code != 0:
         print(RED + "Error when running make:", error_msg + RESET)
@@ -350,25 +350,31 @@ def make(silent: bool) -> bool:
 
     return True
 
-def cmake(silent: bool) -> bool:
+def cmake(verbose: bool) -> bool:
     """
     Wrapper for cmake --build build
 
     Return True if successful, False otherwise
     """
     print(GREEN + "Running cmake..." + RESET)
-    
+
+    # cmake configure + generate
     # -DCMAKE_BUILD_TYPE=Release is equal to -O3
     return_code, error_msg, _ = run_subprocess(
         cmd=["cmake", "-S", PROJECT_LOCATION, "-B", BUILD_FOLDER, "-DCMAKE_BUILD_TYPE=Release"],
         timeout=BUILD_TIMEOUT_SECONDS,
-        silent=silent
-    )
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["cmake", "--build", BUILD_FOLDER], timeout=BUILD_TIMEOUT_SECONDS, silent=silent
+        verbose=verbose
     )
     if return_code != 0:
-        print(RED + "Error when running cmake:", error_msg + RESET)
+        print(RED + "Error when running cmake (configure + generate):", error_msg + RESET)
+        return False
+
+    # cmake compile
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["cmake", "--build", BUILD_FOLDER], timeout=BUILD_TIMEOUT_SECONDS, verbose=verbose
+    )
+    if return_code != 0:
+        print(RED + "Error when running cmake (compile):", error_msg + RESET)
         return False
 
     return True
@@ -383,7 +389,7 @@ def coverage() -> bool:
     custom_env = os.environ.copy()
     custom_env["DEBUG"] = "1"
     return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", PROJECT_LOCATION, "coverage"], timeout=BUILD_TIMEOUT_SECONDS, silent=True, env=custom_env
+        cmd=["make", "-C", PROJECT_LOCATION, "coverage"], timeout=BUILD_TIMEOUT_SECONDS, verbose=False, env=custom_env
     )
     if return_code != 0:
         print(RED + "Error when running make coverage:", error_msg + RESET)
@@ -429,42 +435,42 @@ def process_result(
 
     return
 
-def run_tests(args, xml_file: JUnitXMLFile):
+def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, verbose: bool):
     """
     Runs tests against compiler.
     """
-    drivers = list(Path(args.dir).rglob("*_driver.c"))
+    drivers = list(directory.rglob("*_driver.c"))
     drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
     results = []
 
     progress_bar = None
-    if args.short and sys.stdout.isatty():
+    if not verbose and sys.stdout.isatty():
         progress_bar = ProgressBar(len(drivers))
     else:
         # Force verbose mode when not a terminal
-        args.short = False
+        verbose = True
 
-    if args.multithreading:
+    if multithreading:
         with ThreadPoolExecutor() as executor:
             futures = [executor.submit(run_test, driver) for driver in drivers]
             for future in as_completed(futures):
                 result = future.result()
                 results.append(result.passed())
-                process_result(result, xml_file, not args.short, progress_bar)
+                process_result(result, xml_file, verbose, progress_bar)
 
     else:
         for driver in drivers:
             result = run_test(driver)
             results.append(result.passed())
-            process_result(result, xml_file, not args.short, progress_bar)
+            process_result(result, xml_file, verbose, progress_bar)
 
     passing = sum(results)
     total = len(drivers)
 
-    if not args.short:
+    if verbose:
         print("\n>> Test Summary: " + GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET)
+        
     return passing != total
-
 
 def parse_args():
     """
@@ -487,7 +493,7 @@ def parse_args():
         "but order is not guaranteed. Should only be used for speed."
     )
     parser.add_argument(
-        "-s", "--short",
+        "-s", "--silent",
         action="store_true",
         default=False,
         help="Disable verbose output into the terminal. Note that all logs will "
@@ -525,26 +531,36 @@ def parse_args():
 def main():
     args = parse_args()
 
-    if not args.no_clean and not clean():
-        # Clean the repo if required and exit if this fails.
-        exit(2)
+    # Clean the repo if required
+    if not args.no_clean:
+        clean_success = clean()
+        if not clean_success:
+            exit(2)
 
+    # Prepare the output and build folders
     shutil.rmtree(OUTPUT_FOLDER, ignore_errors=True)
     Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
     Path(BUILD_FOLDER).mkdir(parents=True, exist_ok=True)
 
+    # Build the compiler using cmake or make
     if args.use_cmake and not args.coverage:
-        if not cmake(silent=args.short):
-            exit(3)
+        build_success = cmake(verbose=not args.silent)
     else:
-        if not make(silent=args.short):
-            exit(3)
+        if args.use_cmake and args.coverage:
+            print(RED + "Coverage is not supported with CMake. Switching to make." + RESET)
+        build_success = make(verbose=not args.silent)
 
+    if not build_success:
+        exit(3)
+
+    # Run the tests and save the results into JUnit XML file
     with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
-        status = run_tests(args, xml_file)
+        status = run_tests(directory=Path(args.dir), xml_file=xml_file, multithreading=args.multithreading, verbose=not args.silent)
 
+    # Find coverage if required. Note, that the coverage server will be blocking
     if args.coverage:
-        if not coverage():
+        coverage_success = coverage()
+        if not coverage_success:
             exit(4)
         serve_coverage_forever('0.0.0.0', 8000)
 
