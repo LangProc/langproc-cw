@@ -461,10 +461,10 @@ def run_tests(args, xml_file: JUnitXMLFile):
     passing = sum(results)
     total = len(drivers)
 
-    if args.short:
-        return
+    if not args.short:
+        print("\n>> Test Summary: " + GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET)
+    return passing != total
 
-    print("\n>> Test Summary: " + GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET)
 
 def parse_args():
     """
@@ -541,16 +541,19 @@ def main():
             exit(3)
 
     with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
-        run_tests(args, xml_file)
+        status = run_tests(args, xml_file)
 
     if args.coverage:
         if not coverage():
             exit(4)
         serve_coverage_forever('0.0.0.0', 8000)
 
+    return status
+
 if __name__ == "__main__":
     try:
-        main()
+        status = main()
+        exit(status)
     finally:
         print(RESET, end="")
         if sys.stdout.isatty():
