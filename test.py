@@ -7,14 +7,14 @@ Makefile, run the tests and store the outputs in build/output.
 This script will also generate a JUnit XML file, which can be used to integrate
 with CI/CD pipelines.
 
-Usage: test.py [-h] [-m] [-s] [--version] [--no_clean] [--coverage] [--use_cmake] [dir]
+Usage: ./test.py [-h] [-m] [-s] [--version] [--no_clean] [--coverage] [--use_cmake] [dir]
 
-Example usage: scripts/test.py tests/_example
+Example usage: ./test.py tests/_example
 
 This will print out a progress bar and only run the example tests.
 The output would be placed into build/output/_example/example/.
 
-For more information, run scripts/test.py --help
+For more information, run ./test.py --help
 """
 
 
@@ -46,8 +46,7 @@ if not sys.stdout.isatty():
     RED, GREEN, YELLOW, RESET = "", "", "", ""
 
 # "File" will suggest the absolute path to the file, including the extension.
-SCRIPT_LOCATION = Path(__file__).resolve().parent
-PROJECT_LOCATION = SCRIPT_LOCATION.joinpath("..").resolve()
+PROJECT_LOCATION = Path(__file__).resolve().parent
 BUILD_FOLDER = PROJECT_LOCATION.joinpath("build").resolve()
 OUTPUT_FOLDER = PROJECT_LOCATION.joinpath("build/output").resolve()
 J_UNIT_OUTPUT_FILE = PROJECT_LOCATION.joinpath("build/junit_results.xml").resolve()
@@ -58,6 +57,10 @@ COVERAGE_FOLDER = PROJECT_LOCATION.joinpath("coverage").resolve()
 BUILD_TIMEOUT_SECONDS = 60
 RUN_TIMEOUT_SECONDS = 15
 TIMEOUT_RETURNCODE = 124
+
+GCC = "riscv64-unknown-elf-gcc"
+GCC_ARCH = "-march=rv32imfd"
+GCC_ABI = "-mabi=ilp32d"
 
 @dataclass
 class Result:
@@ -183,7 +186,7 @@ class ProgressBar:
             self.failed += 1
         self.update()
 
-def run_test(driver: Path) -> Result:
+def run_test(driver: Path, validate_tests: bool = False) -> Result:
     """
     Run an instance of a test case.
 
@@ -217,9 +220,15 @@ def run_test(driver: Path) -> Result:
     custom_env["ASAN_OPTIONS"] = f"log_path={log_path}.asan.log"
     custom_env["UBSAN_OPTIONS"] = f"log_path={log_path}.ubsan.log"
 
+    # Compile the test case into assembly using the custom compiler or GCC for self validation
+    if validate_tests:
+        compile_cmd = [GCC, "-std=c90", "-pedantic", "-ansi", "-O0", GCC_ARCH, GCC_ABI, "-S", to_assemble, "-o", f"{log_path}.s"]
+    else:
+        compile_cmd = [COMPILER_FILE, "-S", to_assemble, "-o", f"{log_path}.s"]
+
     # Compile
     return_code, _, timed_out = run_subprocess(
-        cmd=[COMPILER_FILE, "-S", to_assemble, "-o", f"{log_path}.s"],
+        cmd=compile_cmd,
         timeout=RUN_TIMEOUT_SECONDS,
         env=custom_env,
         log_path=f"{log_path}.compiler",
@@ -233,10 +242,7 @@ def run_test(driver: Path) -> Result:
 
     # GCC Reference Output
     return_code, _, timed_out = run_subprocess(
-        cmd=[
-                "riscv64-unknown-elf-gcc", "-std=c90", "-pedantic", "-ansi", "-O0", "-march=rv32imfd", "-mabi=ilp32d",
-                "-o", f"{log_path}.gcc.s", "-S", to_assemble
-            ],
+        cmd=[GCC, "-std=c90", "-pedantic", "-ansi", "-O0", GCC_ARCH, GCC_ABI, "-S", to_assemble, "-o", f"{log_path}.gcc.s"],
         timeout=RUN_TIMEOUT_SECONDS,
         log_path=f"{log_path}.reference",
     )
@@ -246,10 +252,7 @@ def run_test(driver: Path) -> Result:
 
     # Assemble
     return_code, _, timed_out = run_subprocess(
-        cmd=[
-                "riscv64-unknown-elf-gcc", "-march=rv32imfd", "-mabi=ilp32d",
-                "-o", f"{log_path}.o", "-c", f"{log_path}.s"
-            ],
+        cmd=[GCC, GCC_ARCH, GCC_ABI, "-c", f"{log_path}.s", "-o", f"{log_path}.o"],
         timeout=RUN_TIMEOUT_SECONDS,
         log_path=f"{log_path}.assembler",
     )
@@ -259,10 +262,7 @@ def run_test(driver: Path) -> Result:
 
     # Link
     return_code, _, timed_out = run_subprocess(
-        cmd=[
-                "riscv64-unknown-elf-gcc", "-march=rv32imfd", "-mabi=ilp32d", "-static",
-                "-o", f"{log_path}", f"{log_path}.o", str(driver)
-            ],
+        cmd=[GCC, GCC_ARCH, GCC_ABI, "-static", f"{log_path}.o", str(driver), "-o", f"{log_path}"],
         timeout=RUN_TIMEOUT_SECONDS,
         log_path=f"{log_path}.linker",
     )
@@ -435,7 +435,7 @@ def process_result(
 
     return
 
-def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, verbose: bool):
+def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, verbose: bool, validate_tests: bool = False) -> bool:
     """
     Runs tests against compiler.
     """
@@ -452,7 +452,7 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
 
     if multithreading:
         with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(run_test, driver) for driver in drivers]
+            futures = [executor.submit(run_test, driver, validate_tests=validate_tests) for driver in drivers]
             for future in as_completed(futures):
                 result = future.result()
                 results.append(result.passed())
@@ -460,7 +460,7 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
 
     else:
         for driver in drivers:
-            result = run_test(driver)
+            result = run_test(driver, validate_tests=validate_tests)
             results.append(result.passed())
             process_result(result, xml_file, verbose, progress_bar)
 
@@ -469,7 +469,7 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
 
     if verbose:
         print("\n>> Test Summary: " + GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET)
-        
+
     return passing != total
 
 def parse_args():
@@ -526,6 +526,13 @@ def parse_args():
         "in faster builds and tests, however, CMake is not part of the course, "
         "and you may run into issues."
     )
+    parser.add_argument(
+        "--validate_tests",
+        action="store_true",
+        default=False,
+        help="Use GCC to validate tests instead of testing the custom compiler. "
+        "This is used for CI/CD pipeline, not for normal student usage."
+    )
     return parser.parse_args()
 
 def main():
@@ -555,7 +562,7 @@ def main():
 
     # Run the tests and save the results into JUnit XML file
     with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
-        status = run_tests(directory=Path(args.dir), xml_file=xml_file, multithreading=args.multithreading, verbose=not args.silent)
+        status = run_tests(directory=Path(args.dir), xml_file=xml_file, multithreading=args.multithreading, verbose=not args.silent, validate_tests=args.validate_tests)
 
     # Find coverage if required. Note, that the coverage server will be blocking
     if args.coverage:
@@ -563,6 +570,10 @@ def main():
         if not coverage_success:
             exit(4)
         serve_coverage_forever('0.0.0.0', 8000)
+
+    # Overwrite the status to 0 for normal usage
+    if not args.validate_tests:
+        status = 0
 
     return status
 
