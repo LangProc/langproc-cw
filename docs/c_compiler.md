@@ -12,11 +12,11 @@ If you wish to use C++, then a basic framework for building your compiler has be
 Source files can be found in the [./src](../src) directory and header files can be found in the [./include](../include) directory.
 
 You can test your compiler by running
-[`scripts/test.py`](../scripts/test.py) from the top of this repo; the
+[`./test.py`](../test.py) from the top of this repo; the
 output should look as follows (note: the progress bar and results will be coloured):
 
 ```console
-> user@host:langproc-cw# scripts/test.py
+> user@host:langproc-cw# ./test.py
 >
 make: Entering directory '/home/saturn691/projects/university/iac/langproc-cw'
 make: 'build/c_compiler' is up to date.
@@ -28,10 +28,10 @@ See logs for more details (use -v for verbose output).
 >> Test Summary: 1 Passed, 85 Failed
 ```
 
-Full usage guide of [`scripts/test.py`](../scripts/test.py) is found in the file header or after running:
+Full usage guide of [`test.py`](../test.py) is found in the file header or after running:
 
 ```console
-> user@host:langproc-cw# scripts/test.py --help
+> user@host:langproc-cw# ./test.py --help
 ```
 
 By default, the first [`_example/example.c`](../tests/_example/example.c) test should be passing.
@@ -126,9 +126,9 @@ Here is a (partial) list of features that will not be tested.
 
 ## Test cases
 
-All test inputs will be valid; that is, you can assume the absence of programmer errors like syntax faults, type mismatches, and array out-of-bounds errors. The entire compilation and testing process (including compilation, assembly, linking, and RISC-V simulation) is expected to complete within ten seconds per program (which should be plenty of time!), and is expected not to use an inordinate amount of memory or disk space. 
+All test inputs will be valid; that is, you can assume the absence of programmer errors like syntax faults, type mismatches, and array out-of-bounds errors. The entire compilation and testing process (including compilation, assembly, linking, and RISC-V simulation) is expected to complete within ten seconds per program (which should be plenty of time!), and is expected not to use an inordinate amount of memory or disk space.
 
-There is no requirement for the generated assembly to be optimised in any way for the vast majority of test cases -- the only requirement for them is that your compiler produces the correct answer. However, for the very small number of students who would _like_ to go "above and beyond" by implementing some optimisations, and would like to be recognised for this, we have added a very small number of test cases that will only pass if the compiler has some ability to remove dead code. If you do not implement any optimisations, failing these test cases will not have an appreciable impact on your final mark. 
+There is no requirement for the generated assembly to be optimised in any way for the vast majority of test cases -- the only requirement for them is that your compiler produces the correct answer. However, for the very small number of students who would _like_ to go "above and beyond" by implementing some optimisations, and would like to be recognised for this, we have added a very small number of test cases that will only pass if the compiler has some ability to remove dead code. If you do not implement any optimisations, failing these test cases will not have an appreciable impact on your final mark.
 
 The [tests](../tests) contains a large number of example inputs, divided into various categories, that you might like to use as testcases. Your compiler will be assessed on these "seen" inputs together with a further set of "unseen" inputs that are of a similar form. It is worth emphasising that it is not expected that many compilers will correctly compile all of the "seen" inputs (let alone the "unseen" ones!). You are encouraged to focus on compiling the "basic" features (as listed above) first, before moving on to more advanced features if you have time.
 

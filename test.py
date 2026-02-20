@@ -7,14 +7,14 @@ Makefile, run the tests and store the outputs in build/output.
 This script will also generate a JUnit XML file, which can be used to integrate
 with CI/CD pipelines.
 
-Usage: test.py [-h] [-m] [-s] [--version] [--no_clean] [--coverage] [--use_cmake] [dir]
+Usage: ./test.py [-h] [-m] [-s] [--version] [--no_clean] [--coverage] [--use_cmake] [dir]
 
-Example usage: scripts/test.py tests/_example
+Example usage: ./test.py tests/_example
 
 This will print out a progress bar and only run the example tests.
 The output would be placed into build/output/_example/example/.
 
-For more information, run scripts/test.py --help
+For more information, run ./test.py --help
 """
 
 
@@ -46,8 +46,7 @@ if not sys.stdout.isatty():
     RED, GREEN, YELLOW, RESET = "", "", "", ""
 
 # "File" will suggest the absolute path to the file, including the extension.
-SCRIPT_LOCATION = Path(__file__).resolve().parent
-PROJECT_LOCATION = SCRIPT_LOCATION.joinpath("..").resolve()
+PROJECT_LOCATION = Path(__file__).resolve().parent
 BUILD_FOLDER = PROJECT_LOCATION.joinpath("build").resolve()
 OUTPUT_FOLDER = PROJECT_LOCATION.joinpath("build/output").resolve()
 J_UNIT_OUTPUT_FILE = PROJECT_LOCATION.joinpath("build/junit_results.xml").resolve()
