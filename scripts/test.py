@@ -59,6 +59,10 @@ BUILD_TIMEOUT_SECONDS = 60
 RUN_TIMEOUT_SECONDS = 15
 TIMEOUT_RETURNCODE = 124
 
+GCC = "riscv64-unknown-elf-gcc"
+GCC_ARCH = "-march=rv32imfd"
+GCC_ABI = "-mabi=ilp32d"
+
 @dataclass
 class Result:
     """Class for keeping track of each test case result"""
@@ -233,10 +237,7 @@ def run_test(driver: Path) -> Result:
 
     # GCC Reference Output
     return_code, _, timed_out = run_subprocess(
-        cmd=[
-                "riscv64-unknown-elf-gcc", "-std=c90", "-pedantic", "-ansi", "-O0", "-march=rv32imfd", "-mabi=ilp32d",
-                "-o", f"{log_path}.gcc.s", "-S", to_assemble
-            ],
+        cmd=[GCC, "-std=c90", "-pedantic", "-ansi", "-O0", GCC_ARCH, GCC_ABI, "-S", to_assemble, "-o", f"{log_path}.gcc.s"],
         timeout=RUN_TIMEOUT_SECONDS,
         log_path=f"{log_path}.reference",
     )
@@ -246,10 +247,7 @@ def run_test(driver: Path) -> Result:
 
     # Assemble
     return_code, _, timed_out = run_subprocess(
-        cmd=[
-                "riscv64-unknown-elf-gcc", "-march=rv32imfd", "-mabi=ilp32d",
-                "-o", f"{log_path}.o", "-c", f"{log_path}.s"
-            ],
+        cmd=[GCC, GCC_ARCH, GCC_ABI, "-c", f"{log_path}.s", "-o", f"{log_path}.o"],
         timeout=RUN_TIMEOUT_SECONDS,
         log_path=f"{log_path}.assembler",
     )
@@ -259,10 +257,7 @@ def run_test(driver: Path) -> Result:
 
     # Link
     return_code, _, timed_out = run_subprocess(
-        cmd=[
-                "riscv64-unknown-elf-gcc", "-march=rv32imfd", "-mabi=ilp32d", "-static",
-                "-o", f"{log_path}", f"{log_path}.o", str(driver)
-            ],
+        cmd=[GCC, GCC_ARCH, GCC_ABI, "-static", f"{log_path}.o", str(driver), "-o", f"{log_path}"],
         timeout=RUN_TIMEOUT_SECONDS,
         log_path=f"{log_path}.linker",
     )
@@ -469,7 +464,7 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
 
     if verbose:
         print("\n>> Test Summary: " + GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET)
-        
+
     return passing != total
 
 def parse_args():
