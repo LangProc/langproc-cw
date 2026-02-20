@@ -1,5 +1,5 @@
 
-int f();
+int f(int*);
 
 int main()
 {

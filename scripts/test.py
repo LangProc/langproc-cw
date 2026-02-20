@@ -214,7 +214,7 @@ def run_test(driver: Path) -> Result:
 
     # Modifying environment to combat errors on memory leak
     custom_env = os.environ.copy()
-    custom_env["ASAN_OPTIONS"] = f"halt_on_error=0:log_path={log_path}.asan.log"
+    custom_env["ASAN_OPTIONS"] = f"log_path={log_path}.asan.log"
     custom_env["UBSAN_OPTIONS"] = f"log_path={log_path}.ubsan.log"
 
     # Compile
@@ -469,6 +469,8 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
 
     if verbose:
         print("\n>> Test Summary: " + GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET)
+        
+    return passing != total
 
 def parse_args():
     """
@@ -553,7 +555,7 @@ def main():
 
     # Run the tests and save the results into JUnit XML file
     with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
-        run_tests(directory=Path(args.dir), xml_file=xml_file, multithreading=args.multithreading, verbose=not args.silent)
+        status = run_tests(directory=Path(args.dir), xml_file=xml_file, multithreading=args.multithreading, verbose=not args.silent)
 
     # Find coverage if required. Note, that the coverage server will be blocking
     if args.coverage:
@@ -562,9 +564,12 @@ def main():
             exit(4)
         serve_coverage_forever('0.0.0.0', 8000)
 
+    return status
+
 if __name__ == "__main__":
     try:
-        main()
+        status = main()
+        exit(status)
     finally:
         print(RESET, end="")
         if sys.stdout.isatty():
