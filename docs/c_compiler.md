@@ -168,19 +168,19 @@ I run the compiler on the test program, like so:
 I then use GCC to assemble the generated assembly program (`test_program.s`), like so:
 
 ```console
-> user@host:langproc-cw# riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -o test_program.o -c test_program.s
+> user@host:langproc-cw# riscv32-unknown-elf-gcc -march=rv32gc -mabi=ilp32d -o test_program.o -c test_program.s
 ```
 
 I then use GCC to link the generated object file (`test_program.o`) with the driver program (`test_program_driver.c`), to produce an executable (`test_program`), like so:
 
 ```console
-> user@host:langproc-cw# riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -static -o test_program test_program.o test_program_driver.c
+> user@host:langproc-cw# riscv32-unknown-elf-gcc -march=rv32gc -mabi=ilp32d -static -o test_program test_program.o test_program_driver.c
 ```
 
 I then use spike to simulate the executable on RISC-V, like so:
 
 ```console
-> user@host:langproc-cw# spike pk test_program
+> user@host:langproc-cw# spike --isa=rv32gc pk test_program
 ```
 
 This command should produce the exit code `0`.
@@ -189,11 +189,11 @@ This command should produce the exit code `0`.
 [You will need to consider assembler directives in your output](./assembler_directives.md)
 
 ## Useful links
-* [Godbolt](https://godbolt.org/z/vMMnWbsff) - Great tool for viewing what a real (`gcc` in this case) RISC-V compiler would produce for a given snippet of C code. This link is pre-configured for the correct architecture (`RV32IMFD`) and ABI (`ILP32D`) that the coursework targets. Code optimisation is also disabled to best mimic what you might want your compiler to output. You can replicate Godbolt locally by running `riscv64-unknown-elf-gcc -std=c90 -pedantic -ansi -O0 -march=rv32imfd -mabi=ilp32d -S [source-file.c] -o [dest-file.s]`, which might make debugging and directives analysis easier for some.
+* [Godbolt](https://godbolt.org/z/vMMnWbsff) - Great tool for viewing what a real (`gcc` in this case) RISC-V compiler would produce for a given snippet of C code. This link is pre-configured for a correct architecture (`RV32IMFD`) and ABI (`ILP32D`) that the coursework targets. Code optimisation is also disabled to best mimic what you might want your compiler to output. You can replicate Godbolt locally by running `riscv32-unknown-elf-gcc -std=c90 -pedantic -ansi -O0 -march=rv32gc -mabi=ilp32d -S [source-file.c] -o [dest-file.s]`, which might make debugging and directives analysis easier for some. `gc` in the command-line stands for `imafdc` which includes additional instructions that shouldn't be generated.
 
 * [Interactive RISC-V simulator](https://creatorsim.github.io/creator) - Might be helpful when trying to work out the behaviour of certain instructions that Godbolt emits.
 
-* [RISC-V ISA](https://riscv.org/wp-content/uploads/2017/05/riscv-spec-v2.2.pdf) - Instruction Set Manual, where you should only be generating assembly using instructions from the I, M, F, and D sections.
+* [RISC-V ISA](https://docs.riscv.org/reference/isa/unpriv/unpriv-index.html) - Instruction Set Manual, where you should only be generating assembly using instructions from the I, M, F, and D sections.
 
 * [RISC-V ABI](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/9a77e8801592b3d194796ea5ba6ec670e4fe054f/riscv-cc.adoc) - Calling conventions for registers and functions depending on their types. For example, it is expected that certain registers will contain the same value before and after making a function call. Additionally, it is expected that function arguments are passed in a certain order - so pay careful attention to the standard ABI called [`ILP32D`](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/9a77e8801592b3d194796ea5ba6ec670e4fe054f/riscv-cc.adoc#abi-ilp32d) with `XLEN` of 32.
 

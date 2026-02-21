@@ -58,8 +58,8 @@ BUILD_TIMEOUT_SECONDS = 60
 RUN_TIMEOUT_SECONDS = 15
 TIMEOUT_RETURNCODE = 124
 
-GCC = "riscv64-unknown-elf-gcc"
-GCC_ARCH = "-march=rv32imfd"
+GCC = "riscv32-unknown-elf-gcc"
+GCC_ARCH = "-march=rv32gc"
 GCC_ABI = "-mabi=ilp32d"
 
 @dataclass
@@ -272,7 +272,7 @@ def run_test(driver: Path, validate_tests: bool = False) -> Result:
 
     # Simulate
     return_code, _, timed_out = run_subprocess(
-        cmd=["spike", "pk", log_path],
+        cmd=["spike", "--isa=rv32gc", "pk", log_path],
         timeout=RUN_TIMEOUT_SECONDS,
         log_path=f"{log_path}.simulation",
     )
@@ -472,6 +472,23 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
 
     return passing != total
 
+def build(use_cmake: bool = False, coverage: bool = False, silent: bool = False):
+    """
+    Wrapper for building the student compiler. Assumes output folder exists.
+    """
+    # Prepare the build folder
+    Path(BUILD_FOLDER).mkdir(parents=True, exist_ok=True)
+
+    # Build the compiler using cmake or make
+    if use_cmake and not coverage:
+        build_success = cmake(verbose=not silent)
+    else:
+        if use_cmake and coverage:
+            print(RED + "Coverage is not supported with CMake. Switching to make." + RESET)
+        build_success = make(verbose=not silent)
+
+    return build_success
+
 def parse_args():
     """
     Wrapper for argument parsing.
@@ -544,25 +561,23 @@ def main():
         if not clean_success:
             exit(2)
 
-    # Prepare the output and build folders
+    # Prepare the output folder
     shutil.rmtree(OUTPUT_FOLDER, ignore_errors=True)
     Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
-    Path(BUILD_FOLDER).mkdir(parents=True, exist_ok=True)
 
-    # Build the compiler using cmake or make
-    if args.use_cmake and not args.coverage:
-        build_success = cmake(verbose=not args.silent)
-    else:
-        if args.use_cmake and args.coverage:
-            print(RED + "Coverage is not supported with CMake. Switching to make." + RESET)
-        build_success = make(verbose=not args.silent)
-
-    if not build_success:
-        exit(3)
+    # There is no need for building the student compiler when testing with riscv-gcc
+    if not args.validate_tests:
+        build_success = build(use_cmake=args.use_cmake, coverage=args.coverage, silent=args.silent)
+        if not build_success:
+            exit(3)
 
     # Run the tests and save the results into JUnit XML file
     with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
         status = run_tests(directory=Path(args.dir), xml_file=xml_file, multithreading=args.multithreading, verbose=not args.silent, validate_tests=args.validate_tests)
+
+    # Skip unavailable coverage and exit immediately for test validation
+    if args.validate_tests:
+        exit(status)
 
     # Find coverage if required. Note, that the coverage server will be blocking
     if args.coverage:
@@ -571,16 +586,9 @@ def main():
             exit(4)
         serve_coverage_forever('0.0.0.0', 8000)
 
-    # Overwrite the status to 0 for normal usage
-    if not args.validate_tests:
-        status = 0
-
-    return status
-
 if __name__ == "__main__":
     try:
-        status = main()
-        exit(status)
+        main()
     finally:
         print(RESET, end="")
         if sys.stdout.isatty():

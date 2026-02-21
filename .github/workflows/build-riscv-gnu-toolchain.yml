@@ -1,11 +1,11 @@
 name: Build RISC-V GNU Toolchain
-on: workflow_dispatch
-#  push:
+on:
+  workflow_dispatch:
+  push:
 #    tags:
 #      - '**'
 permissions:
   contents: read
-  contents: write
 
 jobs:
 #  release:
@@ -23,8 +23,8 @@ jobs:
     steps:
       - name: Install deps
         run: |
-          apt-get update
-          apt-get install -y autoconf automake autotools-dev curl python3 python3-pip python3-tomli libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex texinfo gperf libtool patchutils bc zlib1g-dev libexpat1-dev ninja-build git cmake libglib2.0-dev libslirp-dev libncurses-dev device-tree-compiler libboost-regex-dev libboost-system-dev # crossbuild-essential-arm64 # not needed: not cross-compiling
+          sudo apt-get update
+          sudo apt-get install -y autoconf automake autotools-dev curl python3 python3-pip python3-tomli libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex texinfo gperf libtool patchutils bc zlib1g-dev libexpat1-dev ninja-build git cmake libglib2.0-dev libslirp-dev libncurses-dev device-tree-compiler libboost-regex-dev libboost-system-dev # crossbuild-essential-arm64 # not needed: not cross-compiling
 
       - name: Prepare build
         run: |
@@ -84,48 +84,19 @@ jobs:
         uses: actions/checkout@v6
 
       - name: Test the build on coursework
-        run: |
-          git apply - <<-'EOF'
-          diff --git a/test.py b/test.py
-          index d3a0ff9..05bfda1 100755
-          --- a/test.py
-          +++ b/test.py
-          @@ -58,8 +58,8 @@
-           RUN_TIMEOUT_SECONDS = 15
-           TIMEOUT_RETURNCODE = 124
-           
-          -GCC = "riscv64-unknown-elf-gcc"
-          -GCC_ARCH = "-march=rv32imfd"
-          +GCC = "riscv32-unknown-elf-gcc"
-          +GCC_ARCH = "-march=rv32gc"
-           GCC_ABI = "-mabi=ilp32d"
-           
-           @dataclass
-          @@ -272,7 +272,7 @@ def run_test(driver: Path, validate_tests: bool = False) -> Result:
-           
-               # Simulate
-               return_code, _, timed_out = run_subprocess(
-          -        cmd=["spike", "pk", log_path],
-          +        cmd=["spike", "--isa=rv32gc", "pk", log_path],
-                   timeout=RUN_TIMEOUT_SECONDS,
-                   log_path=f"{log_path}.simulation",
-               )
-          EOF
-          mkdir build
-          touch build/c_compiler
-          ./test.py --no_clean --validate_tests
+        run: ./test.py --no_clean --validate_tests
 
       - name: Produce artifact
         run: |
           chmod 555 "$RISCV"
-          tar -cvzf riscv-gnu-toolchain-${{runner.os}}-${{runner.arch}}.tar.gz "$RISCV"
-          rm -rf "$RISCV"
+          tar -cvzf riscv-gnu-toolchain-${{runner.os}}-${{runner.arch}}.tar.gz "$RISCV" --transform="s/^\/tmp\///"
+          sudo rm -rf "$RISCV"
 
       - name: Upload artifact
 #        uses: softprops/action-gh-release@v2
 #        with:
 #          files: riscv-gnu-toolchain-${{runner.os}}-${{runner.arch}}.tar.gz
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v6
         with:
           name: riscv-gnu-toolchain-${{runner.os}}-${{runner.arch}}.tar.gz
           path: riscv-gnu-toolchain-${{runner.os}}-${{runner.arch}}.tar.gz

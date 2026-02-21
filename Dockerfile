@@ -18,7 +18,6 @@ RUN apt-get update && apt-get install -y --fix-missing \
     build-essential \
     ca-certificates \
     curl \
-    device-tree-compiler \
     lcov \
     nano \
     valgrind \
@@ -31,9 +30,6 @@ RUN apt-get update && apt-get install -y --fix-missing \
 # Set clangd as the default language server
 RUN update-alternatives --install /usr/bin/clangd clangd /usr/bin/clangd-18 100
 
-# Install RISC-V Toolchain (xPack) + compatibility symlinks for riscv64-unknown-elf-*
-ARG XPACK_RISCV_VER=15.2.0-1
-
 WORKDIR /tmp
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
@@ -43,8 +39,8 @@ RUN set -eux; \
       *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
     esac; \
     \
-    base="https://github.com/xpack-dev-tools/riscv-none-elf-gcc-xpack/releases/download/v${XPACK_RISCV_VER}"; \
-    tgz="xpack-riscv-none-elf-gcc-${XPACK_RISCV_VER}-${xarch}.tar.gz"; \
+    base="https://github.com/langproc/langproc-cw/???"; \
+    tgz="riscv-gnu-toolchain-${xarch}.tar.gz"; \
     sha="${tgz}.sha"; \
     \
     curl -L --fail -o "$tgz" "${base}/${tgz}"; \
@@ -54,49 +50,11 @@ RUN set -eux; \
     rm -rf /opt/riscv; \
     mkdir -p /opt; \
     tar -xzf "$tgz" -C /opt; \
-    mv "/opt/xpack-riscv-none-elf-gcc-${XPACK_RISCV_VER}" /opt/riscv; \
     rm -f "$tgz" "$sha"; \
     \
-    # Compatibility: keep existing course scripts working (riscv64-unknown-elf-* prefix)
-    for tool in gcc g++ cpp ar as ld nm objcopy objdump ranlib readelf size strip; do \
-      ln -sf "/opt/riscv/bin/riscv-none-elf-${tool}" "/opt/riscv/bin/riscv64-unknown-elf-${tool}"; \
-    done; \
-    \
-    # Sanity checks: both names should work
-    /opt/riscv/bin/riscv-none-elf-gcc --version; \
-    /opt/riscv/bin/riscv64-unknown-elf-gcc --version; \
-    printf 'int main(){return 0;}\n' | /opt/riscv/bin/riscv64-unknown-elf-gcc -march=rv32imfd -mabi=ilp32d -x c - -c -o /tmp/t.o
-
+    /opt/riscv/bin/riscv32-unknown-elf-gcc --version
 
 ENV RISCV="/opt/riscv"
 ENV PATH="/opt/riscv/bin:${PATH}"
-
-# Install Spike RISC-V ISA Simulator
-ARG SPIKE_REF=v1.1.0
-WORKDIR /tmp
-RUN set -eux; \
-    git clone https://github.com/riscv-software-src/riscv-isa-sim.git; \
-    cd riscv-isa-sim; \
-    git checkout "${SPIKE_REF}"; \
-    mkdir -p build; \
-    cd build; \
-    ../configure --prefix="$RISCV" --with-isa=RV32IMFD --with-target=riscv32-unknown-elf \
-      CXXFLAGS="-include stdint.h"; \
-    make -j"$(nproc)"; \
-    make install; \
-    cd /; \
-    rm -rf /tmp/riscv-isa-sim; \
-    spike --help
-
-WORKDIR /tmp
-RUN git clone https://github.com/riscv-software-src/riscv-pk.git
-WORKDIR /tmp/riscv-pk
-RUN git checkout 9c61d29846d8521d9487a57739330f9682d5b542
-RUN mkdir build
-WORKDIR /tmp/riscv-pk/build
-RUN ../configure --prefix=$RISCV --host=riscv64-unknown-elf --with-arch=rv32imfd_zifencei --with-abi=ilp32d
-RUN make
-RUN make install
-RUN rm -rf /tmp/riscv-pk
 
 ENTRYPOINT [ "/bin/bash" ]
