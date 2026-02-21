@@ -189,7 +189,7 @@ This command should produce the exit code `0`.
 [You will need to consider assembler directives in your output](./assembler_directives.md)
 
 ## Useful links
-* [Godbolt](https://godbolt.org/z/vMMnWbsff) - Great tool for viewing what a real (`gcc` in this case) RISC-V compiler would produce for a given snippet of C code. This link is pre-configured for a correct architecture (`RV32IMFD`) and ABI (`ILP32D`) that the coursework targets. Code optimisation is also disabled to best mimic what you might want your compiler to output. You can replicate Godbolt locally by running `riscv32-unknown-elf-gcc -std=c90 -pedantic -ansi -O0 -march=rv32gc -mabi=ilp32d -S [source-file.c] -o [dest-file.s]`, which might make debugging and directives analysis easier for some. `gc` in the command-line stands for `imafdc` which includes additional instructions that shouldn't be generated.
+* [Godbolt](https://godbolt.org/z/vMMnWbsff) - Great tool for viewing what a real (`gcc` in this case) RISC-V compiler would produce for a given snippet of C code. This link is pre-configured for the correct architecture (`RV32IMFD`) and ABI (`ILP32D`) that the coursework targets. Code optimisation is also disabled to best mimic what you might want your compiler to output. You can replicate Godbolt locally by running `riscv32-unknown-elf-gcc -std=c90 -pedantic -ansi -O0 -march=rv32imfd -mabi=ilp32d -S [source-file.c] -o [dest-file.s]`, which might make debugging and directives analysis easier for some.
 
 * [Interactive RISC-V simulator](https://creatorsim.github.io/creator) - Might be helpful when trying to work out the behaviour of certain instructions that Godbolt emits.
 

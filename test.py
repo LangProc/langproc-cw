@@ -59,6 +59,7 @@ RUN_TIMEOUT_SECONDS = 15
 TIMEOUT_RETURNCODE = 124
 
 GCC = "riscv32-unknown-elf-gcc"
+# GCC is not targetting rv32imfd because it is compatible with rv32gc which is the more widespread 32bits target
 GCC_ARCH = "-march=rv32gc"
 GCC_ABI = "-mabi=ilp32d"
 
@@ -470,7 +471,7 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
     if verbose:
         print("\n>> Test Summary: " + GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET)
 
-    return passing != total
+    return passing == total
 
 def build(use_cmake: bool = False, coverage: bool = False, silent: bool = False):
     """
@@ -548,7 +549,8 @@ def parse_args():
         action="store_true",
         default=False,
         help="Use GCC to validate tests instead of testing the custom compiler. "
-        "This is used for CI/CD pipeline, not for normal student usage."
+        "This is used for CI/CD pipeline, not for normal student usage. "
+        "YOUR COMPILER WILL NOT BE USED NOR BUILT WITH THIS OPTION."
     )
     return parser.parse_args()
 
@@ -577,7 +579,7 @@ def main():
 
     # Skip unavailable coverage and exit immediately for test validation
     if args.validate_tests:
-        exit(status)
+        exit(0 if all_test_success else 5)
 
     # Find coverage if required. Note, that the coverage server will be blocking
     if args.coverage:

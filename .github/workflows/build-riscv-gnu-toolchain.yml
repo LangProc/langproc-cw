@@ -16,7 +16,7 @@ jobs:
   artifact:
     strategy:
       matrix:
-        runner: [ubuntu-24.04, ubuntu-24.04-arm64]
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{matrix.runner}}
     env:
       RISCV: /tmp/riscv
@@ -24,7 +24,8 @@ jobs:
       - name: Install deps
         run: |
           sudo apt-get update
-          sudo apt-get install -y autoconf automake autotools-dev curl python3 python3-pip python3-tomli libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex texinfo gperf libtool patchutils bc zlib1g-dev libexpat1-dev ninja-build git cmake libglib2.0-dev libslirp-dev libncurses-dev device-tree-compiler libboost-regex-dev libboost-system-dev # crossbuild-essential-arm64 # not needed: not cross-compiling
+          # Add `crossbuild-essential-arm64` for cross-compilation (in case arm runner support is pulled)
+          sudo apt-get install -y autoconf automake autotools-dev curl python3 python3-pip python3-tomli libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex texinfo gperf libtool patchutils bc zlib1g-dev libexpat1-dev ninja-build git cmake libglib2.0-dev libslirp-dev libncurses-dev device-tree-compiler libboost-regex-dev libboost-system-dev
 
       - name: Prepare build
         run: |
@@ -38,9 +39,12 @@ jobs:
         working-directory: riscv-gnu-toolchain
         run: |
           echo "======= Configuring ======="
-          ./configure --prefix="$RISCV" --disable-gdb --enable-strip --with-arch=rv32gc_zicsr_zifencei --with-abi=ilp32d --with-languages=c # --host="$1-linux-gnu" --with-sim=spike # not cross-compiling - doesn't work
+          # Add `--host="aarch64-linux-gnu"` for cross-compilation, but that flow is more complex because a native version is required for building pk
+          # `--with-sim=spike` could be used to build spike but it is experimental and I couldn't get it to work
+          ./configure --prefix="$RISCV" --disable-gdb --enable-strip --with-arch=rv32gc_zicsr_zifencei --with-abi=ilp32d --with-languages=c
           echo "======= Making ======="
-          make -j$(nproc) # newlib build-sim # default - doesn't work because passed options are wrong
+          # target `newlib build-sim` if using `--with-sim=spike`
+          make -j$(nproc)
           echo "======= Testing ======="
           riscv32-unknown-elf-gcc --version
           echo "======= Cleaning ======="
@@ -53,7 +57,8 @@ jobs:
           mkdir spike/build
           cd spike/build
           echo "======= Configuring ======="
-          ../configure --prefix="$RISCV" --with-target=riscv32-unknown-elf # --host="$1-linux-gnu" # not cross-compiling
+          # Add `--host="aarch64-linux-gnu"` for cross-compilation
+          ../configure --prefix="$RISCV" --with-target=riscv32-unknown-elf
           echo "======= Making ======="
           make -j$(nproc)
           echo "======= Testing ======="
@@ -71,6 +76,7 @@ jobs:
           mkdir pk/build
           cd pk/build
           echo "======= Configuring ======="
+          # No cross-compilation for arm64, this has to be built with a native riscv-gcc and is going to be the same for both x64 and arm64
           ../configure --prefix="$RISCV" --host=riscv32-unknown-elf --with-arch=rv32gc_zicsr_zifencei --with-abi=ilp32d
           echo "======= Making ======="
           make -j$(nproc)
@@ -89,14 +95,16 @@ jobs:
       - name: Produce artifact
         run: |
           chmod 555 "$RISCV"
-          tar -cvzf riscv-gnu-toolchain-${{runner.os}}-${{runner.arch}}.tar.gz "$RISCV" --transform="s/^\/tmp\///"
+          ARTIFACT_NAME="riscv-gnu-toolchain-${RUNNER_OS@L}-${RUNNER_ARCH@L}.tar.gz"
+          tar -cvzf "$ARTIFACT_NAME" "$RISCV" --transform="s/^\/tmp\///"
+          echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> "$GITHUB_ENV"
           sudo rm -rf "$RISCV"
 
       - name: Upload artifact
 #        uses: softprops/action-gh-release@v2
 #        with:
-#          files: riscv-gnu-toolchain-${{runner.os}}-${{runner.arch}}.tar.gz
+#          files: ${{ env.ARTIFACT_NAME }}
         uses: actions/upload-artifact@v6
         with:
-          name: riscv-gnu-toolchain-${{runner.os}}-${{runner.arch}}.tar.gz
-          path: riscv-gnu-toolchain-${{runner.os}}-${{runner.arch}}.tar.gz
+          name: ${{ env.ARTIFACT_NAME }}
+          path: ${{ env.ARTIFACT_NAME }}
