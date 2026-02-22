@@ -50,7 +50,7 @@ PROJECT_LOCATION = Path(__file__).resolve().parent
 BUILD_FOLDER = PROJECT_LOCATION.joinpath("build").resolve()
 OUTPUT_FOLDER = PROJECT_LOCATION.joinpath("build/output").resolve()
 J_UNIT_OUTPUT_FILE = PROJECT_LOCATION.joinpath("build/junit_results.xml").resolve()
-COMPILER_TEST_FOLDER = PROJECT_LOCATION.joinpath("tests").resolve()
+TEST_FOLDER = PROJECT_LOCATION.joinpath("tests").resolve()
 COMPILER_FILE = PROJECT_LOCATION.joinpath("build/c_compiler").resolve()
 COVERAGE_FOLDER = PROJECT_LOCATION.joinpath("coverage").resolve()
 
@@ -186,7 +186,7 @@ class ProgressBar:
             self.failed += 1
         self.update()
 
-def run_test(driver: Path, validate_tests: bool = False) -> Result:
+def run_test(directory: Path, driver: Path, validate_tests: bool = False) -> Result:
     """
     Run an instance of a test case.
 
@@ -201,8 +201,8 @@ def run_test(driver: Path, validate_tests: bool = False) -> Result:
     to_assemble = driver.parent.joinpath(new_name).resolve()
     test_name = to_assemble.relative_to(PROJECT_LOCATION)
 
-    # Determine the relative path to the file wrt. COMPILER_TEST_FOLDER.
-    relative_path = to_assemble.relative_to(COMPILER_TEST_FOLDER)
+    # Determine the relative path to the file wrt. TEST_FOLDER.
+    relative_path = to_assemble.relative_to(directory)
 
     # Construct the path where logs would be stored, without the suffix
     # e.g. .../build/output/_example/example/example
@@ -332,7 +332,7 @@ def clean() -> bool:
         return False
     return True
 
-def make(verbose: bool) -> bool:
+def make(verbose: bool, log_path: Optional[str]) -> bool:
     """
     Wrapper for make build/c_compiler.
 
@@ -342,7 +342,7 @@ def make(verbose: bool) -> bool:
     custom_env = os.environ.copy()
     custom_env["DEBUG"] = "1"
     return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", PROJECT_LOCATION, "build/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, verbose=verbose, env=custom_env
+        cmd=["make", "-C", PROJECT_LOCATION, "build/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, verbose=verbose, env=custom_env, log_path=log_path
     )
     if return_code != 0:
         print(RED + "Error when running make:", error_msg + RESET)
@@ -452,7 +452,7 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
 
     if multithreading:
         with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(run_test, driver, validate_tests=validate_tests) for driver in drivers]
+            futures = [executor.submit(run_test, directory, driver, validate_tests=validate_tests) for driver in drivers]
             for future in as_completed(futures):
                 result = future.result()
                 results.append(result.passed())
@@ -460,7 +460,7 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
 
     else:
         for driver in drivers:
-            result = run_test(driver, validate_tests=validate_tests)
+            result = run_test(directory, driver, validate_tests=validate_tests)
             results.append(result.passed())
             process_result(result, xml_file, verbose, progress_bar)
 
@@ -470,7 +470,7 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
     if verbose:
         print("\n>> Test Summary: " + GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET)
 
-    return passing != total
+    return passing, total
 
 def parse_args():
     """
@@ -480,7 +480,7 @@ def parse_args():
     parser.add_argument(
         "dir",
         nargs="?",
-        default=COMPILER_TEST_FOLDER,
+        default=TEST_FOLDER,
         type=Path,
         help="(Optional) paths to the compiler test folders. Use this to select "
         "certain tests. Leave blank to run all tests."
@@ -542,7 +542,7 @@ def main():
     if not args.no_clean:
         clean_success = clean()
         if not clean_success:
-            exit(2)
+            sys.exit(2)
 
     # Prepare the output and build folders
     shutil.rmtree(OUTPUT_FOLDER, ignore_errors=True)
@@ -558,29 +558,26 @@ def main():
         build_success = make(verbose=not args.silent)
 
     if not build_success:
-        exit(3)
+        sys.exit(3)
 
     # Run the tests and save the results into JUnit XML file
     with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
-        status = run_tests(directory=Path(args.dir), xml_file=xml_file, multithreading=args.multithreading, verbose=not args.silent, validate_tests=args.validate_tests)
+        passing, total = run_tests(directory=Path(args.dir), xml_file=xml_file, multithreading=args.multithreading, verbose=not args.silent, validate_tests=args.validate_tests)
 
     # Find coverage if required. Note, that the coverage server will be blocking
     if args.coverage:
         coverage_success = coverage()
         if not coverage_success:
-            exit(4)
+            sys.exit(4)
         serve_coverage_forever('0.0.0.0', 8000)
 
-    # Overwrite the status to 0 for normal usage
-    if not args.validate_tests:
-        status = 0
-
-    return status
+    # Overwrite the returncode to 0 for normal usage otherwise return 1 if some tests failed
+    return (passing != total) if args.validate_tests else 0
 
 if __name__ == "__main__":
     try:
         status = main()
-        exit(status)
+        sys.exit(status)
     finally:
         print(RESET, end="")
         if sys.stdout.isatty():
