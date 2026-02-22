@@ -115,6 +115,8 @@ becomes:
 slli r2, r2, 2
 ```
 
+The [ISA `C` extension](https://docs.riscv.org/reference/isa/unpriv/c-st-ext.html) is a possible source of instructions for peephole optimisation.
+
 ---
 
 ### Simple optimisations
