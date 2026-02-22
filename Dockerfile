@@ -18,6 +18,7 @@ RUN apt-get update && apt-get install -y --fix-missing \
     build-essential \
     ca-certificates \
     curl \
+    device-tree-compiler \
     lcov \
     nano \
     valgrind \

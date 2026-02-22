@@ -8,23 +8,13 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    if: github.event_name == 'push'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Prepare draft release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          generate_release_notes: true
-
   artifact:
     strategy:
       matrix:
         runner: [ubuntu-24.04, ubuntu-24.04-arm]
     runs-on: ${{matrix.runner}}
     env:
-      RISCV: /tmp/riscv
+      RISCV: /opt/riscv
     steps:
       - name: Install deps
         run: |
@@ -101,15 +91,17 @@ jobs:
         run: |
           chmod 555 "$RISCV"
           ARTIFACT_NAME="riscv-gnu-toolchain-${RUNNER_OS@L}-${RUNNER_ARCH@L}.tar.gz"
-          tar -cvzf "$ARTIFACT_NAME" "$RISCV" --transform="s/^tmp\///"
+          tar -cvzf "$ARTIFACT_NAME" "$RISCV" --transform="s/^opt\///"
           sha256sum "$ARTIFACT_NAME" > "${ARTIFACT_NAME}.sha"
           echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> "$GITHUB_ENV"
           sudo rm -rf "$RISCV"
 
+      # Reuses existing release attached to tag so doesn't duplicate
       - name: Attach artifact to draft release
         if: github.event_name == 'push'
         uses: softprops/action-gh-release@v2
         with:
+          draft: true
           files: |
             ${{ env.ARTIFACT_NAME }}
             ${{ env.ARTIFACT_NAME }}.sha
