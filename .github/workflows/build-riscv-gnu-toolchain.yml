@@ -1,0 +1,116 @@
+name: Build RISC-V GNU Toolchain
+on:
+  workflow_dispatch:
+  push:
+    tags:
+      - "**"
+permissions:
+  contents: write
+
+jobs:
+  artifact:
+    strategy:
+      matrix:
+        runner: [ubuntu-24.04, ubuntu-24.04-arm]
+    runs-on: ${{matrix.runner}}
+    env:
+      RISCV: /opt/riscv
+    steps:
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          # Add `crossbuild-essential-arm64` for cross-compilation (in case arm runner support is pulled)
+          sudo apt-get install -y autoconf automake autotools-dev curl python3 python3-pip python3-tomli libmpc-dev libmpfr-dev libgmp-dev gawk build-essential bison flex texinfo gperf libtool patchutils bc zlib1g-dev libexpat1-dev ninja-build git cmake libglib2.0-dev libslirp-dev libncurses-dev device-tree-compiler libboost-regex-dev libboost-system-dev
+
+      - name: Prepare build
+        run: |
+          git clone https://github.com/riscv-collab/riscv-gnu-toolchain.git
+          cd riscv-gnu-toolchain
+          git checkout 2026.02.13
+          mkdir -p "$RISCV"
+          echo "$RISCV"/bin >> "$GITHUB_PATH"
+
+      - name: Build riscv32-unknown-elf toolchain
+        working-directory: riscv-gnu-toolchain
+        run: |
+          echo "======= Configuring ======="
+          # Add `--host="aarch64-linux-gnu"` for cross-compilation, but that flow is more complex because a native version is required for building pk
+          # `--with-sim=spike` could be used to build spike but it is experimental and I couldn't get it to work
+          ./configure --prefix="$RISCV" --disable-gdb --enable-strip --with-arch=rv32gc_zicsr_zifencei --with-abi=ilp32d --with-languages=c
+          echo "======= Making ======="
+          # target `newlib build-sim` if using `--with-sim=spike`
+          make -j$(nproc)
+          echo "======= Testing ======="
+          riscv32-unknown-elf-gcc --version
+          echo "======= Cleaning ======="
+          make clean
+
+      - name: Build spike
+        working-directory: riscv-gnu-toolchain
+        run: |
+          git submodule update --init --depth 1 spike
+          mkdir spike/build
+          cd spike/build
+          echo "======= Configuring ======="
+          # Add `--host="aarch64-linux-gnu"` for cross-compilation
+          ../configure --prefix="$RISCV" --with-target=riscv32-unknown-elf
+          echo "======= Making ======="
+          make -j$(nproc)
+          echo "======= Testing ======="
+          make check -j$(nproc)
+          echo "======= Installing ======="
+          make install -j$(nproc)
+          cd ../..
+          echo "======= Cleaning ======="
+          git submodule deinit -f spike
+
+      - name: Build pk
+        working-directory: riscv-gnu-toolchain
+        run: |
+          git submodule update --init --depth 1 pk
+          mkdir pk/build
+          cd pk/build
+          echo "======= Configuring ======="
+          # No cross-compilation for arm64, this has to be built with a native riscv-gcc and is going to be the same for both x64 and arm64
+          ../configure --prefix="$RISCV" --host=riscv32-unknown-elf --with-arch=rv32gc_zicsr_zifencei --with-abi=ilp32d
+          echo "======= Making ======="
+          make -j$(nproc)
+          echo "======= Installing ======="
+          make install -j$(nproc)
+          cd ../../..
+          echo "======= Cleaning ======="
+          rm -rf riscv-gnu-toolchain
+
+      - name: Prepare coursework tests
+        uses: actions/checkout@v6
+
+      - name: Test the build on coursework
+        run: ./test.py --no_clean --validate_tests
+
+      - name: Produce artifact
+        run: |
+          chmod 555 "$RISCV"
+          ARTIFACT_NAME="riscv-gnu-toolchain-${RUNNER_OS@L}-${RUNNER_ARCH@L}.tar.gz"
+          tar -cvzf "$ARTIFACT_NAME" "$RISCV" --transform="s/^opt\///"
+          sha256sum "$ARTIFACT_NAME" > "${ARTIFACT_NAME}.sha"
+          echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> "$GITHUB_ENV"
+          sudo rm -rf "$RISCV"
+
+      # Reuses existing release attached to tag so doesn't duplicate
+      - name: Attach artifact to draft release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: |
+            ${{ env.ARTIFACT_NAME }}
+            ${{ env.ARTIFACT_NAME }}.sha
+
+      - name: Upload artifact without release
+        if: github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v6
+        with:
+          name: ${{ env.ARTIFACT_NAME }}
+          path: |
+            ${{ env.ARTIFACT_NAME }}
+            ${{ env.ARTIFACT_NAME }}.sha
