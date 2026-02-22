@@ -2,16 +2,21 @@ name: Build RISC-V GNU Toolchain
 on:
   workflow_dispatch:
   push:
-#    tags:
-#      - '**'
+    tags:
+      - "**"
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-#  release:
-#    runs-on: ubuntu-latest
-#    steps:
-#      - uses: softprops/action-gh-release@v2
+  release:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Prepare draft release
+        uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          generate_release_notes: true
 
   artifact:
     strategy:
@@ -96,15 +101,24 @@ jobs:
         run: |
           chmod 555 "$RISCV"
           ARTIFACT_NAME="riscv-gnu-toolchain-${RUNNER_OS@L}-${RUNNER_ARCH@L}.tar.gz"
-          tar -cvzf "$ARTIFACT_NAME" "$RISCV" --transform="s/^\/tmp\///"
+          tar -cvzf "$ARTIFACT_NAME" "$RISCV" --transform="s/^tmp\///"
+          sha256sum "$ARTIFACT_NAME" > "${ARTIFACT_NAME}.sha"
           echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> "$GITHUB_ENV"
           sudo rm -rf "$RISCV"
 
-      - name: Upload artifact
-#        uses: softprops/action-gh-release@v2
-#        with:
-#          files: ${{ env.ARTIFACT_NAME }}
+      - name: Attach artifact to draft release
+        if: github.event_name == 'push'
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            ${{ env.ARTIFACT_NAME }}
+            ${{ env.ARTIFACT_NAME }}.sha
+
+      - name: Upload artifact without release
+        if: github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.ARTIFACT_NAME }}
-          path: ${{ env.ARTIFACT_NAME }}
+          path: |
+            ${{ env.ARTIFACT_NAME }}
+            ${{ env.ARTIFACT_NAME }}.sha

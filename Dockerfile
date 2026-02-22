@@ -39,7 +39,7 @@ RUN set -eux; \
       *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
     esac; \
     \
-    base="https://github.com/langproc/langproc-cw/???"; \
+    base="https://github.com/LangProc/langproc-cw/releases/download/v2.1.0/"; \
     tgz="riscv-gnu-toolchain-${xarch}.tar.gz"; \
     sha="${tgz}.sha"; \
     \
