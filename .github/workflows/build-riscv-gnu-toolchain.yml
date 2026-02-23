@@ -1,5 +1,11 @@
 name: Build RISC-V GNU Toolchain
 on:
+  workflow_call:
+    inputs:
+      release_tag:
+        description: "Release tag to upload artifacts to"
+        required: true
+        type: string
   workflow_dispatch:
     inputs:
       release_tag:
