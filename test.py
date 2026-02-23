@@ -7,9 +7,11 @@ Makefile, run the tests and store the outputs in build/output.
 This script will also generate a JUnit XML file, which can be used to integrate
 with CI/CD pipelines.
 
-Usage: ./test.py [-h] [-m] [-s] [--version] [--no_clean] [--coverage] [--use_cmake] [dir]
+Usage: ./test.py [-h] [-m] [-s] [--version] [--no_clean] [--coverage] [--use_cmake] [--validate_tests] [dir]
 
-Example usage: ./test.py tests/_example
+Example usage for all tests: ./test.py
+
+Example usage for tests in a directory: ./test.py tests/_example
 
 This will print out a progress bar and only run the example tests.
 The output would be placed into build/output/_example/example/.
@@ -19,7 +21,7 @@ For more information, run ./test.py --help
 
 
 __version__ = "1.0.0"
-__author__ = "William Huynh (@saturn691), Filip Wojcicki, James Nock"
+__author__ = "William Huynh, Filip Wojcicki, James Nock, Quentin Corradi"
 
 
 import os
