@@ -30,7 +30,13 @@ Changelog
 =========
 
 * New for 2025/2026:
-    * We have added a couple of tests that are designed to check whether your compiler is able to remove dead code.
+    * A couple of tests that are designed to check whether your compiler is able to remove dead code.
+    * Automatic code formatter, specified in [`.clang-format`](./.clang-format)
+    * Added CMake as an alternative along `make`, for quicker builds
+    * `test.py --validate_tests` as a way to run GCC on all tests to ensure that environment has been set correctly, replacing `toolchain_test.sh`
+    * Updated [`Dockerfile`](./Dockerfile), docker image artifact, and GHCR environment to use Ubuntu 24 and more recent dependencies
+    * Wrote about recommended [extentions to the project](./docs/extension_ideas.md).
+
 
 * New for 2023/2024:
 
