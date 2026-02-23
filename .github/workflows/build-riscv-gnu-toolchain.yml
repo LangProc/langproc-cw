@@ -1,9 +1,11 @@
 name: Build RISC-V GNU Toolchain
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - "**"
+    inputs:
+      release_tag:
+        description: "Release tag to upload artifacts to (leave empty to upload as workflow artifact). Note the release must already exist, without the artifact already being attached."
+        required: false
+        type: string
 permissions:
   contents: write
 
@@ -96,18 +98,16 @@ jobs:
           echo "ARTIFACT_NAME=$ARTIFACT_NAME" >> "$GITHUB_ENV"
           sudo rm -rf "$RISCV"
 
-      # Reuses existing release attached to tag so doesn't duplicate
-      - name: Attach artifact to draft release
-        if: github.event_name == 'push'
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          files: |
-            ${{ env.ARTIFACT_NAME }}
-            ${{ env.ARTIFACT_NAME }}.sha
+      - name: Upload artifact to release
+        if: inputs.release_tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          echo "Uploading to release: ${{ inputs.release_tag }}"
+          gh release upload "${{ inputs.release_tag }}" "${{ env.ARTIFACT_NAME }}" "${{ env.ARTIFACT_NAME }}.sha"
 
-      - name: Upload artifact without release
-        if: github.event_name == 'workflow_dispatch'
+      - name: Upload artifact to workflow
+        if: inputs.release_tag == ''
         uses: actions/upload-artifact@v6
         with:
           name: ${{ env.ARTIFACT_NAME }}
