@@ -78,26 +78,26 @@ class Result:
 
     def to_xml(self) -> str:
         if self.passed():
-            return f'<testcase name="{self.test_case_name}">\n' \
-                + ('' if self.error_log is None else f'<system-out>{self.error_log}</system-out>\n') \
-                + f'</testcase>\n'
+            return f"<testcase name=\"{self.test_case_name}\">\n" \
+                + ("" if self.error_log is None else f"<system-out>{self.error_log}</system-out>\n") \
+                + f"</testcase>\n"
 
         timeout = "[TIMED OUT] " if self.timeout else ""
         attribute = xmlquoteattr(timeout + self.error_log)
         xml_tag_body = xmlescape(timeout + self.error_log)
         return (
-            f'<testcase name="{self.test_case_name}">\n'
-            f'<error type="error" message={attribute}>\n{xml_tag_body}</error>\n'
-            f'</testcase>\n'
+            f"<testcase name=\"{self.test_case_name}\">\n"
+            f"<error type=\"error\" message={attribute}>\n{xml_tag_body}</error>\n"
+            f"</testcase>\n"
         )
 
     def to_log(self) -> str:
         timeout = "[TIMED OUT] " if self.timeout else ""
         if self.return_code != 0:
-            return f'{self.test_case_name}\n{RED}{timeout + self.error_log}{RESET}\n'
+            return f"{self.test_case_name}\n{RED}{timeout + self.error_log}{RESET}\n"
         if self.error_log is None:
-            return f'{self.test_case_name}\n\t> {GREEN}Pass{RESET}\n'
-        return f'{self.test_case_name}\n\t> {YELLOW}{self.error_log}{RESET}\n'
+            return f"{self.test_case_name}\n\t> {GREEN}Pass{RESET}\n"
+        return f"{self.test_case_name}\n\t> {YELLOW}{self.error_log}{RESET}\n"
 
 class JUnitXMLFile():
     def __init__(self, path: Path):
@@ -106,15 +106,15 @@ class JUnitXMLFile():
 
     def __enter__(self):
         self.fd = open(self.path, "w")
-        self.fd.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        self.fd.write('<testsuite name="Integration test">\n')
+        self.fd.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+        self.fd.write("<testsuite name=\"Integration test\">\n")
         return self
 
     def write(self, __s: str) -> int:
         return self.fd.write(__s)
 
     def __exit__(self, exception_type, exception_value, exception_traceback):
-        self.fd.write('</testsuite>\n')
+        self.fd.write("</testsuite>\n")
         self.fd.close()
 
 class ProgressBar:
@@ -165,13 +165,13 @@ class ProgressBar:
 
         remaining = self.max_line_length - prop_passed - prop_failed
 
-        progress_bar += GREEN + '#' * prop_passed    # Green
-        progress_bar += RED   + '#' * prop_failed    # Red
-        progress_bar += RESET + ' ' * remaining      # Empty space
+        progress_bar += GREEN + "#" * prop_passed    # Green
+        progress_bar += RED   + "#" * prop_failed    # Red
+        progress_bar += RESET + " " * remaining      # Empty space
 
         # Move the cursor up 2 lines to the beginning of the progress bar
         lines_to_move_cursor = 2
-        print(f"\033[{lines_to_move_cursor}A\r", end='')
+        print(f"\033[{lines_to_move_cursor}A\r", end="")
 
         print("Running Tests [{}]".format(progress_bar))
 
@@ -200,7 +200,7 @@ def run_test(directory: Path, driver: Path, validate_tests: bool = False) -> Res
     """
 
     # Replaces example_driver.c -> example.c
-    new_name = driver.stem.replace('_driver', '') + '.c'
+    new_name = driver.stem.replace("_driver", "") + ".c"
     to_assemble = driver.parent.joinpath(new_name).resolve()
     test_name = to_assemble.relative_to(PROJECT_LOCATION)
 
@@ -525,7 +525,7 @@ def parse_args():
         version=f"BetterTesting {__version__}"
     )
     parser.add_argument(
-        '--no_clean',
+        "--no_clean",
         action="store_true",
         default=False,
         help="Don't clean the repository before testing. This will make it "
@@ -588,7 +588,7 @@ def main():
         coverage_success = coverage()
         if not coverage_success:
             sys.exit(4)
-        serve_coverage_forever('0.0.0.0', 8000)
+        serve_coverage_forever("0.0.0.0", 8000)
 
 if __name__ == "__main__":
     try:
