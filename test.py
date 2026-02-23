@@ -473,7 +473,7 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
 
     return passing == total
 
-def build(use_cmake: bool = False, coverage: bool = False, silent: bool = False):
+def build(use_cmake: bool = False, coverage: bool = False, verbose: bool = True):
     """
     Wrapper for building the student compiler. Assumes output folder exists.
     """
@@ -482,11 +482,11 @@ def build(use_cmake: bool = False, coverage: bool = False, silent: bool = False)
 
     # Build the compiler using cmake or make
     if use_cmake and not coverage:
-        build_success = cmake(verbose=not silent)
+        build_success = cmake(verbose=verbose)
     else:
         if use_cmake and coverage:
             print(RED + "Coverage is not supported with CMake. Switching to make." + RESET)
-        build_success = make(verbose=not silent)
+        build_success = make(verbose=verbose)
 
     return build_success
 
@@ -569,7 +569,7 @@ def main():
 
     # There is no need for building the student compiler when testing with riscv-gcc
     if not args.validate_tests:
-        build_success = build(use_cmake=args.use_cmake, coverage=args.coverage, silent=args.silent)
+        build_success = build(use_cmake=args.use_cmake, coverage=args.coverage, verbose=not args.silent)
         if not build_success:
             exit(3)
 
