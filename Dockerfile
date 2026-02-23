@@ -1,4 +1,4 @@
-FROM ubuntu:22.04
+FROM ubuntu:24.04
 
 # Install dependencies
 RUN apt-get update && apt-get install -y --fix-missing \
@@ -25,52 +25,37 @@ RUN apt-get update && apt-get install -y --fix-missing \
     clang \
     ccache \
     cmake \
-    clangd-15 \
+    clangd-18 \
     bear
 
 # Set clangd as the default language server
-RUN update-alternatives --install /usr/bin/clangd clangd /usr/bin/clangd-15 100
+RUN update-alternatives --install /usr/bin/clangd clangd /usr/bin/clangd-18 100
 
-# Install RISC-V Toolchain
 WORKDIR /tmp
 RUN set -eux; \
-    arch="$(dpkg --print-architecture)"; arch="${arch##*-}"; \
-    url=; \
+    arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
-    'arm64') \
-    curl --output riscv-gnu-toolchain.tar.gz -L "https://github.com/langproc/langproc-2022-cw/releases/download/v1.0.0/riscv-gnu-toolchain-2022-09-21-ubuntu-22.04-arm64.tar.gz" \
-    ;; \
-    *) curl --output riscv-gnu-toolchain.tar.gz -L "https://github.com/langproc/langproc-2022-cw/releases/download/v1.0.0/riscv-gnu-toolchain-2022-09-21-ubuntu-22.04-amd64.tar.gz" \
-    ;; \
-    esac;
-RUN rm -rf /opt/riscv
-RUN tar -xzf riscv-gnu-toolchain.tar.gz --directory /opt
-ENV PATH="/opt/riscv/bin:${PATH}"
+      amd64) xarch="linux-x64" ;; \
+      arm64) xarch="linux-arm64" ;; \
+      *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
+    esac; \
+    \
+    base="https://github.com/LangProc/langproc-cw/releases/download/v2.1.0/"; \
+    tgz="riscv-gnu-toolchain-${xarch}.tar.gz"; \
+    sha="${tgz}.sha"; \
+    \
+    curl -L --fail -o "$tgz" "${base}/${tgz}"; \
+    curl -L --fail -o "$sha" "${base}/${sha}"; \
+    sha256sum -c "$sha"; \
+    \
+    rm -rf /opt/riscv; \
+    mkdir -p /opt; \
+    tar -xzf "$tgz" -C /opt; \
+    rm -f "$tgz" "$sha"; \
+    \
+    /opt/riscv/bin/riscv32-unknown-elf-gcc --version
+
 ENV RISCV="/opt/riscv"
-RUN rm -rf riscv-gnu-toolchain.tar.gz
-RUN riscv64-unknown-elf-gcc --help
-
-# Install Spike RISC-V ISA Simulator
-WORKDIR /tmp
-RUN git clone https://github.com/riscv-software-src/riscv-isa-sim.git
-WORKDIR /tmp/riscv-isa-sim
-RUN git checkout v1.1.0
-RUN mkdir build
-WORKDIR /tmp/riscv-isa-sim/build
-RUN ../configure --prefix=$RISCV --with-isa=RV32IMFD --with-target=riscv32-unknown-elf
-RUN make
-RUN make install
-RUN rm -rf /tmp/riscv-isa-sim
-RUN spike --help
-
-WORKDIR /tmp
-RUN git clone https://github.com/riscv-software-src/riscv-pk.git
-WORKDIR /tmp/riscv-pk
-RUN git checkout 573c858d9071a2216537f71de651a814f76ee76d
-RUN mkdir build
-WORKDIR /tmp/riscv-pk/build
-RUN ../configure --prefix=$RISCV --host=riscv64-unknown-elf --with-arch=rv32imfd --with-abi=ilp32d
-RUN make
-RUN make install
+ENV PATH="/opt/riscv/bin:${PATH}"
 
 ENTRYPOINT [ "/bin/bash" ]
