@@ -78,9 +78,12 @@ class Result:
 
     def to_xml(self) -> str:
         if self.passed():
-            return f"<testcase name=\"{self.test_case_name}\">\n" \
-                + ("" if self.error_log is None else f"<system-out>{self.error_log}</system-out>\n") \
-                + f"</testcase>\n"
+            system_out = f"<system-out>{self.error_log}</system-out>\n" if self.error_log else ""
+            return (
+                f"<testcase name=\"{self.test_case_name}\">\n"
+                f"{system_out}"
+                f"</testcase>\n"
+            )
 
         timeout = "[TIMED OUT] " if self.timeout else ""
         attribute = xmlquoteattr(timeout + self.error_log)
@@ -139,11 +142,7 @@ class ProgressBar:
 
         # Initialize the lines for the progress bar and stats
         print("Running Tests [" + " " * self.max_line_length + "]")
-        print(
-            GREEN +  "Pass: 0 | " +
-            RED   +  "Fail: 0 | " +
-            RESET + f"Remaining: {total_tests:2}"
-        )
+        print(f"{GREEN}Pass: 0 | {RED}Fail: 0 | {RESET}Remaining: {total_tests:2}")
 
         # Initialize the progress bar
         self.update()
@@ -165,9 +164,7 @@ class ProgressBar:
 
         remaining = self.max_line_length - prop_passed - prop_failed
 
-        progress_bar += GREEN + "#" * prop_passed    # Green
-        progress_bar += RED   + "#" * prop_failed    # Red
-        progress_bar += RESET + " " * remaining      # Empty space
+        progress_bar = f"{GREEN}{'#' * prop_passed}{RED}{'#' * prop_failed}{RESET}{' ' * remaining}"
 
         # Move the cursor up 2 lines to the beginning of the progress bar
         lines_to_move_cursor = 2
@@ -175,12 +172,7 @@ class ProgressBar:
 
         print("Running Tests [{}]".format(progress_bar))
 
-        # Space is left there intentionally to flush out the command line
-        print(
-            GREEN + f"Pass: {self.passed:2} | " +
-            RED   + f"Fail: {self.failed:2} | " +
-            RESET + f"Remaining: {remaining_tests:2}"
-        )
+        print(f"{GREEN}Pass: {self.passed:2} | {RED}Fail: {self.failed:2} | {RESET}Remaining: {remaining_tests:2}")
 
     def update_with_value(self, passed: bool):
         if passed:
@@ -188,6 +180,175 @@ class ProgressBar:
         else:
             self.failed += 1
         self.update()
+
+def run_subprocess(
+    cmd: List[str],
+    timeout: int,
+    env: Optional[dict] = None,
+    log_path: Optional[str] = None,
+    verbose: bool = True,
+) -> tuple[int, str, bool]:
+    """
+    Wrapper for subprocess.run(...) with common arguments and error handling.
+
+    Returns tuple of (return_code: int, error_message: str, timed_out: bool)
+    """
+    # None means that stdout and stderr are handled by parent, i.e., they go to console by default
+    stdout = None
+    stderr = None
+
+    if not verbose:
+        stdout = subprocess.DEVNULL
+        stderr = subprocess.DEVNULL
+    elif log_path:
+        stdout = open(f"{log_path}.stdout.log", "w")
+        stderr = open(f"{log_path}.stderr.log", "w")
+
+    try:
+        subprocess.run(cmd, env=env, stdout=stdout, stderr=stderr, timeout=timeout, check=True)
+    except subprocess.CalledProcessError as e:
+        return e.returncode, f"{e.cmd} failed with return code {e.returncode}", False
+    except subprocess.TimeoutExpired as e:
+        return TIMEOUT_RETURNCODE, f"{e.cmd} took more than {e.timeout}", True
+    return 0, "", False
+
+def clean() -> bool:
+    """
+    Wrapper for make clean.
+
+    Return True if successful, False otherwise
+    """
+    print(f"{GREEN}Cleaning project...{RESET}")
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["make", "-C", PROJECT_LOCATION, "clean"],
+        timeout=BUILD_TIMEOUT_SECONDS,
+        verbose=False,
+    )
+
+    if return_code != 0:
+        print(f"{RED}Error when cleaning: {error_msg}{RESET}")
+        return False
+    return True
+
+def make(verbose: bool, log_path: Optional[str] = None) -> bool:
+    """
+    Wrapper for make build/c_compiler.
+
+    Return True if successful, False otherwise
+    """
+    print(f"{GREEN}Running make...{RESET}")
+    custom_env = os.environ.copy()
+    custom_env["DEBUG"] = "1"
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["make", "-C", PROJECT_LOCATION, "build/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, verbose=verbose, env=custom_env, log_path=log_path
+    )
+    if return_code != 0:
+        print(f"{RED}Error when running make: {error_msg}{RESET}")
+        return False
+
+    return True
+
+def cmake(verbose: bool) -> bool:
+    """
+    Wrapper for cmake --build build
+
+    Return True if successful, False otherwise
+    """
+    print(f"{GREEN}Running cmake...{RESET}")
+
+    # cmake configure + generate
+    # -DCMAKE_BUILD_TYPE=Release is equal to -O3
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["cmake", "-S", PROJECT_LOCATION, "-B", BUILD_FOLDER, "-DCMAKE_BUILD_TYPE=Release"],
+        timeout=BUILD_TIMEOUT_SECONDS,
+        verbose=verbose
+    )
+    if return_code != 0:
+        print(f"{RED}Error when running cmake (configure + generate): {error_msg}{RESET}")
+        return False
+
+    # cmake compile
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["cmake", "--build", BUILD_FOLDER], timeout=BUILD_TIMEOUT_SECONDS, verbose=verbose
+    )
+    if return_code != 0:
+        print(f"{RED}Error when running cmake (compile): {error_msg}{RESET}")
+        return False
+
+    return True
+
+def build(use_cmake: bool = False, coverage: bool = False, verbose: bool = True):
+    """
+    Wrapper for building the student compiler. Assumes output folder exists.
+    """
+    # Prepare the build folder
+    Path(BUILD_FOLDER).mkdir(parents=True, exist_ok=True)
+
+    # Build the compiler using cmake or make
+    if use_cmake and not coverage:
+        build_success = cmake(verbose=verbose)
+    else:
+        if use_cmake and coverage:
+            print(f"{RED}Coverage is not supported with CMake. Switching to make.{RESET}")
+        build_success = make(verbose=verbose)
+
+    return build_success
+
+def coverage() -> bool:
+    """
+    Wrapper for make coverage.
+
+    Return True if successful, False otherwise
+    """
+    print(f"{GREEN}Running make coverage...{RESET}")
+    custom_env = os.environ.copy()
+    custom_env["DEBUG"] = "1"
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["make", "-C", PROJECT_LOCATION, "coverage"], timeout=BUILD_TIMEOUT_SECONDS, verbose=False, env=custom_env
+    )
+    if return_code != 0:
+        print(f"{RED}Error when running make coverage: {error_msg}{RESET}")
+        return False
+    return True
+
+def serve_coverage_forever(host: str, port: int):
+    """
+    Starts a HTTP server which serves the coverage folder forever until Ctrl+C
+    is pressed.
+    """
+    class Handler(SimpleHTTPRequestHandler):
+        def __init__(self, *args, directory=None, **kwargs):
+            super().__init__(*args, directory=COVERAGE_FOLDER, **kwargs)
+
+        def log_message(self, format, *args):
+            pass
+
+    httpd = HTTPServer((host, port), Handler)
+    print(f"{GREEN}Serving coverage on{RESET} http://{host}:{port}/ ... (Ctrl+C to exit)")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print(f"{RED}\nServer has been stopped!{RESET}")
+
+def process_result(
+    result: Result,
+    xml_file: JUnitXMLFile,
+    verbose: bool = False,
+    progress_bar: ProgressBar = None,
+):
+    """
+    Processes results and updates progress bar if necessary.
+    """
+    xml_file.write(result.to_xml())
+
+    if verbose:
+        print(result.to_log())
+        return
+
+    if progress_bar:
+        progress_bar.update_with_value(result.passed())
+
+    return
 
 def run_test(directory: Path, driver: Path, validate_tests: bool = False) -> Result:
     """
@@ -198,7 +359,7 @@ def run_test(directory: Path, driver: Path, validate_tests: bool = False) -> Res
 
     Returns Result object
     """
-
+    
     # Replaces example_driver.c -> example.c
     new_name = driver.stem.replace("_driver", "") + ".c"
     to_assemble = driver.parent.joinpath(new_name).resolve()
@@ -286,158 +447,6 @@ def run_test(directory: Path, driver: Path, validate_tests: bool = False) -> Res
     msg = "Sanitizer warnings: " + " ".join(sanitizer_file_list) if len(sanitizer_file_list) != 0 else None
     return Result(test_case_name=test_name, return_code=return_code, timeout=False, error_log=msg)
 
-def run_subprocess(
-    cmd: List[str],
-    timeout: int,
-    env: Optional[dict] = None,
-    log_path: Optional[str] = None,
-    verbose: bool = True,
-) -> tuple[int, str, bool]:
-    """
-    Wrapper for subprocess.run(...) with common arguments and error handling.
-
-    Returns tuple of (return_code: int, error_message: str, timed_out: bool)
-    """
-    # None means that stdout and stderr are handled by parent, i.e., they go to console by default
-    stdout = None
-    stderr = None
-
-    if not verbose:
-        stdout = subprocess.DEVNULL
-        stderr = subprocess.DEVNULL
-    elif log_path:
-        stdout = open(f"{log_path}.stdout.log", "w")
-        stderr = open(f"{log_path}.stderr.log", "w")
-
-    try:
-        subprocess.run(cmd, env=env, stdout=stdout, stderr=stderr, timeout=timeout, check=True)
-    except subprocess.CalledProcessError as e:
-        return e.returncode, f"{e.cmd} failed with return code {e.returncode}", False
-    except subprocess.TimeoutExpired as e:
-        return TIMEOUT_RETURNCODE, f"{e.cmd} took more than {e.timeout}", True
-    return 0, "", False
-
-def clean() -> bool:
-    """
-    Wrapper for make clean.
-
-    Return True if successful, False otherwise
-    """
-    print(GREEN + "Cleaning project..." + RESET)
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", PROJECT_LOCATION, "clean"],
-        timeout=BUILD_TIMEOUT_SECONDS,
-        verbose=False,
-    )
-
-    if return_code != 0:
-        print(RED + "Error when cleaning:", error_msg + RESET)
-        return False
-    return True
-
-def make(verbose: bool, log_path: Optional[str]) -> bool:
-    """
-    Wrapper for make build/c_compiler.
-
-    Return True if successful, False otherwise
-    """
-    print(GREEN + "Running make..." + RESET)
-    custom_env = os.environ.copy()
-    custom_env["DEBUG"] = "1"
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", PROJECT_LOCATION, "build/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, verbose=verbose, env=custom_env, log_path=log_path
-    )
-    if return_code != 0:
-        print(RED + "Error when running make:", error_msg + RESET)
-        return False
-
-    return True
-
-def cmake(verbose: bool) -> bool:
-    """
-    Wrapper for cmake --build build
-
-    Return True if successful, False otherwise
-    """
-    print(GREEN + "Running cmake..." + RESET)
-
-    # cmake configure + generate
-    # -DCMAKE_BUILD_TYPE=Release is equal to -O3
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["cmake", "-S", PROJECT_LOCATION, "-B", BUILD_FOLDER, "-DCMAKE_BUILD_TYPE=Release"],
-        timeout=BUILD_TIMEOUT_SECONDS,
-        verbose=verbose
-    )
-    if return_code != 0:
-        print(RED + "Error when running cmake (configure + generate):", error_msg + RESET)
-        return False
-
-    # cmake compile
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["cmake", "--build", BUILD_FOLDER], timeout=BUILD_TIMEOUT_SECONDS, verbose=verbose
-    )
-    if return_code != 0:
-        print(RED + "Error when running cmake (compile):", error_msg + RESET)
-        return False
-
-    return True
-
-def coverage() -> bool:
-    """
-    Wrapper for make coverage.
-
-    Return True if successful, False otherwise
-    """
-    print(GREEN + "Running make coverage..." + RESET)
-    custom_env = os.environ.copy()
-    custom_env["DEBUG"] = "1"
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", PROJECT_LOCATION, "coverage"], timeout=BUILD_TIMEOUT_SECONDS, verbose=False, env=custom_env
-    )
-    if return_code != 0:
-        print(RED + "Error when running make coverage:", error_msg + RESET)
-        return False
-    return True
-
-def serve_coverage_forever(host: str, port: int):
-    """
-    Starts a HTTP server which serves the coverage folder forever until Ctrl+C
-    is pressed.
-    """
-    class Handler(SimpleHTTPRequestHandler):
-        def __init__(self, *args, directory=None, **kwargs):
-            super().__init__(*args, directory=COVERAGE_FOLDER, **kwargs)
-
-        def log_message(self, format, *args):
-            pass
-
-    httpd = HTTPServer((host, port), Handler)
-    print(GREEN + "Serving coverage on" + RESET + f" http://{host}:{port}/ ... (Ctrl+C to exit)")
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        print(RED + "\nServer has been stopped!" + RESET)
-
-def process_result(
-    result: Result,
-    xml_file: JUnitXMLFile,
-    verbose: bool = False,
-    progress_bar: ProgressBar = None,
-):
-    """
-    Processes results and updates progress bar if necessary.
-    """
-    xml_file.write(result.to_xml())
-
-    if verbose:
-        print(result.to_log())
-        return
-
-    if progress_bar:
-        progress_bar.update_with_value(result.passed())
-
-    return
-
 def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, verbose: bool, validate_tests: bool = False) -> bool:
     """
     Runs tests against compiler.
@@ -471,26 +480,9 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
     total = len(drivers)
 
     if verbose:
-        print("\n>> Test Summary: " + GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET)
+        print(f"\n>> Test Summary: {GREEN}{passing} Passed, {RED}{total-passing} Failed{RESET}")
 
     return passing == total
-
-def build(use_cmake: bool = False, coverage: bool = False, verbose: bool = True):
-    """
-    Wrapper for building the student compiler. Assumes output folder exists.
-    """
-    # Prepare the build folder
-    Path(BUILD_FOLDER).mkdir(parents=True, exist_ok=True)
-
-    # Build the compiler using cmake or make
-    if use_cmake and not coverage:
-        build_success = cmake(verbose=verbose)
-    else:
-        if use_cmake and coverage:
-            print(RED + "Coverage is not supported with CMake. Switching to make." + RESET)
-        build_success = make(verbose=verbose)
-
-    return build_success
 
 def parse_args():
     """
