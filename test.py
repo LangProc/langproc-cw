@@ -7,9 +7,11 @@ Makefile, run the tests and store the outputs in build/output.
 This script will also generate a JUnit XML file, which can be used to integrate
 with CI/CD pipelines.
 
-Usage: ./test.py [-h] [-m] [-s] [--version] [--no_clean] [--coverage] [--use_cmake] [dir]
+Usage: ./test.py [-h] [-m] [-s] [--version] [--no_clean] [--coverage] [--use_cmake] [--validate_tests] [dir]
 
-Example usage: ./test.py tests/_example
+Example usage for all tests: ./test.py
+
+Example usage for tests in a directory: ./test.py tests/_example
 
 This will print out a progress bar and only run the example tests.
 The output would be placed into build/output/_example/example/.
@@ -19,7 +21,7 @@ For more information, run ./test.py --help
 
 
 __version__ = "1.0.0"
-__author__ = "William Huynh (@saturn691), Filip Wojcicki, James Nock"
+__author__ = "William Huynh, Filip Wojcicki, James Nock, Quentin Corradi"
 
 
 import os
@@ -50,7 +52,7 @@ PROJECT_LOCATION = Path(__file__).resolve().parent
 BUILD_FOLDER = PROJECT_LOCATION.joinpath("build").resolve()
 OUTPUT_FOLDER = PROJECT_LOCATION.joinpath("build/output").resolve()
 J_UNIT_OUTPUT_FILE = PROJECT_LOCATION.joinpath("build/junit_results.xml").resolve()
-COMPILER_TEST_FOLDER = PROJECT_LOCATION.joinpath("tests").resolve()
+TEST_FOLDER = PROJECT_LOCATION.joinpath("tests").resolve()
 COMPILER_FILE = PROJECT_LOCATION.joinpath("build/c_compiler").resolve()
 COVERAGE_FOLDER = PROJECT_LOCATION.joinpath("coverage").resolve()
 
@@ -76,26 +78,29 @@ class Result:
 
     def to_xml(self) -> str:
         if self.passed():
-            return f'<testcase name="{self.test_case_name}">\n' \
-                + ('' if self.error_log is None else f'<system-out>{self.error_log}</system-out>\n') \
-                + f'</testcase>\n'
+            system_out = f"<system-out>{self.error_log}</system-out>\n" if self.error_log else ""
+            return (
+                f"<testcase name=\"{self.test_case_name}\">\n"
+                f"{system_out}"
+                f"</testcase>\n"
+            )
 
         timeout = "[TIMED OUT] " if self.timeout else ""
         attribute = xmlquoteattr(timeout + self.error_log)
         xml_tag_body = xmlescape(timeout + self.error_log)
         return (
-            f'<testcase name="{self.test_case_name}">\n'
-            f'<error type="error" message={attribute}>\n{xml_tag_body}</error>\n'
-            f'</testcase>\n'
+            f"<testcase name=\"{self.test_case_name}\">\n"
+            f"<error type=\"error\" message={attribute}>\n{xml_tag_body}</error>\n"
+            f"</testcase>\n"
         )
 
     def to_log(self) -> str:
         timeout = "[TIMED OUT] " if self.timeout else ""
         if self.return_code != 0:
-            return f'{self.test_case_name}\n{RED}{timeout + self.error_log}{RESET}\n'
+            return f"{self.test_case_name}\n{RED}{timeout + self.error_log}{RESET}\n"
         if self.error_log is None:
-            return f'{self.test_case_name}\n\t> {GREEN}Pass{RESET}\n'
-        return f'{self.test_case_name}\n\t> {YELLOW}{self.error_log}{RESET}\n'
+            return f"{self.test_case_name}\n\t> {GREEN}Pass{RESET}\n"
+        return f"{self.test_case_name}\n\t> {YELLOW}{self.error_log}{RESET}\n"
 
 class JUnitXMLFile():
     def __init__(self, path: Path):
@@ -104,15 +109,15 @@ class JUnitXMLFile():
 
     def __enter__(self):
         self.fd = open(self.path, "w")
-        self.fd.write('<?xml version="1.0" encoding="UTF-8"?>\n')
-        self.fd.write('<testsuite name="Integration test">\n')
+        self.fd.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+        self.fd.write("<testsuite name=\"Integration test\">\n")
         return self
 
     def write(self, __s: str) -> int:
         return self.fd.write(__s)
 
     def __exit__(self, exception_type, exception_value, exception_traceback):
-        self.fd.write('</testsuite>\n')
+        self.fd.write("</testsuite>\n")
         self.fd.close()
 
 class ProgressBar:
@@ -137,11 +142,7 @@ class ProgressBar:
 
         # Initialize the lines for the progress bar and stats
         print("Running Tests [" + " " * self.max_line_length + "]")
-        print(
-            GREEN +  "Pass: 0 | " +
-            RED   +  "Fail: 0 | " +
-            RESET + f"Remaining: {total_tests:2}"
-        )
+        print(f"{GREEN}Pass: 0 | {RED}Fail: 0 | {RESET}Remaining: {total_tests:2}")
 
         # Initialize the progress bar
         self.update()
@@ -163,22 +164,15 @@ class ProgressBar:
 
         remaining = self.max_line_length - prop_passed - prop_failed
 
-        progress_bar += GREEN + '#' * prop_passed    # Green
-        progress_bar += RED   + '#' * prop_failed    # Red
-        progress_bar += RESET + ' ' * remaining      # Empty space
+        progress_bar = f"{GREEN}{'#' * prop_passed}{RED}{'#' * prop_failed}{RESET}{' ' * remaining}"
 
         # Move the cursor up 2 lines to the beginning of the progress bar
         lines_to_move_cursor = 2
-        print(f"\033[{lines_to_move_cursor}A\r", end='')
+        print(f"\033[{lines_to_move_cursor}A\r", end="")
 
         print("Running Tests [{}]".format(progress_bar))
 
-        # Space is left there intentionally to flush out the command line
-        print(
-            GREEN + f"Pass: {self.passed:2} | " +
-            RED   + f"Fail: {self.failed:2} | " +
-            RESET + f"Remaining: {remaining_tests:2}"
-        )
+        print(f"{GREEN}Pass: {self.passed:2} | {RED}Fail: {self.failed:2} | {RESET}Remaining: {remaining_tests:2}")
 
     def update_with_value(self, passed: bool):
         if passed:
@@ -187,7 +181,176 @@ class ProgressBar:
             self.failed += 1
         self.update()
 
-def run_test(driver: Path, validate_tests: bool = False) -> Result:
+def run_subprocess(
+    cmd: List[str],
+    timeout: int,
+    env: Optional[dict] = None,
+    log_path: Optional[str] = None,
+    verbose: bool = True,
+) -> tuple[int, str, bool]:
+    """
+    Wrapper for subprocess.run(...) with common arguments and error handling.
+
+    Returns tuple of (return_code: int, error_message: str, timed_out: bool)
+    """
+    # None means that stdout and stderr are handled by parent, i.e., they go to console by default
+    stdout = None
+    stderr = None
+
+    if not verbose:
+        stdout = subprocess.DEVNULL
+        stderr = subprocess.DEVNULL
+    elif log_path:
+        stdout = open(f"{log_path}.stdout.log", "w")
+        stderr = open(f"{log_path}.stderr.log", "w")
+
+    try:
+        subprocess.run(cmd, env=env, stdout=stdout, stderr=stderr, timeout=timeout, check=True)
+    except subprocess.CalledProcessError as e:
+        return e.returncode, f"{e.cmd} failed with return code {e.returncode}", False
+    except subprocess.TimeoutExpired as e:
+        return TIMEOUT_RETURNCODE, f"{e.cmd} took more than {e.timeout}", True
+    return 0, "", False
+
+def clean() -> bool:
+    """
+    Wrapper for make clean.
+
+    Return True if successful, False otherwise
+    """
+    print(f"{GREEN}Cleaning project...{RESET}")
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["make", "-C", PROJECT_LOCATION, "clean"],
+        timeout=BUILD_TIMEOUT_SECONDS,
+        verbose=False,
+    )
+
+    if return_code != 0:
+        print(f"{RED}Error when cleaning: {error_msg}{RESET}")
+        return False
+    return True
+
+def make(verbose: bool, log_path: Optional[str] = None) -> bool:
+    """
+    Wrapper for make build/c_compiler.
+
+    Return True if successful, False otherwise
+    """
+    print(f"{GREEN}Running make...{RESET}")
+    custom_env = os.environ.copy()
+    custom_env["DEBUG"] = "1"
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["make", "-C", PROJECT_LOCATION, "build/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, verbose=verbose, env=custom_env, log_path=log_path
+    )
+    if return_code != 0:
+        print(f"{RED}Error when running make: {error_msg}{RESET}")
+        return False
+
+    return True
+
+def cmake(verbose: bool) -> bool:
+    """
+    Wrapper for cmake --build build
+
+    Return True if successful, False otherwise
+    """
+    print(f"{GREEN}Running cmake...{RESET}")
+
+    # cmake configure + generate
+    # -DCMAKE_BUILD_TYPE=Release is equal to -O3
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["cmake", "-S", PROJECT_LOCATION, "-B", BUILD_FOLDER, "-DCMAKE_BUILD_TYPE=Release"],
+        timeout=BUILD_TIMEOUT_SECONDS,
+        verbose=verbose
+    )
+    if return_code != 0:
+        print(f"{RED}Error when running cmake (configure + generate): {error_msg}{RESET}")
+        return False
+
+    # cmake compile
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["cmake", "--build", BUILD_FOLDER], timeout=BUILD_TIMEOUT_SECONDS, verbose=verbose
+    )
+    if return_code != 0:
+        print(f"{RED}Error when running cmake (compile): {error_msg}{RESET}")
+        return False
+
+    return True
+
+def build(use_cmake: bool = False, coverage: bool = False, verbose: bool = True):
+    """
+    Wrapper for building the student compiler. Assumes output folder exists.
+    """
+    # Prepare the build folder
+    Path(BUILD_FOLDER).mkdir(parents=True, exist_ok=True)
+
+    # Build the compiler using cmake or make
+    if use_cmake and not coverage:
+        build_success = cmake(verbose=verbose)
+    else:
+        if use_cmake and coverage:
+            print(f"{RED}Coverage is not supported with CMake. Switching to make.{RESET}")
+        build_success = make(verbose=verbose)
+
+    return build_success
+
+def coverage() -> bool:
+    """
+    Wrapper for make coverage.
+
+    Return True if successful, False otherwise
+    """
+    print(f"{GREEN}Running make coverage...{RESET}")
+    custom_env = os.environ.copy()
+    custom_env["DEBUG"] = "1"
+    return_code, error_msg, _ = run_subprocess(
+        cmd=["make", "-C", PROJECT_LOCATION, "coverage"], timeout=BUILD_TIMEOUT_SECONDS, verbose=False, env=custom_env
+    )
+    if return_code != 0:
+        print(f"{RED}Error when running make coverage: {error_msg}{RESET}")
+        return False
+    return True
+
+def serve_coverage_forever(host: str, port: int):
+    """
+    Starts a HTTP server which serves the coverage folder forever until Ctrl+C
+    is pressed.
+    """
+    class Handler(SimpleHTTPRequestHandler):
+        def __init__(self, *args, directory=None, **kwargs):
+            super().__init__(*args, directory=COVERAGE_FOLDER, **kwargs)
+
+        def log_message(self, format, *args):
+            pass
+
+    httpd = HTTPServer((host, port), Handler)
+    print(f"{GREEN}Serving coverage on{RESET} http://{host}:{port}/ ... (Ctrl+C to exit)")
+    try:
+        httpd.serve_forever()
+    except KeyboardInterrupt:
+        print(f"{RED}\nServer has been stopped!{RESET}")
+
+def process_result(
+    result: Result,
+    xml_file: JUnitXMLFile,
+    verbose: bool = False,
+    progress_bar: ProgressBar = None,
+):
+    """
+    Processes results and updates progress bar if necessary.
+    """
+    xml_file.write(result.to_xml())
+
+    if verbose:
+        print(result.to_log())
+        return
+
+    if progress_bar:
+        progress_bar.update_with_value(result.passed())
+
+    return
+
+def run_test(directory: Path, driver: Path, validate_tests: bool = False) -> Result:
     """
     Run an instance of a test case.
 
@@ -196,14 +359,14 @@ def run_test(driver: Path, validate_tests: bool = False) -> Result:
 
     Returns Result object
     """
-
+    
     # Replaces example_driver.c -> example.c
-    new_name = driver.stem.replace('_driver', '') + '.c'
+    new_name = driver.stem.replace("_driver", "") + ".c"
     to_assemble = driver.parent.joinpath(new_name).resolve()
     test_name = to_assemble.relative_to(PROJECT_LOCATION)
 
-    # Determine the relative path to the file wrt. COMPILER_TEST_FOLDER.
-    relative_path = to_assemble.relative_to(COMPILER_TEST_FOLDER)
+    # Determine the relative path to the file wrt. TEST_FOLDER.
+    relative_path = to_assemble.relative_to(directory)
 
     # Construct the path where logs would be stored, without the suffix
     # e.g. .../build/output/_example/example/example
@@ -284,158 +447,6 @@ def run_test(driver: Path, validate_tests: bool = False) -> Result:
     msg = "Sanitizer warnings: " + " ".join(sanitizer_file_list) if len(sanitizer_file_list) != 0 else None
     return Result(test_case_name=test_name, return_code=return_code, timeout=False, error_log=msg)
 
-def run_subprocess(
-    cmd: List[str],
-    timeout: int,
-    env: Optional[dict] = None,
-    log_path: Optional[str] = None,
-    verbose: bool = True,
-) -> tuple[int, str, bool]:
-    """
-    Wrapper for subprocess.run(...) with common arguments and error handling.
-
-    Returns tuple of (return_code: int, error_message: str, timed_out: bool)
-    """
-    # None means that stdout and stderr are handled by parent, i.e., they go to console by default
-    stdout = None
-    stderr = None
-
-    if not verbose:
-        stdout = subprocess.DEVNULL
-        stderr = subprocess.DEVNULL
-    elif log_path:
-        stdout = open(f"{log_path}.stdout.log", "w")
-        stderr = open(f"{log_path}.stderr.log", "w")
-
-    try:
-        subprocess.run(cmd, env=env, stdout=stdout, stderr=stderr, timeout=timeout, check=True)
-    except subprocess.CalledProcessError as e:
-        return e.returncode, f"{e.cmd} failed with return code {e.returncode}", False
-    except subprocess.TimeoutExpired as e:
-        return TIMEOUT_RETURNCODE, f"{e.cmd} took more than {e.timeout}", True
-    return 0, "", False
-
-def clean() -> bool:
-    """
-    Wrapper for make clean.
-
-    Return True if successful, False otherwise
-    """
-    print(GREEN + "Cleaning project..." + RESET)
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", PROJECT_LOCATION, "clean"],
-        timeout=BUILD_TIMEOUT_SECONDS,
-        verbose=False,
-    )
-
-    if return_code != 0:
-        print(RED + "Error when cleaning:", error_msg + RESET)
-        return False
-    return True
-
-def make(verbose: bool) -> bool:
-    """
-    Wrapper for make build/c_compiler.
-
-    Return True if successful, False otherwise
-    """
-    print(GREEN + "Running make..." + RESET)
-    custom_env = os.environ.copy()
-    custom_env["DEBUG"] = "1"
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", PROJECT_LOCATION, "build/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, verbose=verbose, env=custom_env
-    )
-    if return_code != 0:
-        print(RED + "Error when running make:", error_msg + RESET)
-        return False
-
-    return True
-
-def cmake(verbose: bool) -> bool:
-    """
-    Wrapper for cmake --build build
-
-    Return True if successful, False otherwise
-    """
-    print(GREEN + "Running cmake..." + RESET)
-
-    # cmake configure + generate
-    # -DCMAKE_BUILD_TYPE=Release is equal to -O3
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["cmake", "-S", PROJECT_LOCATION, "-B", BUILD_FOLDER, "-DCMAKE_BUILD_TYPE=Release"],
-        timeout=BUILD_TIMEOUT_SECONDS,
-        verbose=verbose
-    )
-    if return_code != 0:
-        print(RED + "Error when running cmake (configure + generate):", error_msg + RESET)
-        return False
-
-    # cmake compile
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["cmake", "--build", BUILD_FOLDER], timeout=BUILD_TIMEOUT_SECONDS, verbose=verbose
-    )
-    if return_code != 0:
-        print(RED + "Error when running cmake (compile):", error_msg + RESET)
-        return False
-
-    return True
-
-def coverage() -> bool:
-    """
-    Wrapper for make coverage.
-
-    Return True if successful, False otherwise
-    """
-    print(GREEN + "Running make coverage..." + RESET)
-    custom_env = os.environ.copy()
-    custom_env["DEBUG"] = "1"
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", PROJECT_LOCATION, "coverage"], timeout=BUILD_TIMEOUT_SECONDS, verbose=False, env=custom_env
-    )
-    if return_code != 0:
-        print(RED + "Error when running make coverage:", error_msg + RESET)
-        return False
-    return True
-
-def serve_coverage_forever(host: str, port: int):
-    """
-    Starts a HTTP server which serves the coverage folder forever until Ctrl+C
-    is pressed.
-    """
-    class Handler(SimpleHTTPRequestHandler):
-        def __init__(self, *args, directory=None, **kwargs):
-            super().__init__(*args, directory=COVERAGE_FOLDER, **kwargs)
-
-        def log_message(self, format, *args):
-            pass
-
-    httpd = HTTPServer((host, port), Handler)
-    print(GREEN + "Serving coverage on" + RESET + f" http://{host}:{port}/ ... (Ctrl+C to exit)")
-    try:
-        httpd.serve_forever()
-    except KeyboardInterrupt:
-        print(RED + "\nServer has been stopped!" + RESET)
-
-def process_result(
-    result: Result,
-    xml_file: JUnitXMLFile,
-    verbose: bool = False,
-    progress_bar: ProgressBar = None,
-):
-    """
-    Processes results and updates progress bar if necessary.
-    """
-    xml_file.write(result.to_xml())
-
-    if verbose:
-        print(result.to_log())
-        return
-
-    if progress_bar:
-        progress_bar.update_with_value(result.passed())
-
-    return
-
 def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, verbose: bool, validate_tests: bool = False) -> bool:
     """
     Runs tests against compiler.
@@ -453,7 +464,7 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
 
     if multithreading:
         with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(run_test, driver, validate_tests=validate_tests) for driver in drivers]
+            futures = [executor.submit(run_test, directory, driver, validate_tests=validate_tests) for driver in drivers]
             for future in as_completed(futures):
                 result = future.result()
                 results.append(result.passed())
@@ -461,7 +472,7 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
 
     else:
         for driver in drivers:
-            result = run_test(driver, validate_tests=validate_tests)
+            result = run_test(directory, driver, validate_tests=validate_tests)
             results.append(result.passed())
             process_result(result, xml_file, verbose, progress_bar)
 
@@ -469,26 +480,9 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
     total = len(drivers)
 
     if verbose:
-        print("\n>> Test Summary: " + GREEN + f"{passing} Passed, " + RED + f"{total-passing} Failed" + RESET)
+        print(f"\n>> Test Summary: {GREEN}{passing} Passed, {RED}{total-passing} Failed{RESET}")
 
     return passing == total
-
-def build(use_cmake: bool = False, coverage: bool = False, silent: bool = False):
-    """
-    Wrapper for building the student compiler. Assumes output folder exists.
-    """
-    # Prepare the build folder
-    Path(BUILD_FOLDER).mkdir(parents=True, exist_ok=True)
-
-    # Build the compiler using cmake or make
-    if use_cmake and not coverage:
-        build_success = cmake(verbose=not silent)
-    else:
-        if use_cmake and coverage:
-            print(RED + "Coverage is not supported with CMake. Switching to make." + RESET)
-        build_success = make(verbose=not silent)
-
-    return build_success
 
 def parse_args():
     """
@@ -498,7 +492,7 @@ def parse_args():
     parser.add_argument(
         "dir",
         nargs="?",
-        default=COMPILER_TEST_FOLDER,
+        default=TEST_FOLDER,
         type=Path,
         help="(Optional) paths to the compiler test folders. Use this to select "
         "certain tests. Leave blank to run all tests."
@@ -523,7 +517,7 @@ def parse_args():
         version=f"BetterTesting {__version__}"
     )
     parser.add_argument(
-        '--no_clean',
+        "--no_clean",
         action="store_true",
         default=False,
         help="Don't clean the repository before testing. This will make it "
@@ -561,7 +555,7 @@ def main():
     if not args.no_clean:
         clean_success = clean()
         if not clean_success:
-            exit(2)
+            sys.exit(2)
 
     # Prepare the output folder
     shutil.rmtree(OUTPUT_FOLDER, ignore_errors=True)
@@ -569,7 +563,7 @@ def main():
 
     # There is no need for building the student compiler when testing with riscv-gcc
     if not args.validate_tests:
-        build_success = build(use_cmake=args.use_cmake, coverage=args.coverage, silent=args.silent)
+        build_success = build(use_cmake=args.use_cmake, coverage=args.coverage, verbose=not args.silent)
         if not build_success:
             exit(3)
 
@@ -585,8 +579,8 @@ def main():
     if args.coverage:
         coverage_success = coverage()
         if not coverage_success:
-            exit(4)
-        serve_coverage_forever('0.0.0.0', 8000)
+            sys.exit(4)
+        serve_coverage_forever("0.0.0.0", 8000)
 
 if __name__ == "__main__":
     try:
