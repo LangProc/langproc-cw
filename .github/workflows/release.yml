@@ -16,6 +16,7 @@ on:
         description: "Cohort tag (e.g. 2025-26) to update latest-YYYY-YY tag for Docker environment image. Optional."
         required: false
         type: string
+        default: '2025-26'
 
 permissions:
   contents: write
