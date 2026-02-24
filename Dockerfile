@@ -31,6 +31,8 @@ RUN apt-get update && apt-get install -y --fix-missing \
 # Set clangd as the default language server
 RUN update-alternatives --install /usr/bin/clangd clangd /usr/bin/clangd-18 100
 
+ARG ARTIFACT_TAG=v2.1.0
+
 WORKDIR /tmp
 RUN set -eux; \
     arch="$(dpkg --print-architecture)"; \
@@ -40,7 +42,7 @@ RUN set -eux; \
       *) echo "Unsupported architecture: $arch" >&2; exit 1 ;; \
     esac; \
     \
-    base="https://github.com/LangProc/langproc-cw/releases/download/v2.1.0/"; \
+    base="https://github.com/LangProc/langproc-cw/releases/download/${ARTIFACT_TAG}"; \
     tgz="riscv-gnu-toolchain-${xarch}.tar.gz"; \
     sha="${tgz}.sha"; \
     \

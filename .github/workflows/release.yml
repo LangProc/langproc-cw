@@ -1,0 +1,80 @@
+name: Tag and Draft Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Name of new tag to be created (must start with v, e.g. v2.1.1)"
+        required: true
+        type: string
+      build_toolchain:
+        description: "Build new toolchain artifacts and environment image?"
+        required: true
+        type: boolean
+        default: false
+      cohort:
+        description: "Cohort tag (e.g. 2025-26) to update latest-YYYY-YY tag for Docker environment image. Optional."
+        required: false
+        type: string
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  prepare:
+    runs-on: ubuntu-24.04
+    outputs:
+      sha: ${{ steps.commit.outputs.sha || github.sha }}
+    steps:
+      - name: Validate tag
+        run: |
+          if [[ ! "${{ inputs.tag }}" =~ ^v ]]; then
+            echo "::error::Tag must start with 'v'"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Update Dockerfile and commit
+        if: inputs.build_toolchain
+        id: commit
+        run: |
+          sed -i 's/^ARG ARTIFACT_TAG=.*/ARG ARTIFACT_TAG=${{ inputs.tag }}/' Dockerfile
+          git config user.name "github-actions[ci]"
+          git config user.email "github-actions[ci]@users.noreply.github.com"
+          git add Dockerfile
+          git commit -m "chore: bump ARTIFACT_TAG to ${{ inputs.tag }} for toolchain build"
+          git push
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Create Draft Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # Create the tag and draft release at the correct SHA (either the new commit or current HEAD)
+          target_sha="${{ steps.commit.outputs.sha || github.sha }}"
+          gh release create "${{ inputs.tag }}" \
+            --target "$target_sha" \
+            --title "${{ inputs.tag }}" \
+            --draft \
+            --generate-notes
+
+  toolchain:
+    needs: prepare
+    if: inputs.build_toolchain
+    uses: ./.github/workflows/build-riscv-gnu-toolchain.yml
+    with:
+      release_tag: ${{ inputs.tag }}
+    secrets: inherit
+
+  environment:
+    needs: [prepare, toolchain]
+    if: inputs.build_toolchain
+    uses: ./.github/workflows/build-environment.yml
+    with:
+      tag: ${{ inputs.tag }}
+      cohort: ${{ inputs.cohort }}
+    secrets: inherit
