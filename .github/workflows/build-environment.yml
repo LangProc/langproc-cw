@@ -49,6 +49,12 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Lowercase image name
+        run: |
+          echo "IMAGE_LC=${IMAGE,,}" >>${GITHUB_ENV}
+        env:
+          IMAGE: '${{ env.IMAGE }}'
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -58,6 +64,6 @@ jobs:
           build-args: |
             ARTIFACT_TAG=${{ inputs.tag }}
           tags: |
-            ${{ env.IMAGE }}:${{ inputs.tag }}
-            ${{ env.IMAGE }}:latest
-            ${{ inputs.cohort != '' && format('{0}:latest-{1}', env.IMAGE, inputs.cohort) || '' }}
+            ${{ env.IMAGE_LC }}:${{ inputs.tag }}
+            ${{ env.IMAGE_LC }}:latest
+            ${{ inputs.cohort != '' && format('{0}:latest-{1}', env.IMAGE_LC, inputs.cohort) || '' }}
