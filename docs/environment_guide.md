@@ -1,7 +1,7 @@
 Environment
 ===========
 
-An Ubuntu 22.04 Dockerfile has been provided which defines all of the tools you need to get started, just like in the labs.
+An Ubuntu 24.04 Dockerfile has been provided which defines all of the tools you need to get started, just like in the labs.
 
 You are advised to do your final testing before submission in this environment, otherwise you are likely to hit incompatibility problems, which may mean your program won't build in my test environment.
 
