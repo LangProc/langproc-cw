@@ -14,7 +14,7 @@ jobs:
       checks: write
       contents: read
     container:
-      image: ghcr.io/langproc/langproc-2022-cw/environment:v1.0.0
+      image: ghcr.io/langproc/langproc-cw/environment:latest-2025-26
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
