@@ -20,16 +20,14 @@ jobs:
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          set-safe-directory: true
 
       - name: Build and test
         id: test
         timeout-minutes: 1
         run: |
           ./test.py
-
-      - name: Perm issue fix
-        if: success() || failure()
-        run: git config --global --add safe.directory "/__w/${{ github.event.repository.name }}/${{ github.event.repository.name }}"
 
       - name: Upload test results
         uses: dorny/test-reporter@v1
