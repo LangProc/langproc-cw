@@ -7,29 +7,27 @@ on:
 
 jobs:
   Test:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       packages: read
       statuses: write
       checks: write
       contents: read
     container:
-      image: ghcr.io/langproc/langproc-2022-cw/environment:v1.0.0
+      image: ghcr.io/langproc/langproc-cw/environment:latest-2025-26
       credentials:
         username: ${{ github.actor }}
         password: ${{ secrets.GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v6
+        with:
+          set-safe-directory: true
 
       - name: Build and test
         id: test
         timeout-minutes: 1
         run: |
           ./test.py
-
-      - name: Perm issue fix
-        if: success() || failure()
-        run: git config --global --add safe.directory "/__w/${{ github.event.repository.name }}/${{ github.event.repository.name }}"
 
       - name: Upload test results
         uses: dorny/test-reporter@v1
