@@ -116,6 +116,7 @@ Here is a (partial) list of features that will not be tested.
 * the [old K&R style of declaring functions](https://stackoverflow.com/a/18820829)
 * union types
 * variable-length arrays (C90 forbids them)
+* variadic functions
 * the `const` keyword
 * function pointers
 * both implicit and explicit casting
