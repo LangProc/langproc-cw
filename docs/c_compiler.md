@@ -124,6 +124,7 @@ Here is a (partial) list of features that will not be tested.
 * the `short` and `long` types (correct width handling is tested with `float` and `double`)
 * the `void` type is not tested explicitly, but it appears in some helper functions in the test cases, so your compiler cannot break when it encounters this keyword
 * the `static` keyword
+* standard library support (e.g. `printf(...)` from `<stdio.h>` header)
 
 ## Test cases
 
