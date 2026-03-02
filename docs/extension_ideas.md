@@ -79,6 +79,15 @@ A full C preprocessor is a project in itself. If you want a sane scope:
 
 A lot of external test suites require a preprocessor, because they don't use preprocessed C. Hence, you could also use an existing C preprocessor (e.g., [TCPP](https://github.com/bnoazx005/tcpp)), crediting accordingly.
 
+### Standard library support (`libc`)
+
+Once you can process `#include`, you can support parts of the C standard library, which makes your compiler usable on “real” C programs.
+
+Interesting functions/headers to tackle:
+  * `<stdio.h>`: `printf("x=%d\n", x)`, `puts("hello")`
+  * `<string.h>`: `strlen(s)`, `memcpy(dst, src, n)`, `memset(buf, 0, n)`
+  * `<stdlib.h>`: `malloc(n)`, `free(p)`
+
 ---
 ---
 
