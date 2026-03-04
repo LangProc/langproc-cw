@@ -609,7 +609,9 @@ def main():
 
     # Skip unavailable coverage and exit immediately for test validation
     if args.validate_tests:
-        exit(0 if passing == total else 5)
+        if passing != total:
+            raise RuntimeError("Some tests failed")
+        return
 
     # Find coverage if required. Note, that the coverage server will be blocking
     if args.coverage:
