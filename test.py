@@ -610,7 +610,7 @@ def main():
     # Skip unavailable coverage and exit immediately for test validation
     if args.validate_tests:
         if passing != total:
-            raise RuntimeError("Some tests failed")
+            raise RuntimeError(f"{total - passing} tests failed during test validation")
         return
 
     # Find coverage if required. Note, that the coverage server will be blocking
