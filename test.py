@@ -184,9 +184,6 @@ def run_subprocess(
     timeout_returncode = 124
 
     # None means that stdout and stderr are handled by parent, i.e., they go to console by default
-    # print(f"RUN_SUBPROCESS: {cmd}")
-    # return 0, "", False
-
     stdout = None
     stderr = None
 
@@ -312,7 +309,7 @@ def serve_coverage_forever(root: Path, host: str, port: int):
     """
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self, *args, directory=None, **kwargs):
-            super().__init__(*args, directory=root/"coverage", **kwargs)
+            super().__init__(*args, directory=root / "coverage", **kwargs)
 
         def log_message(self, format, *args):
             pass
@@ -344,7 +341,14 @@ def process_result(
 
     return
 
-def run_test(top_dir: Path, tests_dir: Path, driver: Path, validate_tests: bool = False, timeout: int = 30) -> Result:
+def run_test(
+    build_dir: Path,
+    output_dir: Path,
+    tests_dir: Path,
+    driver: Path,
+    validate_tests: bool = False,
+    timeout: int = 30
+) -> Result:
     """
     Run an instance of a test case.
 
@@ -361,20 +365,15 @@ def run_test(top_dir: Path, tests_dir: Path, driver: Path, validate_tests: bool 
     # Replaces example_driver.c -> example.c
     new_name = driver.stem.replace("_driver", "") + ".c"
     to_assemble = driver.parent.joinpath(new_name).resolve()
-
-    # Determine the relative path to the file wrt. the test directory being run.
-    relative_path = to_assemble.relative_to(tests_dir)
     test_name = to_assemble.relative_to(tests_dir)
 
     # Construct the path where logs would be stored, without the suffix
     # e.g. .../build/output/_example/example/example
-    log_path = Path(top_dir / "build/output").joinpath(relative_path.parent, to_assemble.stem, to_assemble.stem)
+    log_path = output_dir.joinpath(test_name.parent, to_assemble.stem, to_assemble.stem)
 
     # Recreate the directory
     shutil.rmtree(log_path.parent, ignore_errors=True)
     log_path.parent.mkdir(parents=True, exist_ok=True)
-
-    # print(f"{top_dir=}\n{tests_dir=}\n{driver=}\n{new_name=}\n{to_assemble=}\n{relative_path=}\n{test_name=}\n{log_path=}\n\n")
 
     def relevant_files(component):
         return f"\n\t {log_path}.{component}.stderr.log \n\t {log_path}.{component}.stdout.log"
@@ -388,7 +387,7 @@ def run_test(top_dir: Path, tests_dir: Path, driver: Path, validate_tests: bool 
     if validate_tests:
         compile_cmd = [gcc, "-std=c90", "-pedantic", "-ansi", "-O0", gcc_arch, gcc_abi, "-S", to_assemble, "-o", f"{log_path}.s"]
     else:
-        compile_cmd = [top_dir / "build/c_compiler", "-S", to_assemble, "-o", f"{log_path}.s"]
+        compile_cmd = [build_dir / "c_compiler", "-S", to_assemble, "-o", f"{log_path}.s"]
 
     # Compile
     return_code, _, timed_out = run_subprocess(
@@ -448,7 +447,8 @@ def run_test(top_dir: Path, tests_dir: Path, driver: Path, validate_tests: bool 
     return Result(test_case_name=test_name, return_code=return_code, timeout=False, error_log=msg)
 
 def run_tests(
-    top_dir: Path,
+    build_dir: Path,
+    output_dir: Path,
     tests_dir: Path,
     xml_file: JUnitXMLFile,
     multithreading: bool,
@@ -474,7 +474,8 @@ def run_tests(
         with ThreadPoolExecutor() as executor:
             futures = [executor.submit(
                 run_test,
-                top_dir=top_dir,
+                build_dir=build_dir,
+                output_dir=output_dir,
                 tests_dir=tests_dir,
                 driver=driver,
                 validate_tests=validate_tests,
@@ -488,7 +489,14 @@ def run_tests(
 
     else:
         for driver in drivers:
-            result = run_test(top_dir=top_dir, tests_dir=tests_dir, driver=driver, validate_tests=validate_tests, timeout=timeout)
+            result = run_test(
+                build_dir=build_dir,
+                output_dir=output_dir,
+                tests_dir=tests_dir,
+                driver=driver,
+                validate_tests=validate_tests,
+                timeout=timeout
+            )
             results.append(result.passed())
             process_result(result, xml_file, verbose, progress_bar)
 
@@ -566,11 +574,10 @@ def parse_args(tests_dir: Path):
 
 def main():
     root_dir = Path(__file__).resolve().parent
-    tests_dir = root_dir / "tests"
     build_dir = root_dir / "build"
     output_dir = build_dir / "output"
 
-    args = parse_args(tests_dir)
+    args = parse_args(tests_dir=root_dir / "tests")
 
     # Clean the repo if required
     if not args.no_clean:
@@ -591,7 +598,8 @@ def main():
     # Run the tests and save the results into JUnit XML file
     with JUnitXMLFile(build_dir / "junit_results.xml") as xml_file:
         passing, total = run_tests(
-            top_dir=root_dir,
+            build_dir=build_dir,
+            output_dir=output_dir,
             tests_dir=Path(args.dir),
             xml_file=xml_file,
             multithreading=args.multithreading,
