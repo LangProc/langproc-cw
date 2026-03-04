@@ -83,10 +83,19 @@ A lot of external test suites require a preprocessor, because they don't use pre
 
 Once you can process `#include`, you can support parts of the C standard library, which makes your compiler usable on “real” C programs.
 
+Easy functions/headers to tackle:
+  * `<limits.h>`: \[easiest\] `CHAR_BIT`, `CHAR_MIN`, `CHAR_MAX`, `SCHAR_MIN`, `SHRT_MIN`, `INT_MIN`, `LONG_MIN`, `SCHAR_MAX`, `SHRT_MAX`, `INT_MAX`, `LONG_MAX`, `UCHAR_MAX`, `USHRT_MAX`, `UINT_MAX`, `ULONG_MAX`
+  * `<stddef.h>`: \[easiest\] `ptrdiff_t`, `size_t`, `NULL`
+  * `<stdlib.h>`: `abort()` (dependency of assert's `assert`, can be improved by `printf` support), ` EXIT_SUCCESS` and `EXIT_FAILURE`
+  * `<assert.h>`: `assert(condition)` (depends on stdlib's `abort`, can be improved by `printf` support)
+
 Interesting functions/headers to tackle:
   * `<stdio.h>`: `printf("x=%d\n", x)`, `puts("hello")`
   * `<string.h>`: `strlen(s)`, `memcpy(dst, src, n)`, `memset(buf, 0, n)`
-  * `<stdlib.h>`: `malloc(n)`, `free(p)`
+  * `<stdlib.h>`: `malloc(n)`, `free(p)`, `exit(exit_code)`, `atexit(cleanup_function_pointer)` (don't go into spike/pk internals, make your `exit` call libc's `exit`)
+  * `<stddef.h>`: `offsetof(struct s, field)` (akin to `sizeof`)
+  * `<math.h>`: \[from easy to hard\] `frexpr(3.0, &exponent)`, `ldexp(3.0, 2)`, `fabs(-0.5)`, `ceil(-0.5)`, `floor(-0.5)`, `modf(3.5, &integral_part)`, `fmod(1337, -3.5)`, `sqrt(10.0)` ([any algorithm you like](https://en.wikipedia.org/wiki/Square_root_algorithms)), any of `exp`, `log`, `sin`, or `cos` (glhf)
+  * `<signal.h>`: \[extra difficult\] everything; use the A extension for `sig_atomic_t`, you will probably have to dig into the libc and/or spike/pk
 
 ---
 ---
