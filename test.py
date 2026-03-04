@@ -19,7 +19,6 @@ The output would be placed into build/output/_example/example/.
 For more information, run ./test.py --help
 """
 
-
 __version__ = "1.0.0"
 __author__ = "William Huynh, Filip Wojcicki, James Nock, Quentin Corradi"
 
@@ -29,12 +28,13 @@ import sys
 import argparse
 import shutil
 import subprocess
+import threading
 from glob import glob
 from dataclasses import dataclass
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Optional
+from typing import List, Optional, Tuple
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 
@@ -46,24 +46,6 @@ RESET = "\033[0m"
 if not sys.stdout.isatty():
     # Don't output colours when we're not in a TTY
     RED, GREEN, YELLOW, RESET = "", "", "", ""
-
-# "File" will suggest the absolute path to the file, including the extension.
-PROJECT_LOCATION = Path(__file__).resolve().parent
-BUILD_FOLDER = PROJECT_LOCATION.joinpath("build").resolve()
-OUTPUT_FOLDER = PROJECT_LOCATION.joinpath("build/output").resolve()
-J_UNIT_OUTPUT_FILE = PROJECT_LOCATION.joinpath("build/junit_results.xml").resolve()
-TEST_FOLDER = PROJECT_LOCATION.joinpath("tests").resolve()
-COMPILER_FILE = PROJECT_LOCATION.joinpath("build/c_compiler").resolve()
-COVERAGE_FOLDER = PROJECT_LOCATION.joinpath("coverage").resolve()
-
-BUILD_TIMEOUT_SECONDS = 60
-RUN_TIMEOUT_SECONDS = 15
-TIMEOUT_RETURNCODE = 124
-
-GCC = "riscv32-unknown-elf-gcc"
-# GCC is not targetting rv32imfd because it is compatible with rv32gc which is the more widespread 32bits target
-GCC_ARCH = "-march=rv32gc"
-GCC_ABI = "-mabi=ilp32d"
 
 @dataclass
 class Result:
@@ -133,6 +115,7 @@ class ProgressBar:
         self.total_tests = total_tests
         self.passed = 0
         self.failed = 0
+        self._lock = threading.Lock()
 
         _, max_line_length = os.popen("stty size", "r").read().split()
         self.max_line_length = min(
@@ -149,7 +132,6 @@ class ProgressBar:
 
     def update(self):
         remaining_tests = self.total_tests - (self.passed + self.failed)
-        progress_bar = ""
 
         if self.total_tests == 0:
             prop_passed = 0
@@ -166,20 +148,26 @@ class ProgressBar:
 
         progress_bar = f"{GREEN}{'#' * prop_passed}{RED}{'#' * prop_failed}{RESET}{' ' * remaining}"
 
-        # Move the cursor up 2 lines to the beginning of the progress bar
-        lines_to_move_cursor = 2
-        print(f"\033[{lines_to_move_cursor}A\r", end="")
+        frame = (
+            "\033[2A"                                                                     # Move up 2 lines
+            "\r\033[2K" + f"Running Tests [{progress_bar}]\n"                             # Clear + rewrite line 1
+            "\r\033[2K" + f"{GREEN}Pass: {self.passed:2} | {RED}Fail: {self.failed:2} | "
+            f"{RESET}Remaining: {remaining_tests:2}\n"                                    # Clear + rewrite line 2
+        )
 
-        print("Running Tests [{}]".format(progress_bar))
-
-        print(f"{GREEN}Pass: {self.passed:2} | {RED}Fail: {self.failed:2} | {RESET}Remaining: {remaining_tests:2}")
+        # Write + flush on a single frame instead of 3 separate print(...) prevents a flickering visual glitch
+        sys.stdout.write(frame)
+        sys.stdout.flush()
 
     def update_with_value(self, passed: bool):
         if passed:
             self.passed += 1
         else:
             self.failed += 1
-        self.update()
+
+        # Lock prevents race conditions when multithreading is enabled
+        with self._lock:
+            self.update()
 
 def run_subprocess(
     cmd: List[str],
@@ -193,6 +181,8 @@ def run_subprocess(
 
     Returns tuple of (return_code: int, error_message: str, timed_out: bool)
     """
+    timeout_returncode = 124
+
     # None means that stdout and stderr are handled by parent, i.e., they go to console by default
     stdout = None
     stderr = None
@@ -209,10 +199,10 @@ def run_subprocess(
     except subprocess.CalledProcessError as e:
         return e.returncode, f"{e.cmd} failed with return code {e.returncode}", False
     except subprocess.TimeoutExpired as e:
-        return TIMEOUT_RETURNCODE, f"{e.cmd} took more than {e.timeout}", True
+        return timeout_returncode, f"{e.cmd} took more than {e.timeout}", True
     return 0, "", False
 
-def clean() -> bool:
+def clean(top_dir: Path, timeout: int = 15) -> bool:
     """
     Wrapper for make clean.
 
@@ -220,8 +210,8 @@ def clean() -> bool:
     """
     print(f"{GREEN}Cleaning project...{RESET}")
     return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", PROJECT_LOCATION, "clean"],
-        timeout=BUILD_TIMEOUT_SECONDS,
+        cmd=["make", "-C", top_dir, "clean"],
+        timeout=timeout,
         verbose=False,
     )
 
@@ -230,7 +220,7 @@ def clean() -> bool:
         return False
     return True
 
-def make(verbose: bool, log_path: Optional[str] = None) -> bool:
+def make(top_dir: Path, build_dir: Path, verbose: bool, log_path: Optional[str] = None, timeout: int = 60) -> bool:
     """
     Wrapper for make build/c_compiler.
 
@@ -240,7 +230,7 @@ def make(verbose: bool, log_path: Optional[str] = None) -> bool:
     custom_env = os.environ.copy()
     custom_env["DEBUG"] = "1"
     return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", PROJECT_LOCATION, "build/c_compiler"], timeout=BUILD_TIMEOUT_SECONDS, verbose=verbose, env=custom_env, log_path=log_path
+        cmd=["make", "-C", top_dir, f"{build_dir.name}/c_compiler"], timeout=timeout, verbose=verbose, env=custom_env, log_path=log_path
     )
     if return_code != 0:
         print(f"{RED}Error when running make: {error_msg}{RESET}")
@@ -248,7 +238,7 @@ def make(verbose: bool, log_path: Optional[str] = None) -> bool:
 
     return True
 
-def cmake(verbose: bool) -> bool:
+def cmake(top_dir: Path, build_dir: Path, verbose: bool, timeout: int = 60) -> bool:
     """
     Wrapper for cmake --build build
 
@@ -259,8 +249,8 @@ def cmake(verbose: bool) -> bool:
     # cmake configure + generate
     # -DCMAKE_BUILD_TYPE=Release is equal to -O3
     return_code, error_msg, _ = run_subprocess(
-        cmd=["cmake", "-S", PROJECT_LOCATION, "-B", BUILD_FOLDER, "-DCMAKE_BUILD_TYPE=Release"],
-        timeout=BUILD_TIMEOUT_SECONDS,
+        cmd=["cmake", "-S", top_dir, "-B", build_dir, "-DCMAKE_BUILD_TYPE=Release"],
+        timeout=timeout,
         verbose=verbose
     )
     if return_code != 0:
@@ -269,7 +259,7 @@ def cmake(verbose: bool) -> bool:
 
     # cmake compile
     return_code, error_msg, _ = run_subprocess(
-        cmd=["cmake", "--build", BUILD_FOLDER], timeout=BUILD_TIMEOUT_SECONDS, verbose=verbose
+        cmd=["cmake", "--build", build_dir], timeout=timeout, verbose=verbose
     )
     if return_code != 0:
         print(f"{RED}Error when running cmake (compile): {error_msg}{RESET}")
@@ -277,24 +267,25 @@ def cmake(verbose: bool) -> bool:
 
     return True
 
-def build(use_cmake: bool = False, coverage: bool = False, verbose: bool = True):
+def build(top_dir: Path, use_cmake: bool = False, coverage: bool = False, verbose: bool = True, timeout: int = 60):
     """
     Wrapper for building the student compiler. Assumes output folder exists.
     """
     # Prepare the build folder
-    Path(BUILD_FOLDER).mkdir(parents=True, exist_ok=True)
+    build_dir = top_dir / "build"
+    Path(build_dir).mkdir(parents=True, exist_ok=True)
 
     # Build the compiler using cmake or make
     if use_cmake and not coverage:
-        build_success = cmake(verbose=verbose)
+        build_success = cmake(top_dir, build_dir=build_dir, verbose=verbose, timeout=timeout)
     else:
         if use_cmake and coverage:
             print(f"{RED}Coverage is not supported with CMake. Switching to make.{RESET}")
-        build_success = make(verbose=verbose)
+        build_success = make(top_dir, build_dir=build_dir, verbose=verbose, timeout=timeout)
 
     return build_success
 
-def coverage() -> bool:
+def coverage(top_dir: Path, timeout: int = 60) -> bool:
     """
     Wrapper for make coverage.
 
@@ -304,21 +295,21 @@ def coverage() -> bool:
     custom_env = os.environ.copy()
     custom_env["DEBUG"] = "1"
     return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", PROJECT_LOCATION, "coverage"], timeout=BUILD_TIMEOUT_SECONDS, verbose=False, env=custom_env
+        cmd=["make", "-C", top_dir, "coverage"], timeout=timeout, verbose=False, env=custom_env
     )
     if return_code != 0:
         print(f"{RED}Error when running make coverage: {error_msg}{RESET}")
         return False
     return True
 
-def serve_coverage_forever(host: str, port: int):
+def serve_coverage_forever(root: Path, host: str, port: int):
     """
     Starts a HTTP server which serves the coverage folder forever until Ctrl+C
     is pressed.
     """
     class Handler(SimpleHTTPRequestHandler):
         def __init__(self, *args, directory=None, **kwargs):
-            super().__init__(*args, directory=COVERAGE_FOLDER, **kwargs)
+            super().__init__(*args, directory=root / "coverage", **kwargs)
 
         def log_message(self, format, *args):
             pass
@@ -350,7 +341,14 @@ def process_result(
 
     return
 
-def run_test(directory: Path, driver: Path, validate_tests: bool = False) -> Result:
+def run_test(
+    build_dir: Path,
+    output_dir: Path,
+    tests_dir: Path,
+    driver: Path,
+    validate_tests: bool = False,
+    timeout: int = 30
+) -> Result:
     """
     Run an instance of a test case.
 
@@ -359,18 +357,19 @@ def run_test(directory: Path, driver: Path, validate_tests: bool = False) -> Res
 
     Returns Result object
     """
-    
+    gcc = "riscv32-unknown-elf-gcc"
+    # GCC is not targetting rv32imfd because it is compatible with rv32gc which is the more widespread 32bits target
+    gcc_arch = "-march=rv32gc"
+    gcc_abi = "-mabi=ilp32d"
+
     # Replaces example_driver.c -> example.c
     new_name = driver.stem.replace("_driver", "") + ".c"
     to_assemble = driver.parent.joinpath(new_name).resolve()
-    test_name = to_assemble.relative_to(PROJECT_LOCATION)
-
-    # Determine the relative path to the file wrt. TEST_FOLDER.
-    relative_path = to_assemble.relative_to(directory)
+    test_name = to_assemble.relative_to(tests_dir)
 
     # Construct the path where logs would be stored, without the suffix
     # e.g. .../build/output/_example/example/example
-    log_path = Path(OUTPUT_FOLDER).joinpath(relative_path.parent, to_assemble.stem, to_assemble.stem)
+    log_path = output_dir.joinpath(test_name.parent, to_assemble.stem, to_assemble.stem)
 
     # Recreate the directory
     shutil.rmtree(log_path.parent, ignore_errors=True)
@@ -386,14 +385,14 @@ def run_test(directory: Path, driver: Path, validate_tests: bool = False) -> Res
 
     # Compile the test case into assembly using the custom compiler or GCC for self validation
     if validate_tests:
-        compile_cmd = [GCC, "-std=c90", "-pedantic", "-ansi", "-O0", GCC_ARCH, GCC_ABI, "-S", to_assemble, "-o", f"{log_path}.s"]
+        compile_cmd = [gcc, "-std=c90", "-pedantic", "-ansi", "-O0", gcc_arch, gcc_abi, "-S", to_assemble, "-o", f"{log_path}.s"]
     else:
-        compile_cmd = [COMPILER_FILE, "-S", to_assemble, "-o", f"{log_path}.s"]
+        compile_cmd = [build_dir / "c_compiler", "-S", to_assemble, "-o", f"{log_path}.s"]
 
     # Compile
     return_code, _, timed_out = run_subprocess(
         cmd=compile_cmd,
-        timeout=RUN_TIMEOUT_SECONDS,
+        timeout=timeout,
         env=custom_env,
         log_path=f"{log_path}.compiler",
     )
@@ -406,8 +405,8 @@ def run_test(directory: Path, driver: Path, validate_tests: bool = False) -> Res
 
     # GCC Reference Output
     return_code, _, timed_out = run_subprocess(
-        cmd=[GCC, "-std=c90", "-pedantic", "-ansi", "-O0", GCC_ARCH, GCC_ABI, "-S", to_assemble, "-o", f"{log_path}.gcc.s"],
-        timeout=RUN_TIMEOUT_SECONDS,
+        cmd=[gcc, "-std=c90", "-pedantic", "-ansi", "-O0", gcc_arch, gcc_abi, "-S", to_assemble, "-o", f"{log_path}.gcc.s"],
+        timeout=timeout,
         log_path=f"{log_path}.reference",
     )
     if return_code != 0:
@@ -416,8 +415,8 @@ def run_test(directory: Path, driver: Path, validate_tests: bool = False) -> Res
 
     # Assemble
     return_code, _, timed_out = run_subprocess(
-        cmd=[GCC, GCC_ARCH, GCC_ABI, "-c", f"{log_path}.s", "-o", f"{log_path}.o"],
-        timeout=RUN_TIMEOUT_SECONDS,
+        cmd=[gcc, gcc_arch, gcc_abi, "-c", f"{log_path}.s", "-o", f"{log_path}.o"],
+        timeout=timeout,
         log_path=f"{log_path}.assembler",
     )
     if return_code != 0:
@@ -426,8 +425,8 @@ def run_test(directory: Path, driver: Path, validate_tests: bool = False) -> Res
 
     # Link
     return_code, _, timed_out = run_subprocess(
-        cmd=[GCC, GCC_ARCH, GCC_ABI, "-static", f"{log_path}.o", str(driver), "-o", f"{log_path}"],
-        timeout=RUN_TIMEOUT_SECONDS,
+        cmd=[gcc, gcc_arch, gcc_abi, "-static", f"{log_path}.o", str(driver), "-o", f"{log_path}"],
+        timeout=timeout,
         log_path=f"{log_path}.linker",
     )
     if return_code != 0:
@@ -437,7 +436,7 @@ def run_test(directory: Path, driver: Path, validate_tests: bool = False) -> Res
     # Simulate
     return_code, _, timed_out = run_subprocess(
         cmd=["spike", "--isa=rv32gc", "pk", log_path],
-        timeout=RUN_TIMEOUT_SECONDS,
+        timeout=timeout,
         log_path=f"{log_path}.simulation",
     )
     if return_code != 0:
@@ -447,11 +446,20 @@ def run_test(directory: Path, driver: Path, validate_tests: bool = False) -> Res
     msg = "Sanitizer warnings: " + " ".join(sanitizer_file_list) if len(sanitizer_file_list) != 0 else None
     return Result(test_case_name=test_name, return_code=return_code, timeout=False, error_log=msg)
 
-def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, verbose: bool, validate_tests: bool = False) -> bool:
+def run_tests(
+    build_dir: Path,
+    output_dir: Path,
+    tests_dir: Path,
+    xml_file: JUnitXMLFile,
+    multithreading: bool,
+    verbose: bool,
+    validate_tests: bool = False,
+    timeout: int = 30
+) -> Tuple[int, int]:
     """
     Runs tests against compiler.
     """
-    drivers = list(directory.rglob("*_driver.c"))
+    drivers = list(tests_dir.rglob("*_driver.c"))
     drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
     results = []
 
@@ -464,7 +472,16 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
 
     if multithreading:
         with ThreadPoolExecutor() as executor:
-            futures = [executor.submit(run_test, directory, driver, validate_tests=validate_tests) for driver in drivers]
+            futures = [executor.submit(
+                run_test,
+                build_dir=build_dir,
+                output_dir=output_dir,
+                tests_dir=tests_dir,
+                driver=driver,
+                validate_tests=validate_tests,
+                timeout=timeout
+            ) for driver in drivers]
+
             for future in as_completed(futures):
                 result = future.result()
                 results.append(result.passed())
@@ -472,7 +489,14 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
 
     else:
         for driver in drivers:
-            result = run_test(directory, driver, validate_tests=validate_tests)
+            result = run_test(
+                build_dir=build_dir,
+                output_dir=output_dir,
+                tests_dir=tests_dir,
+                driver=driver,
+                validate_tests=validate_tests,
+                timeout=timeout
+            )
             results.append(result.passed())
             process_result(result, xml_file, verbose, progress_bar)
 
@@ -482,9 +506,9 @@ def run_tests(directory: Path, xml_file: JUnitXMLFile, multithreading: bool, ver
     if verbose:
         print(f"\n>> Test Summary: {GREEN}{passing} Passed, {RED}{total-passing} Failed{RESET}")
 
-    return passing == total
+    return passing, total
 
-def parse_args():
+def parse_args(tests_dir: Path):
     """
     Wrapper for argument parsing.
     """
@@ -492,7 +516,7 @@ def parse_args():
     parser.add_argument(
         "dir",
         nargs="?",
-        default=TEST_FOLDER,
+        default=tests_dir,
         type=Path,
         help="(Optional) paths to the compiler test folders. Use this to select "
         "certain tests. Leave blank to run all tests."
@@ -549,37 +573,51 @@ def parse_args():
     return parser.parse_args()
 
 def main():
-    args = parse_args()
+    root_dir = Path(__file__).resolve().parent
+    build_dir = root_dir / "build"
+    output_dir = build_dir / "output"
+
+    args = parse_args(tests_dir=root_dir / "tests")
 
     # Clean the repo if required
     if not args.no_clean:
-        clean_success = clean()
+        clean_success = clean(top_dir=root_dir)
         if not clean_success:
-            sys.exit(2)
+            raise RuntimeError("Error when running make clean")
 
     # Prepare the output folder
-    shutil.rmtree(OUTPUT_FOLDER, ignore_errors=True)
-    Path(OUTPUT_FOLDER).mkdir(parents=True, exist_ok=True)
+    shutil.rmtree(output_dir, ignore_errors=True)
+    Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # There is no need for building the student compiler when testing with riscv-gcc
     if not args.validate_tests:
-        build_success = build(use_cmake=args.use_cmake, coverage=args.coverage, verbose=not args.silent)
+        build_success = build(top_dir=root_dir, use_cmake=args.use_cmake, coverage=args.coverage, verbose=not args.silent)
         if not build_success:
-            exit(3)
+            raise RuntimeError("Error when building")
 
     # Run the tests and save the results into JUnit XML file
-    with JUnitXMLFile(J_UNIT_OUTPUT_FILE) as xml_file:
-        all_test_success = run_tests(directory=Path(args.dir), xml_file=xml_file, multithreading=args.multithreading, verbose=not args.silent, validate_tests=args.validate_tests)
+    with JUnitXMLFile(build_dir / "junit_results.xml") as xml_file:
+        passing, total = run_tests(
+            build_dir=build_dir,
+            output_dir=output_dir,
+            tests_dir=Path(args.dir),
+            xml_file=xml_file,
+            multithreading=args.multithreading,
+            verbose=not args.silent,
+            validate_tests=args.validate_tests
+        )
 
     # Skip unavailable coverage and exit immediately for test validation
     if args.validate_tests:
-        exit(0 if all_test_success else 5)
+        if passing != total:
+            raise RuntimeError(f"{total - passing} tests failed during test validation")
+        return
 
     # Find coverage if required. Note, that the coverage server will be blocking
     if args.coverage:
-        coverage_success = coverage()
+        coverage_success = coverage(top_dir=root_dir)
         if not coverage_success:
-            sys.exit(4)
+            raise RuntimeError("Error when running make coverage")
         serve_coverage_forever("0.0.0.0", 8000)
 
 if __name__ == "__main__":
