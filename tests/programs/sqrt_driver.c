@@ -1,5 +1,4 @@
-
-int bsqrt(int lo, int hi, int v);
+int bsqrt(int lo, int hi, int val);
 
 int main()
 {

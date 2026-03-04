@@ -1,5 +1,4 @@
-
-int f(int x);
+int f(int a);
 
 int main()
 {

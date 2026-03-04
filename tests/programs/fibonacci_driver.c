@@ -1,4 +1,3 @@
-
 int fib(int x);
 
 int main()

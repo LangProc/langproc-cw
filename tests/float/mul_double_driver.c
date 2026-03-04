@@ -1,4 +1,3 @@
-
 double f(double x, double y);
 
 int main()

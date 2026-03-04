@@ -1,4 +1,3 @@
-
 int f(int n);
 
 int main()

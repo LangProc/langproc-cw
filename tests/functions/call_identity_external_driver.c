@@ -1,4 +1,3 @@
-
 int f();
 
 int g(int x)

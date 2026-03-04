@@ -1,7 +1,6 @@
-
-int f(int x, int y);
+int f();
 
 int main()
 {
-    return !(f(10,20)==2);
+    return !(f()==2);
 }

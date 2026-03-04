@@ -1,5 +1,5 @@
 #include <stdio.h>
-int g(int x);
+int g(int t);
 
 int main()
 {

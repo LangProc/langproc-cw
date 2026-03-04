@@ -1,4 +1,3 @@
-
 float f(float x, float y);
 
 int main()

@@ -1,4 +1,3 @@
-
 int multiply(int x, int y);
 
 int main()

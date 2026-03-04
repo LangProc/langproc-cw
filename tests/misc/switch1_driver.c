@@ -1,4 +1,3 @@
-
 int g(int x);
 
 int main()
