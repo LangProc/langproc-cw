@@ -28,6 +28,7 @@ import sys
 import argparse
 import shutil
 import subprocess
+import threading
 from glob import glob
 from dataclasses import dataclass
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
@@ -114,6 +115,7 @@ class ProgressBar:
         self.total_tests = total_tests
         self.passed = 0
         self.failed = 0
+        self._lock = threading.Lock()
 
         _, max_line_length = os.popen("stty size", "r").read().split()
         self.max_line_length = min(
@@ -130,7 +132,6 @@ class ProgressBar:
 
     def update(self):
         remaining_tests = self.total_tests - (self.passed + self.failed)
-        progress_bar = ""
 
         if self.total_tests == 0:
             prop_passed = 0
@@ -147,20 +148,26 @@ class ProgressBar:
 
         progress_bar = f"{GREEN}{'#' * prop_passed}{RED}{'#' * prop_failed}{RESET}{' ' * remaining}"
 
-        # Move the cursor up 2 lines to the beginning of the progress bar
-        lines_to_move_cursor = 2
-        print(f"\033[{lines_to_move_cursor}A\r", end="")
+        frame = (
+            "\033[2A"                                                                     # Move up 2 lines
+            "\r\033[2K" + f"Running Tests [{progress_bar}]\n"                             # Clear + rewrite line 1
+            "\r\033[2K" + f"{GREEN}Pass: {self.passed:2} | {RED}Fail: {self.failed:2} | "
+            f"{RESET}Remaining: {remaining_tests:2}\n"                                    # Clear + rewrite line 2
+        )
 
-        print("Running Tests [{}]".format(progress_bar))
-
-        print(f"{GREEN}Pass: {self.passed:2} | {RED}Fail: {self.failed:2} | {RESET}Remaining: {remaining_tests:2}")
+        # Write + flush on a single frame instead of 3 separate print(...) prevents a flickering visual glitch
+        sys.stdout.write(frame)
+        sys.stdout.flush()
 
     def update_with_value(self, passed: bool):
         if passed:
             self.passed += 1
         else:
             self.failed += 1
-        self.update()
+
+        # Lock prevents race conditions when multithreading is enabled
+        with self._lock:
+            self.update()
 
 def run_subprocess(
     cmd: List[str],
