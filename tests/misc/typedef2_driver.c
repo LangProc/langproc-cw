@@ -1,5 +1,4 @@
-
-int g(int );
+int g(int y);
 
 int main()
 {

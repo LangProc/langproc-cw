@@ -1,5 +1,4 @@
-
-int f(int*);
+int f(int *p);
 
 int main()
 {

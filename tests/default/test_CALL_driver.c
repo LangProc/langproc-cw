@@ -1,4 +1,3 @@
-
 int f();
 
 int g()
@@ -8,5 +7,5 @@ int g()
 
 int main()
 {
-    return !( 10==f() ); 
+    return !( 10==f() );
 }
