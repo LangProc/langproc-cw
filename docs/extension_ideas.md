@@ -90,7 +90,7 @@ Easy functions/headers to tackle:
   * `<assert.h>`: `assert(condition)` (depends on stdlib's `abort`, can be improved by `printf` support)
 
 Interesting functions/headers to tackle:
-  * `<stdio.h>`:  `putchar('x')`, `getchar()`, `puts("hello")`, `sprintf(s, "x=%d\n", x)`, `printf("x=%d\n", x)`, `sscanf("13", "%d", &x)`, `scanf("%d", &x)`
+  * `<stdio.h>`: `putchar('x')`, `getchar()`, `puts("hello")`, `sprintf(s, "x=%d\n", x)`, `printf("x=%d\n", x)`, `sscanf("13", "%d", &x)`, `scanf("%d", &x)`
   * `<string.h>`: `strlen(s)`, `memcpy(dst, src, n)`, `memset(buf, 0, n)`
   * `<stdlib.h>`: `malloc(n)`, `free(p)`, `exit(exit_code)`, `atexit(cleanup_function_pointer)` (don't go into `spike`/`pk` internals, make your `exit` call libc's `exit`)
   * `<stddef.h>`: `offsetof(struct s, field)` (akin to `sizeof`)
