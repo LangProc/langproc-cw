@@ -24,12 +24,16 @@ Many students develop their compiler in VS Code, as this has good support for co
 
 ```console
 > user@host:langproc-cw# ./test.py --validate_tests
->
+
+Cleaning project...
+
+_example/example.c
+        > Pass
+
 [...]
 
 tests/types/unsigned.c
         > Pass
-
 
 >> Test Summary: 86 Passed, 0 Failed
 ```

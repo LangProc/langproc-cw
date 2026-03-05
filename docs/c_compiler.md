@@ -11,32 +11,43 @@ If you wish to use C++, then a basic framework for building your compiler has be
 
 Source files can be found in the [./src](../src) directory and header files can be found in the [./include](../include) directory.
 
-You can test your compiler by running
-[`./test.py`](../test.py) from the top of this repo; the
-output should look as follows (note: the progress bar and results will be coloured):
+You can test your compiler by running [`./test.py`](../test.py) from the top of this repo. The output should look as follows:
 
 ```console
 > user@host:langproc-cw# ./test.py
->
-make: Entering directory '/home/saturn691/projects/university/iac/langproc-cw'
-make: 'build/c_compiler' is up to date.
-make: Leaving directory '/home/saturn691/projects/university/iac/langproc-cw'
-Running Tests [################################################################]
-Pass:  1 | Fail: 85 | Remaining:  0
-See logs for more details (use -v for verbose output).
+
+Cleaning project...
+Running make...
+
+[...]
+
+types/unsigned.c
+        > Failed to compile testcase:
+         /workspaces/langproc-cw/build/output/types/unsigned/unsigned.compiler.stderr.log
+         /workspaces/langproc-cw/build/output/types/unsigned/unsigned.compiler.stdout.log
+         /workspaces/langproc-cw/build/output/types/unsigned/unsigned.s
+         /workspaces/langproc-cw/build/output/types/unsigned/unsigned.s.printed
 
 >> Test Summary: 1 Passed, 85 Failed
 ```
+
+You can make also run in a *silent* mode with [`./test.py --silent`](../test.py), which displays a live CLI progress bar (note: the progress bar and results will be coloured):
+
+```console
+> user@host:langproc-cw# ./test.py --silent
+
+Cleaning project...
+Running make...
+Running Tests [#################################################]
+Pass:  1 | Fail: 85 | Remaining:  0
+```
+The provided starting framework is only able to compile a very simple program, as described [here](./basic_compiler.md). By default, only the first [`_example/example.c`](../tests/_example/example.c) test should be passing.
 
 Full usage guide of [`test.py`](../test.py) is found in the file header or after running:
 
 ```console
 > user@host:langproc-cw# ./test.py --help
 ```
-
-By default, the first [`_example/example.c`](../tests/_example/example.c) test should be passing.
-
-This basic framework is only able to compile a very simple program, as described [here](./basic_compiler.md).
 
 ## Program build and execution
 
