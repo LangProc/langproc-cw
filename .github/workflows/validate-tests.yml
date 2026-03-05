@@ -1,0 +1,40 @@
+name: Test validation
+on:
+  push:
+    paths:
+      - "tests/**"
+
+jobs:
+  Tests test:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: read
+      statuses: write
+      checks: write
+      contents: read
+    container:
+      image: ghcr.io/langproc/langproc-cw/environment:latest-2025-26
+      credentials:
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Tests tests (or tests test, whichever you want)
+        id: test
+        timeout-minutes: 1
+        run: |
+          ./test.py --validate_tests --no_clean
+
+      - name: Perm issue fix
+        if: failure()
+        run: git config --global --add safe.directory "/__w/${{ github.event.repository.name }}/${{ github.event.repository.name }}"
+
+      - name: Upload failed test results
+        uses: dorny/test-reporter@v1
+        if: failure()
+        with:
+          name: Some tests are invalid
+          path: build/junit_results.xml
+          reporter: java-junit
+          fail-on-error: false
