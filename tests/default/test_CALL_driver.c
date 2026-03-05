@@ -1,4 +1,4 @@
-int f();
+int f(void);
 
 int g()
 {

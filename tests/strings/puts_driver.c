@@ -7,7 +7,7 @@ void fakeputs(char *x)
     ok=!strcmp(x,"wibble");
 }
 
-int g();
+int g(void);
 
 int main()
 {

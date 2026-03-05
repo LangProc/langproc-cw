@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-int f();
+int f(void);
 
 void test(double a)
 {
