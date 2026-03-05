@@ -1,4 +1,4 @@
-unsigned f();
+unsigned f(void);
 
 int main()
 {

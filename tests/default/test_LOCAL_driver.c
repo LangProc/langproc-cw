@@ -1,4 +1,4 @@
-int ffff();
+int ffff(void);
 
 int main()
 {

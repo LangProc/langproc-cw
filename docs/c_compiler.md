@@ -155,7 +155,7 @@ int f() {
 and another file called `test_program_driver.c` that contains:
 
 ```
-int f();
+int f(void);
 int main() {
     return !( 5 == f() );
 }
