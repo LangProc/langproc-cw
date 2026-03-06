@@ -23,8 +23,7 @@ jobs:
       - name: Tests tests (or tests test, whichever you want)
         id: test
         timeout-minutes: 1
-        run: |
-          ./test.py --validate_tests --no_clean
+        run: ./test.py --validate_tests
 
       - name: Perm issue fix
         if: failure()
