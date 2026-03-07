@@ -508,7 +508,7 @@ def run_tests(
 
     return passing, total
 
-def parse_args(tests_dir: Path):
+def parse_args(tests_dir: Path) -> argparse.Namespace:
     """
     Wrapper for argument parsing.
     """
