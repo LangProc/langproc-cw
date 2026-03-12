@@ -40,7 +40,7 @@ build/%.o: src/%.cpp Makefile
 	@mkdir -p $(@D)
 	g++ $(CXXFLAGS) -MMD -MP -c $< -o $@
 
-build/parser.tab.cpp build/parser.tab.hpp: src/parser.y
+build/parser.tab.cpp build/parser.tab.hpp &: src/parser.y
 	@mkdir -p build
 	bison -v -d src/parser.y -o build/parser.tab.cpp
 
