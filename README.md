@@ -15,6 +15,8 @@ Repositories
 
 Each group gets a bare private repository. It is up to you if you want to clone the main specification, or to start from scratch.
 
+For an overview of the expected development workflow, usage API, testing format, expected features, and more useful links to get you started, please check out [`c_compiler.md`](docs/c_compiler.md).
+
 Submission
 ==========
 
