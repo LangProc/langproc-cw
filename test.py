@@ -451,7 +451,7 @@ def run_tests(
     output_dir: Path,
     tests_dir: Path,
     xml_file: JUnitXMLFile,
-    multithreading: bool,
+    multithreading: int | None,
     verbose: bool,
     validate_tests: bool = False,
     timeout: int = 30
@@ -523,10 +523,13 @@ def parse_args(tests_dir: Path) -> argparse.Namespace:
     )
     parser.add_argument(
         "-m", "--multithreading",
-        action="store_true",
-        default=False,
-        help="Use multiple threads to run tests. This will make it faster, "
-        "but order is not guaranteed. Should only be used for speed."
+        nargs="?",
+        const=None,
+        default=1,
+        type=int,
+        metavar="N",
+        help="Build compiler and run tests using multiple threads. "
+        "Use -m to use the default thread count, or -m N to use exactly N threads. "
     )
     parser.add_argument(
         "-s", "--silent",
