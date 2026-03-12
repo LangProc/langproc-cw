@@ -264,8 +264,12 @@ def cmake(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, ti
         return False
 
     # cmake compile
+    cmd = ["cmake", "--build", str(build_dir)]
+    if multithreading > 1:
+        cmd += ["--parallel", str(multithreading)]
+
     return_code, error_msg, _ = run_subprocess(
-        cmd=["cmake", "--build", build_dir], timeout=timeout, verbose=verbose
+        cmd=cmd, timeout=timeout, verbose=verbose
     )
     if return_code != 0:
         print(f"{RED}Error when running cmake (compile): {error_msg}{RESET}")
