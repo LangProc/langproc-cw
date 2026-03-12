@@ -451,7 +451,7 @@ def run_tests(
     output_dir: Path,
     tests_dir: Path,
     xml_file: JUnitXMLFile,
-    multithreading: int | None,
+    multithreading: int,
     verbose: bool,
     validate_tests: bool = False,
     timeout: int = 30
@@ -470,8 +470,8 @@ def run_tests(
         # Force verbose mode when not a terminal
         verbose = True
 
-    if multithreading:
-        with ThreadPoolExecutor() as executor:
+    if multithreading > 1:
+        with ThreadPoolExecutor(max_workers=multithreading) as executor:
             futures = [executor.submit(
                 run_test,
                 build_dir=build_dir,
@@ -524,7 +524,7 @@ def parse_args(tests_dir: Path) -> argparse.Namespace:
     parser.add_argument(
         "-m", "--multithreading",
         nargs="?",
-        const=None,
+        const=8,
         default=1,
         type=int,
         metavar="N",
