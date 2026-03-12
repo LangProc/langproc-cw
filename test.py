@@ -220,7 +220,7 @@ def clean(top_dir: Path, timeout: int = 15) -> bool:
         return False
     return True
 
-def make(top_dir: Path, build_dir: Path, verbose: bool, log_path: Optional[str] = None, timeout: int = 60) -> bool:
+def make(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, log_path: Optional[str] = None, timeout: int = 60) -> bool:
     """
     Wrapper for make build/c_compiler.
 
@@ -229,8 +229,14 @@ def make(top_dir: Path, build_dir: Path, verbose: bool, log_path: Optional[str] 
     print(f"{GREEN}Running make...{RESET}")
     custom_env = os.environ.copy()
     custom_env["DEBUG"] = "1"
+
+    cmd = ["make", "-C", str(top_dir)]
+    if multithreading > 1:
+        cmd += ["-j", str(multithreading)]
+    cmd += [f"{build_dir.name}/c_compiler"]
+
     return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", top_dir, f"{build_dir.name}/c_compiler"], timeout=timeout, verbose=verbose, env=custom_env, log_path=log_path
+        cmd=cmd, timeout=timeout, verbose=verbose, env=custom_env, log_path=log_path
     )
     if return_code != 0:
         print(f"{RED}Error when running make: {error_msg}{RESET}")
@@ -238,7 +244,7 @@ def make(top_dir: Path, build_dir: Path, verbose: bool, log_path: Optional[str] 
 
     return True
 
-def cmake(top_dir: Path, build_dir: Path, verbose: bool, timeout: int = 60) -> bool:
+def cmake(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, timeout: int = 60) -> bool:
     """
     Wrapper for cmake --build build
 
@@ -258,8 +264,12 @@ def cmake(top_dir: Path, build_dir: Path, verbose: bool, timeout: int = 60) -> b
         return False
 
     # cmake compile
+    cmd = ["cmake", "--build", str(build_dir)]
+    if multithreading > 1:
+        cmd += ["--parallel", str(multithreading)]
+
     return_code, error_msg, _ = run_subprocess(
-        cmd=["cmake", "--build", build_dir], timeout=timeout, verbose=verbose
+        cmd=cmd, timeout=timeout, verbose=verbose
     )
     if return_code != 0:
         print(f"{RED}Error when running cmake (compile): {error_msg}{RESET}")
@@ -267,7 +277,14 @@ def cmake(top_dir: Path, build_dir: Path, verbose: bool, timeout: int = 60) -> b
 
     return True
 
-def build(top_dir: Path, use_cmake: bool = False, coverage: bool = False, verbose: bool = True, timeout: int = 60):
+def build(
+    top_dir: Path,
+    use_cmake: bool = False,
+    coverage: bool = False,
+    multithreading: int = 1,
+    verbose: bool = True,
+    timeout: int = 60
+):
     """
     Wrapper for building the student compiler. Assumes output folder exists.
     """
@@ -277,11 +294,11 @@ def build(top_dir: Path, use_cmake: bool = False, coverage: bool = False, verbos
 
     # Build the compiler using cmake or make
     if use_cmake and not coverage:
-        build_success = cmake(top_dir, build_dir=build_dir, verbose=verbose, timeout=timeout)
+        build_success = cmake(top_dir, build_dir=build_dir, multithreading=multithreading, verbose=verbose, timeout=timeout)
     else:
         if use_cmake and coverage:
             print(f"{RED}Coverage is not supported with CMake. Switching to make.{RESET}")
-        build_success = make(top_dir, build_dir=build_dir, verbose=verbose, timeout=timeout)
+        build_success = make(top_dir, build_dir=build_dir, multithreading=multithreading, verbose=verbose, timeout=timeout)
 
     return build_success
 
@@ -451,7 +468,7 @@ def run_tests(
     output_dir: Path,
     tests_dir: Path,
     xml_file: JUnitXMLFile,
-    multithreading: bool,
+    multithreading: int,
     verbose: bool,
     validate_tests: bool = False,
     timeout: int = 30
@@ -470,8 +487,8 @@ def run_tests(
         # Force verbose mode when not a terminal
         verbose = True
 
-    if multithreading:
-        with ThreadPoolExecutor() as executor:
+    if multithreading > 1:
+        with ThreadPoolExecutor(max_workers=multithreading) as executor:
             futures = [executor.submit(
                 run_test,
                 build_dir=build_dir,
@@ -523,10 +540,13 @@ def parse_args(tests_dir: Path) -> argparse.Namespace:
     )
     parser.add_argument(
         "-m", "--multithreading",
-        action="store_true",
-        default=False,
-        help="Use multiple threads to run tests. This will make it faster, "
-        "but order is not guaranteed. Should only be used for speed."
+        nargs="?",
+        const=8,
+        default=1,
+        type=int,
+        metavar="N",
+        help="Build compiler and run tests using multiple threads. "
+        "Use -m to use the default thread count, or -m N to use exactly N threads. "
     )
     parser.add_argument(
         "-s", "--silent",
@@ -591,7 +611,13 @@ def main():
 
     # There is no need for building the student compiler when testing with riscv-gcc
     if not args.validate_tests:
-        build_success = build(top_dir=root_dir, use_cmake=args.use_cmake, coverage=args.coverage, verbose=not args.silent)
+        build_success = build(
+            top_dir=root_dir,
+            use_cmake=args.use_cmake,
+            coverage=args.coverage,
+            multithreading=args.multithreading,
+            verbose=not args.silent
+        )
         if not build_success:
             raise RuntimeError("Error when building")
 
