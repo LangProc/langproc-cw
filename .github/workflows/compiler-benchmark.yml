@@ -1,4 +1,4 @@
-name: Compiler validation
+name: Compiler benchmark
 on:
   push:
     branches:
