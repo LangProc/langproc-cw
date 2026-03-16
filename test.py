@@ -402,7 +402,7 @@ def run_test(
 
     # Compile the test case into assembly using the custom compiler or GCC for self validation
     if validate_tests:
-        compile_cmd = [gcc, "-std=c90", "-pedantic", "-ansi", "-O0", gcc_arch, gcc_abi, "-S", to_assemble, "-o", f"{log_path}.s"]
+        compile_cmd = [gcc, "-std=c90", "-pedantic-errors", "-ansi", "-O0", gcc_arch, gcc_abi, "-S", to_assemble, "-o", f"{log_path}.s"]
     else:
         compile_cmd = [build_dir / "c_compiler", "-S", to_assemble, "-o", f"{log_path}.s"]
 
