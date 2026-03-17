@@ -67,7 +67,9 @@ except Exception as e:
     def ti_get_str(attr: str) -> str:
         return ""
     def ti_get_num(attr: str) -> int:
-        return 80
+        if attr == "cols":
+            return 80
+        raise InvalidArgument(f"`ti_get_num(attr={attr})` failed because `setupterm` failed")
 
 COLOR_BLACK = 0
 COLOR_RED = 1
@@ -84,8 +86,8 @@ stdout_lock = Lock()
 def print(*args, **kwargs):
     with stdout_lock:
         unsafe_print(*args, flush=True, **kwargs)
-    for pb in _progress_bars:
-        pb.update()
+        for pb in _progress_bars:
+            pb._update_no_stdout_lock()
 
 def path_append(path: Path, extension: str) -> Path:
     return path.with_name(path.name + extension)
@@ -142,31 +144,36 @@ class AsyncProgressWithLog:
         count: int = 0
 
     def __init__(self, total_entries: int, entries_display: dict[str, int]):
-        assert total_entries >= 1
-        assert len(entries_display) >= 1
-        assert all(len(s) == 1 for s in entries_display)
+        assert total_entries >= 1, total_entries
+        assert len(entries_display) >= 1, entries_display
+        assert all(len(s) == 1 for s in entries_display), list(entries_display.keys())
         self._total_entries = total_entries
         self._entries = {k: self._ColorCount(color=color) for k, color in entries_display.items()}
-        # Lock prevents race conditions when multithreading is enabled
         self._lock = Lock()
 
-    def _display_empty_bar(self, cols: int):
+    def _display_bar(self, cols: int, bar: str = ""):
         assert stdout_lock.locked()
-        # Redraw static elements of the progress bar
+        # save pos
+        stdout.write(ti_get_str("sc"))
         # go to left of bar line
         stdout.write(ti_parm("cup", self._bar_line, 0))
         # clear line
         stdout.write(ti_get_str("el"))
         stdout.write(ti_parm("cup", self._bar_line, 0))
         stdout.write("[")
+        stdout.write(bar)
+        # reset color
+        stdout.write(ti_get_str("sgr0"))
         # go to right of bar line
         stdout.write(ti_parm("cup", self._bar_line, cols - 1))
-        # enter insert mode
+        # enter insert mode to prevent going to a newline when at the bottom of the screen
         stdout.write(ti_get_str("smir"))
         stdout.write("]")
         # exit insert mode
         stdout.write(ti_get_str("rmir"))
-        # Cursor end position should be considered unknown
+        # restore pos
+        stdout.write(ti_get_str("rc"))
+        stdout.flush()
 
     def __enter__(self):
         self._bar_line = len(_progress_bars)
@@ -182,13 +189,8 @@ class AsyncProgressWithLog:
                 pass
             # Enter temporary terminal screen
             stdout.write(ti_get_str("smcup"))
-            # save pos
-            stdout.write(ti_get_str("sc"))
             # Initialize the progress bar
-            self._display_empty_bar(ti_get_num("cols"))
-            # restore pos
-            stdout.write(ti_get_str("rc"))
-            stdout.flush()
+            self._display_bar(ti_get_num("cols"))
         return self
 
     def __exit__(self, exc_type, exc_value, traceback):
@@ -215,64 +217,63 @@ class AsyncProgressWithLog:
 
     _SplitEntry = namedtuple("SplitEntry", ["index", "remainder", "integer"])
 
+    def _compute_bar(self, cols: int) -> str:
+        remaining_bar = cols - 2
+        remaining_entries = self._total_entries
+
+        # This next section heuristicly computes width of the different segments of a nice progress bar
+        # It should:
+        # - print at least 1 char for every non zero segment (except remaining)
+        # - stay within bounds
+        # - segments should not shrink
+        # I will use indices to iterate over parts of the list
+        portions = deepcopy(sorted(self._entries.items(), key=lambda kv: kv[1].count))
+        it = 0
+
+        # 1. skip all 0 width elements
+        while it < len(portions) and portions[it][1].count == 0:
+            it += 1
+
+        # 2. set to 1 the width of all segments of width between 0 and 1 chars
+        while it < len(portions):
+            cnt = portions[it][1].count
+            # cnt > entries/bar
+            if cnt*remaining_bar > remaining_entries:
+                break
+            remaining_bar -= 1
+            remaining_entries -= cnt
+            portions[it][1].count = 1
+            it += 1
+
+        # 3. allocate rounded portion of the bar to the rest
+        while it < len(portions):
+            cnt = portions[it][1].count
+            width = round(cnt*remaining_bar/remaining_entries)
+            portions[it][1].count = width
+            remaining_entries -= cnt
+            remaining_bar -= width
+            it += 1
+
+        # Build progress bar string
+        bar = "".join(
+            f"{ti_parm('setab', cc.color)}{ti_parm('setaf', cc.color)}{k * cc.count}" \
+            for k, cc in portions
+        )
+        return bar
+
     def update(self):
-        with self._lock:
-            cols = ti_get_num("cols")
-            remaining_bar = cols - 2
-            remaining_entries = self._total_entries
+        cols = ti_get_num("cols")
+        bar = self._compute_bar(cols)
+        # Write + flush on a single frame
+        with stdout_lock:
+            self._display_bar(cols, bar)
 
-            # This next section heuristicly computes width of the different segments of a nice progress bar
-            # It should:
-            # - print at least 1 char for every non zero segment (except remaining)
-            # - stay within bounds
-            # - segments should not shrink
-            # I will use indices to iterate over parts of the list
-            portions = deepcopy(sorted(self._entries.items(), key=lambda kv: kv[1].count))
-            it = 0
-
-            # 1. skip all 0 width elements
-            while it < len(portions) and portions[it][1].count == 0:
-                it += 1
-
-            # 2. set to 1 the width of all segments of width between 0 and 1 chars
-            while it < len(portions):
-                cnt = portions[it][1].count
-                # cnt > entries/bar
-                if cnt*remaining_bar > remaining_entries:
-                    break
-                remaining_bar -= 1
-                remaining_entries -= cnt
-                portions[it][1].count = 1
-                it += 1
-
-            # 3. allocate rounded portion of the bar to the rest
-            while it < len(portions):
-                cnt = portions[it][1].count
-                width = round(cnt*remaining_bar/remaining_entries)
-                portions[it][1].count = width
-                remaining_entries -= cnt
-                remaining_bar -= width
-                it += 1
-
-            # Build progress bar string
-            bar = "".join(
-                f"{ti_parm('setab', cc.color)}{ti_parm('setaf', cc.color)}{k * cc.count}" \
-                for k, cc in portions
-            )
-            del portions
-
-            # Write + flush on a single frame
-            with stdout_lock:
-                # save pos
-                stdout.write(ti_get_str("sc"))
-                self._display_empty_bar(cols)
-                stdout.write(ti_parm("cup", self._bar_line, 1))
-                stdout.write(bar)
-                # reset color
-                stdout.write(ti_get_str("sgr0"))
-                # restore pos
-                stdout.write(ti_get_str("rc"))
-                stdout.flush()
+    def _update_no_stdout_lock(self):
+        assert stdout_lock.locked()
+        cols = ti_get_num("cols")
+        bar = self._compute_bar(cols)
+        # Write + flush on a single frame
+        self._display_bar(cols, bar)
 
     def update_with_value_and_log(self, entry: str, log: str):
         assert entry in self._entries
