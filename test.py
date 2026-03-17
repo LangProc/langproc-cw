@@ -19,274 +19,352 @@ The output would be placed into build/output/_example/example/.
 For more information, run ./test.py --help
 """
 
-__version__ = "1.0.0"
+__version__ = "1.1.0"
 __author__ = "William Huynh, Filip Wojcicki, James Nock, Quentin Corradi"
 
 
-import os
-import sys
-import argparse
-import shutil
-import subprocess
-import threading
-from glob import glob
+from argparse import ArgumentParser, Namespace
+from collections import namedtuple
+from collections.abc import Callable
+from copy import deepcopy
+from concurrent.futures import ThreadPoolExecutor, wait
+from curses import setupterm, tparm as _tparm, tigetstr as _tigetstr, tigetflag as ti_get_flag, tigetnum as ti_get_num
 from dataclasses import dataclass
-from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
+from os import environ
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Optional, Tuple
+from shutil import rmtree
+from subprocess import run as _run, DEVNULL
+from sys import stdout
+from termios import tcsetattr, tcgetattr, TCSANOW, ECHO
+from threading import Lock
+from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
+# To remove?
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
+# Setup terminfo part of the curses library. *Not curses itself*, just terminfo
+setupterm()
+del setupterm
+COLOR_BLACK = 0
+COLOR_RED = 1
+COLOR_GREEN = 2
+COLOR_YELLOW = 3
+COLOR_BLUE = 4
+COLOR_MAGENTA = 5
+COLOR_CYAN = 6
+COLOR_WHITE = 7
 
-RED = "\033[31m"
-GREEN = "\033[32m"
-YELLOW = "\033[33m"
-RESET = "\033[0m"
+def ti_parm(attr: str, *args) -> str:
+    if not stdout.isatty():
+        return ""
+    b = _tigetstr(attr)
+    if b is None:
+        return ""
+    if len(args) == 0:
+        return b.decode()
+    return _tparm(b, *args).decode()
 
-if not sys.stdout.isatty():
-    # Don't output colours when we're not in a TTY
-    RED, GREEN, YELLOW, RESET = "", "", "", ""
+def ti_get_str(attr: str) -> str:
+    if not stdout.isatty():
+        return ""
+    b = _tigetstr(attr)
+    return "" if b is None else b.decode()
 
-@dataclass
-class Result:
-    """Class for keeping track of each test case result"""
-    test_case_name: str
-    return_code: int
-    timeout: bool
-    error_log: Optional[str]
+_progress_bars = []
+unsafe_print = print
+stdout_lock = Lock()
+def print(*args, **kwargs):
+    with stdout_lock:
+        unsafe_print(*args, flush=True, **kwargs)
+    for pb in _progress_bars:
+        pb.update()
 
-    def passed(self) -> bool:
-        return self.return_code == 0
-
-    def to_xml(self) -> str:
-        if self.passed():
-            system_out = f"<system-out>{self.error_log}</system-out>\n" if self.error_log else ""
-            return (
-                f"<testcase name=\"{self.test_case_name}\">\n"
-                f"{system_out}"
-                f"</testcase>\n"
-            )
-
-        timeout = "[TIMED OUT] " if self.timeout else ""
-        attribute = xmlquoteattr(timeout + self.error_log)
-        xml_tag_body = xmlescape(timeout + self.error_log)
-        return (
-            f"<testcase name=\"{self.test_case_name}\">\n"
-            f"<error type=\"error\" message={attribute}>\n{xml_tag_body}</error>\n"
-            f"</testcase>\n"
-        )
-
-    def to_log(self) -> str:
-        timeout = "[TIMED OUT] " if self.timeout else ""
-        if self.return_code != 0:
-            return f"{self.test_case_name}\n{RED}{timeout + self.error_log}{RESET}\n"
-        if self.error_log is None:
-            return f"{self.test_case_name}\n\t> {GREEN}Pass{RESET}\n"
-        return f"{self.test_case_name}\n\t> {YELLOW}{self.error_log}{RESET}\n"
+def path_append(path: Path, extension: str) -> Path:
+    return path.with_name(path.name + extension)
 
 class JUnitXMLFile():
-    def __init__(self, path: Path):
-        self.path = path
-        self.fd = None
+    def __init__(self, path: Path, description: str):
+        assert path.is_file() or not path.exists()
+        self._description = description
+        self._path = path
+        self._lock = Lock()
 
     def __enter__(self):
-        self.fd = open(self.path, "w")
-        self.fd.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-        self.fd.write("<testsuite name=\"Integration test\">\n")
+        self._fd = self._path.open(mode="w")
+        del self._path
+        self._fd.write(
+            "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
+            "<testsuite name={xmlquoteattr(self._description)}>\n"
+        )
+        del self._description
         return self
 
-    def write(self, __s: str) -> int:
-        return self.fd.write(__s)
+    def _write_test_xml(self, test_path: Path, body: str):
+        with self._lock:
+            self._fd.write(f"<testcase name={xmlquoteattr(str(test_path))}>{body}</testcase>\n")
+
+    def log_success(self, test_path: Path, log: str | None = None):
+        self._write_test_xml(test_path,
+            "" if log is None else f"\n<system-out>{xmlescape(log)}</system-out>\n"
+        )
+
+    def log_failure(self, test_path: Path, description: str, log: str):
+        message = xmlquoteattr(f"Error when {description}.")
+        body = xmlescape(log)
+        self._write_test_xml(test_path, f"\n<error type=\"error\" message={message}>{body}</error>\n")
 
     def __exit__(self, exception_type, exception_value, exception_traceback):
-        self.fd.write("</testsuite>\n")
-        self.fd.close()
+        self._fd.write("</testsuite>\n")
+        self._fd.close()
 
-class ProgressBar:
+class AsyncProgressWithLog:
     """
-    Creates a CLI progress bar that can update itself, provided nothing gets
-    in the way.
+    Creates a CLI progress bar that can update itself while allowing log to be printed.
 
     Parameters:
-    - total_tests: the length of the progress bar.
+    - total_entries: the number of expected entries, progress is computed relative to it.
+    - entries_display: a dict associating the character to display entries with to the color used to display progress of those entries.
     """
 
-    def __init__(self, total_tests: int):
-        self.total_tests = total_tests
-        self.passed = 0
-        self.failed = 0
-        self._lock = threading.Lock()
+    # This is just a mutable pair with names
+    @dataclass
+    class _ColorCount:
+        color: int
+        count: int = 0
 
-        _, max_line_length = os.popen("stty size", "r").read().split()
-        self.max_line_length = min(
-            int(max_line_length) - len("Running Tests []"),
-            80 - len("Running Tests []")
-        )
+    def __init__(self, total_entries: int, entries_display: dict[str, int]):
+        assert total_entries >= 1
+        assert len(entries_display) >= 1
+        assert all(len(s) == 1 for s in entries_display)
+        self._total_entries = total_entries
+        self._entries = {k: self._ColorCount(color=color) for k, color in entries_display.items()}
+        # Lock prevents race conditions when multithreading is enabled
+        self._lock = Lock()
 
-        # Initialize the lines for the progress bar and stats
-        print("Running Tests [" + " " * self.max_line_length + "]")
-        print(f"{GREEN}Pass: 0 | {RED}Fail: 0 | {RESET}Remaining: {total_tests:2}")
+    def _display_empty_bar(self, cols: int):
+        assert stdout_lock.locked()
+        # Redraw static elements of the progress bar
+        # go to left of bar line
+        stdout.write(ti_parm("cup", self._bar_line, 0))
+        # clear line
+        stdout.write(ti_get_str("el"))
+        stdout.write(ti_parm("cup", self._bar_line, 0))
+        stdout.write("[")
+        # go to right of bar line
+        stdout.write(ti_parm("cup", self._bar_line, cols - 1))
+        # enter insert mode
+        stdout.write(ti_get_str("smir"))
+        stdout.write("]")
+        # exit insert mode
+        stdout.write(ti_get_str("rmir"))
+        # Cursor end position should be considered unknown
 
-        # Initialize the progress bar
-        self.update()
+    def __enter__(self):
+        self._bar_line = len(_progress_bars)
+        _progress_bars.append(self)
+        with stdout_lock:
+            # Prevent key presses from showing
+            attrs = tcgetattr(stdout)
+            self._old_attrs = deepcopy(attrs)
+            attrs[3] &= ~ECHO
+            tcsetattr(stdout, TCSANOW, attrs)
+            # Enter temporary terminal screen
+            stdout.write(ti_get_str("smcup"))
+            # save pos
+            stdout.write(ti_get_str("sc"))
+            # Initialize the progress bar
+            self._display_empty_bar(ti_get_num("cols"))
+            # restore pos
+            stdout.write(ti_get_str("rc"))
+            stdout.flush()
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        _progress_bars.remove(self)
+        with stdout_lock:
+            # Reset color
+            stdout.write(ti_get_str("sgr0"))
+            # Exit temporary terminal screen
+            stdout.write(ti_get_str("rmcup"))
+            # Restore key presses behaviour
+            tcsetattr(stdout, TCSANOW, self._old_attrs)
+            # Sequence to reset terminal (should not have to be done)
+            # stdout.write(ti_get_str("rs1"))
+            # stdout.write(ti_get_str("rs2"))
+            # stdout.write(ti_get_str("rsf"))
+            # stdout.write(ti_get_str("rs3"))
+            stdout.flush()
+
+    def __getitem__(self, subscript):
+        return self._entries.__getitem__(subscript).count
+
+    _SplitEntry = namedtuple("SplitEntry", ["index", "remainder", "integer"])
 
     def update(self):
-        remaining_tests = self.total_tests - (self.passed + self.failed)
-
-        if self.total_tests == 0:
-            prop_passed = 0
-            prop_failed = 0
-        else:
-            prop_passed = round(self.passed / self.total_tests * self.max_line_length)
-            prop_failed = round(self.failed / self.total_tests * self.max_line_length)
-
-        # Ensure at least one # for passed and failed, if they exist
-        prop_passed = max(prop_passed, 1) if self.passed > 0 else 0
-        prop_failed = max(prop_failed, 1) if self.failed > 0 else 0
-
-        remaining = self.max_line_length - prop_passed - prop_failed
-
-        progress_bar = f"{GREEN}{'#' * prop_passed}{RED}{'#' * prop_failed}{RESET}{' ' * remaining}"
-
-        frame = (
-            "\033[2A"                                                                     # Move up 2 lines
-            "\r\033[2K" + f"Running Tests [{progress_bar}]\n"                             # Clear + rewrite line 1
-            "\r\033[2K" + f"{GREEN}Pass: {self.passed:2} | {RED}Fail: {self.failed:2} | "
-            f"{RESET}Remaining: {remaining_tests:2}\n"                                    # Clear + rewrite line 2
-        )
-
-        # Write + flush on a single frame instead of 3 separate print(...) prevents a flickering visual glitch
-        sys.stdout.write(frame)
-        sys.stdout.flush()
-
-    def update_with_value(self, passed: bool):
-        if passed:
-            self.passed += 1
-        else:
-            self.failed += 1
-
-        # Lock prevents race conditions when multithreading is enabled
         with self._lock:
-            self.update()
+            cols = ti_get_num("cols")
+            remaining_bar = cols - 2
+            remaining_entries = self._total_entries
 
-def run_subprocess(
-    cmd: List[str],
-    timeout: int,
-    env: Optional[dict] = None,
-    log_path: Optional[str] = None,
-    verbose: bool = True,
-) -> tuple[int, str, bool]:
+            # This next section heuristicly computes width of the different segments of a nice progress bar
+            # It should:
+            # - print at least 1 char for every non zero segment (except remaining)
+            # - stay within bounds
+            # - segments should not shrink
+            # I will use indices to iterate over parts of the list
+            portions = deepcopy(sorted(self._entries.items(), key=lambda kv: kv[1].count))
+            it = 0
+
+            # 1. skip all 0 width elements
+            while it < len(portions) and portions[it][1].count == 0:
+                it += 1
+
+            # 2. set to 1 the width of all segments of width between 0 and 1 chars
+            while it < len(portions):
+                cnt = portions[it][1].count
+                # cnt > entries/bar
+                if cnt*remaining_bar > remaining_entries:
+                    break
+                remaining_bar -= 1
+                remaining_entries -= cnt
+                portions[it][1].count = 1
+                it += 1
+
+            # 3. allocate rounded portion of the bar to the rest
+            while it < len(portions):
+                cnt = portions[it][1].count
+                width = round(cnt*remaining_bar/remaining_entries)
+                portions[it][1].count = width
+                remaining_entries -= cnt
+                remaining_bar -= width
+                it += 1
+
+            # Build progress bar string
+            bar = "".join(
+                f"{ti_parm('setab', cc.color)}{ti_parm('setaf', cc.color)}{k * cc.count}" \
+                for k, cc in portions
+            )
+            del portions
+
+            # Write + flush on a single frame
+            with stdout_lock:
+                # save pos
+                stdout.write(ti_get_str("sc"))
+                self._display_empty_bar(cols)
+                stdout.write(ti_parm("cup", self._bar_line, 1))
+                stdout.write(bar)
+                # reset color
+                stdout.write(ti_get_str("sgr0"))
+                # restore pos
+                stdout.write(ti_get_str("rc"))
+                stdout.flush()
+
+    def update_with_value_and_log(self, entry: str, log: str):
+        assert entry in self._entries
+        with self._lock:
+            self._entries[entry].count += 1
+        with stdout_lock:
+            stdout.write(ti_parm("setaf", self._entries[entry].color))
+            stdout.write(log)
+            stdout.write(ti_get_str("sgr0"))
+        self.update()
+
+def run_subprocess(cmd: list[str], description: str, log_stem: Path | None = None, **kwargs) -> str | None:
     """
-    Wrapper for subprocess.run(...) with common arguments and error handling.
+    Wrapper for running a subprocess and handling return value.
+    All arguments other than `cmd`, `description`, and `log_stem` are passed to `subprocess.run`
 
-    Returns tuple of (return_code: int, error_message: str, timed_out: bool)
+    Return None if successful, an error message otherwise
     """
-    timeout_returncode = 124
-
-    # None means that stdout and stderr are handled by parent, i.e., they go to console by default
-    stdout = None
-    stderr = None
-
-    if not verbose:
-        stdout = subprocess.DEVNULL
-        stderr = subprocess.DEVNULL
-    elif log_path:
-        stdout = open(f"{log_path}.stdout.log", "w")
-        stderr = open(f"{log_path}.stderr.log", "w")
-
+    print(description.capitalize(), "...", sep="")
+    stdout, stderr = (DEVNULL, DEVNULL) if log_stem is None \
+        else (open(f"{log_stem}.stdout.log", "w"), open(f"{log_stem}.stderr.log", "w"))
     try:
-        subprocess.run(cmd, env=env, stdout=stdout, stderr=stderr, timeout=timeout, check=True)
-    except subprocess.CalledProcessError as e:
-        return e.returncode, f"{e.cmd} failed with return code {e.returncode}", False
-    except subprocess.TimeoutExpired as e:
-        return timeout_returncode, f"{e.cmd} took more than {e.timeout}", True
-    return 0, "", False
+        cp = _run(cmd, stdout=stdout, stderr=stderr, **kwargs)
+    finally:
+        if log_stem is not None:
+            stdout.close()
+            stderr.close()
+    if cp.returncode != 0:
+        cmd = ' '.join(str(x) for x in cmd)
+        error = f"`{cmd}` timed out after {kwargs['timeout']}s" if cp.returncode == 124 \
+            else f"`{cmd}` failed with return code `{cp.returncode}`"
+        detail = "" if log_stem is None \
+            else f"\nFor more detail, see:\n\t{log_stem}.stdout.log\n\t{log_stem}.stderr.log"
+        return f"Error when {description}: {error}{detail}"
+    return None
 
-def clean(top_dir: Path, timeout: int = 15) -> bool:
+def clean(top_dir: Path, timeout: int | None = 15) -> str | None:
     """
-    Wrapper for make clean.
+    Wrapper for `make clean`.
 
-    Return True if successful, False otherwise
+    Return None if successful, an error message otherwise
     """
-    print(f"{GREEN}Cleaning project...{RESET}")
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", top_dir, "clean"],
-        timeout=timeout,
-        verbose=False,
-    )
-
-    if return_code != 0:
-        print(f"{RED}Error when cleaning: {error_msg}{RESET}")
-        return False
-    return True
-
-def make(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, log_path: Optional[str] = None, timeout: int = 60) -> bool:
-    """
-    Wrapper for make build/c_compiler.
-
-    Return True if successful, False otherwise
-    """
-    print(f"{GREEN}Running make...{RESET}")
-    custom_env = os.environ.copy()
+    custom_env = environ.copy()
     custom_env["DEBUG"] = "1"
-
-    cmd = ["make", "-C", str(top_dir)]
-    if multithreading > 1:
-        cmd += ["-j", str(multithreading)]
-    cmd += [f"{build_dir.name}/c_compiler"]
-
-    return_code, error_msg, _ = run_subprocess(
-        cmd=cmd, timeout=timeout, verbose=verbose, env=custom_env, log_path=log_path
+    return run_subprocess(
+        cmd=["make", "-C", top_dir, "clean"],
+        description="cleaning project",
+        timeout=timeout,
+        env=custom_env,
     )
-    if return_code != 0:
-        print(f"{RED}Error when running make: {error_msg}{RESET}")
-        return False
 
-    return True
-
-def cmake(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, timeout: int = 60) -> bool:
+def make(top_dir: Path, build_dir: Path, log_stem: Path | None = None, timeout: int | None = 60) -> str | None:
     """
-    Wrapper for cmake --build build
+    Wrapper for `make -C <top_dir> build/c_compiler`.
 
-    Return True if successful, False otherwise
+    Return None if successful, an error message otherwise
     """
-    print(f"{GREEN}Running cmake...{RESET}")
+    assert build_dir.is_relative_to(top_dir)
 
+    # TODO: next year's Makefile should have a NDEBUG option instead of DEBUG
+    custom_env = environ.copy()
+    custom_env["DEBUG"] = "1"
+    compiler = build_dir.relative_to(top_dir) / "c_compiler"
+    return run_subprocess(
+        cmd=["make", "-C", top_dir, compiler],
+        description="building with make",
+        log_stem=path_append(log_stem, ".make"),
+        timeout=timeout,
+        env=custom_env,
+    )
+
+# TODO: Is cmake worth using for performance? for features? for clarity?
+def cmake(src_dir: Path, build_dir: Path, log_stem: Path | None = None, timeout: int | None = 60) -> str | None:
+    """
+    Wrapper for `cmake -S <src_dir> -B <build_dir>` then `cmake --build <build_dir>`
+
+    Return None if successful, an error message otherwise
+    """
     # cmake configure + generate
     # -DCMAKE_BUILD_TYPE=Release is equal to -O3
-    return_code, error_msg, _ = run_subprocess(
+    conf_gen_success = run_subprocess(
         cmd=["cmake", "-S", top_dir, "-B", build_dir, "-DCMAKE_BUILD_TYPE=Release"],
+        description="building with cmake (configure + generate)",
+        log_stem=path_append(log_stem, ".cmake.conf_gen"),
         timeout=timeout,
-        verbose=verbose
     )
-    if return_code != 0:
-        print(f"{RED}Error when running cmake (configure + generate): {error_msg}{RESET}")
-        return False
+    if conf_gen_success is not None:
+        return conf_gen_success
 
     # cmake compile
-    cmd = ["cmake", "--build", str(build_dir)]
-    if multithreading > 1:
-        cmd += ["--parallel", str(multithreading)]
-
-    return_code, error_msg, _ = run_subprocess(
-        cmd=cmd, timeout=timeout, verbose=verbose
+    return run_subprocess(
+        cmd=["cmake", "--build", build_dir],
+        description="building with cmake (compile)",
+        log_stem=path_append(log_stem, ".cmake.compile"),
+        timeout=timeout,
     )
-    if return_code != 0:
-        print(f"{RED}Error when running cmake (compile): {error_msg}{RESET}")
-        return False
-
-    return True
 
 def build(
     top_dir: Path,
     use_cmake: bool = False,
     coverage: bool = False,
-    multithreading: int = 1,
-    verbose: bool = True,
-    timeout: int = 60
-):
+    log_stem: Path | None = None,
+    timeout: int | None = 60
+) -> str | None:
     """
-    Wrapper for building the student compiler. Assumes output folder exists.
+    Wrapper for building the student compiler.
+
+    Return None if successful, an error message otherwise
     """
     # Prepare the build folder
     build_dir = top_dir / "build"
@@ -294,31 +372,27 @@ def build(
 
     # Build the compiler using cmake or make
     if use_cmake and not coverage:
-        build_success = cmake(top_dir, build_dir=build_dir, multithreading=multithreading, verbose=verbose, timeout=timeout)
-    else:
-        if use_cmake and coverage:
-            print(f"{RED}Coverage is not supported with CMake. Switching to make.{RESET}")
-        build_success = make(top_dir, build_dir=build_dir, multithreading=multithreading, verbose=verbose, timeout=timeout)
+        return cmake(src_dir=top_dir, build_dir=build_dir, log_stem=log_stem, timeout=timeout)
+    if use_cmake and coverage:
+        print(ti_parm("setaf", COLOR_RED), "Coverage is not supported with CMake. Switching to make.", ti_get_str("sgr0"), sep="")
+    return make(top_dir=top_dir, build_dir=build_dir, log_stem=log_stem, timeout=timeout)
 
-    return build_success
-
-def coverage(top_dir: Path, timeout: int = 60) -> bool:
+def coverage(top_dir: Path, timeout: int | None = 60) -> str | None:
     """
-    Wrapper for make coverage.
+    Wrapper for `make coverage`.
 
-    Return True if successful, False otherwise
+    Return None if successful, an error message otherwise
     """
-    print(f"{GREEN}Running make coverage...{RESET}")
-    custom_env = os.environ.copy()
+    custom_env = environ.copy()
     custom_env["DEBUG"] = "1"
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", top_dir, "coverage"], timeout=timeout, verbose=False, env=custom_env
+    return run_subprocess(
+        cmd=["make", "-C", top_dir, "coverage"],
+        description="generating coverage summary",
+        timeout=timeout,
+        env=custom_env
     )
-    if return_code != 0:
-        print(f"{RED}Error when running make coverage: {error_msg}{RESET}")
-        return False
-    return True
 
+# TODO: is this necessary? I believe it's not.
 def serve_coverage_forever(root: Path, host: str, port: int):
     """
     Starts a HTTP server which serves the coverage folder forever until Ctrl+C
@@ -332,204 +406,220 @@ def serve_coverage_forever(root: Path, host: str, port: int):
             pass
 
     httpd = HTTPServer((host, port), Handler)
-    print(f"{GREEN}Serving coverage on{RESET} http://{host}:{port}/ ... (Ctrl+C to exit)")
+    print(f"Serving coverage on http://{host}:{port}/ ... (Ctrl+C to exit)")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print(f"{RED}\nServer has been stopped!{RESET}")
+        print(f"\nServer has been stopped!")
 
-def process_result(
-    result: Result,
-    xml_file: JUnitXMLFile,
-    verbose: bool = False,
-    progress_bar: ProgressBar = None,
-):
+def student_compiler(compiler_path: Path, input_test: Path, output_stem: Path, timeout: int | None) -> str | None:
     """
-    Processes results and updates progress bar if necessary.
+    Wrapper for `build/c_compiler -S <input_test> -o <output_stem>.s`.
+
+    Return None if successful, an error message otherwise
     """
-    xml_file.write(result.to_xml())
+    # Modifying environment to combat errors on memory leak
+    custom_env = environ.copy()
+    custom_env["ASAN_OPTIONS"] = f"log_path={output_stem}.asan.log"
+    custom_env["UBSAN_OPTIONS"] = f"log_path={output_stem}.ubsan.log"
 
-    if verbose:
-        print(result.to_log())
-        return
+    log = run_subprocess(
+        cmd=[compiler_path, "-S", input_test, "-o", f"{output_stem}.s"],
+        description=f"compiling `{input_test.name}`",
+        log_stem=path_append(output_stem, ".compiler"),
+        env=custom_env,
+        timeout=timeout
+    )
+    if log is not None:
+        log += \
+            f"\t{'\n\t'.join(output_stem.glob('*san.log.*'))}" \
+            f"\t{output_stem}.s\n\t{output_stem}.s.printed\n\t{output_stem}.gcc.s"
+    return log
 
-    if progress_bar:
-        progress_bar.update_with_value(result.passed())
-
-    return
+def fake_compiler(_input_test: Path, output_stem: Path, timeout: int | None) -> str | None:
+    path_append(output_stem, ".s").symlink_to(path_append(output_stem, ".gcc.s"))
+    return None
 
 def run_test(
-    build_dir: Path,
-    output_dir: Path,
-    tests_dir: Path,
+    compiler: Callable[[Path, Path, int], str | None],
     driver: Path,
-    validate_tests: bool = False,
+    output_dir: Path,
+    xml_file: JUnitXMLFile | None = None,
+    progress_bar: AsyncProgressWithLog | None = None,
     timeout: int = 30
-) -> Result:
+) -> str | None:
     """
     Run an instance of a test case.
 
     Parameters:
-    - driver: driver path.
+    - driver: path of the test driver.
 
     Returns Result object
     """
+    assert driver.is_file()
+    to_assemble = driver.with_stem(driver.stem.removesuffix("_driver"))
+    assert to_assemble.is_file()
+
+    # Construct the path where logs and outputs would be stored, without the suffix
+    # e.g. .../build/output/_example/example/example
+    output_stem = output_dir.joinpath(driver.parent.name, to_assemble.stem, to_assemble.stem)
+
+    # Recreate the directory
+    rmtree(output_stem.parent, ignore_errors=True)
+    output_stem.parent.mkdir(parents=True, exist_ok=True)
+
+    # GCC Reference Output
     gcc = "riscv32-unknown-elf-gcc"
     # GCC is not targetting rv32imfd because it is compatible with rv32gc which is the more widespread 32bits target
     gcc_arch = "-march=rv32gc"
     gcc_abi = "-mabi=ilp32d"
-
-    # Replaces example_driver.c -> example.c
-    new_name = driver.stem.replace("_driver", "") + ".c"
-    to_assemble = driver.parent.joinpath(new_name).resolve()
-    test_name = to_assemble.relative_to(tests_dir)
-
-    # Construct the path where logs would be stored, without the suffix
-    # e.g. .../build/output/_example/example/example
-    log_path = output_dir.joinpath(test_name.parent, to_assemble.stem, to_assemble.stem)
-
-    # Recreate the directory
-    shutil.rmtree(log_path.parent, ignore_errors=True)
-    log_path.parent.mkdir(parents=True, exist_ok=True)
-
-    def relevant_files(component):
-        return f"\n\t {log_path}.{component}.stderr.log \n\t {log_path}.{component}.stdout.log"
-
-    # Modifying environment to combat errors on memory leak
-    custom_env = os.environ.copy()
-    custom_env["ASAN_OPTIONS"] = f"log_path={log_path}.asan.log"
-    custom_env["UBSAN_OPTIONS"] = f"log_path={log_path}.ubsan.log"
-
-    # Compile the test case into assembly using the custom compiler or GCC for self validation
-    if validate_tests:
-        compile_cmd = [gcc, "-std=c90", "-pedantic-errors", "-ansi", "-O0", gcc_arch, gcc_abi, "-S", to_assemble, "-o", f"{log_path}.s"]
-    else:
-        compile_cmd = [build_dir / "c_compiler", "-S", to_assemble, "-o", f"{log_path}.s"]
+    description = f"generating reference assembly for `{to_assemble.name}`"
+    log = run_subprocess(
+        cmd=[gcc, "-std=c90", "-pedantic-errors", "-ansi", "-O0", gcc_arch, gcc_abi, "-S", to_assemble, "-o", f"{output_stem}.gcc.s"],
+        description=description,
+        log_stem=path_append(output_stem, ".reference")
+    )
+    if log is not None:
+        xml_file.log_failure(test_path=to_assemble, description=description, log=log)
+        progress_bar.update_with_value_and_log(entry="I", log=log)
+        return log
 
     # Compile
-    return_code, _, timed_out = run_subprocess(
-        cmd=compile_cmd,
-        timeout=timeout,
-        env=custom_env,
-        log_path=f"{log_path}.compiler",
-    )
-    sanitizer_file_list = glob(f"{log_path}.*san.log.*")
-    compiler_log_file_str = f"{relevant_files('compiler')} \n\t {log_path}.s \n\t {log_path}.s.printed" \
-        + "".join("\n\t " + p for p in sanitizer_file_list)
-    if return_code != 0:
-        msg = f"\t> Failed to compile testcase: {compiler_log_file_str}"
-        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
+    log = compiler(to_assemble, output_stem, timeout)
+    if log is not None:
+        xml_file.log_failure(test_path=to_assemble, description=f"compiling `{to_assemble.name}`", log=log)
+        progress_bar.update_with_value_and_log(entry="F", log=log)
+        return log
 
-    # GCC Reference Output
-    return_code, _, timed_out = run_subprocess(
-        cmd=[gcc, "-std=c90", "-pedantic", "-ansi", "-O0", gcc_arch, gcc_abi, "-S", to_assemble, "-o", f"{log_path}.gcc.s"],
-        timeout=timeout,
-        log_path=f"{log_path}.reference",
-    )
-    if return_code != 0:
-        msg = f"\t> Failed to generate reference: {compiler_log_file_str} {relevant_files('reference')}"
-        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
+    # Unexected files change a success to a warning
+    expected_files = {
+        path_append(output_stem, ".s"),
+        path_append(output_stem, ".s.printed"),
+        path_append(output_stem, ".compiler.stdout.log"),
+        path_append(output_stem, ".compiler.stderr.log"),
+        path_append(output_stem, ".gcc.s"),
+        path_append(output_stem, ".reference.stdout.log"),
+        path_append(output_stem, ".reference.stderr.log"),
+    }
+    all_files = set(output_stem.glob("*"))
+    unexpected_files = all_files - expected_files
+    print("Expected:", expected_files, "got:", all_files)
 
     # Assemble
-    return_code, _, timed_out = run_subprocess(
-        cmd=[gcc, gcc_arch, gcc_abi, "-c", f"{log_path}.s", "-o", f"{log_path}.o"],
-        timeout=timeout,
-        log_path=f"{log_path}.assembler",
+    description = f"assembling for `{to_assemble.stem}`"
+    log = run_subprocess(
+        cmd=[gcc, gcc_arch, gcc_abi, "-c", f"{output_stem}.s", "-o", f"{output_stem}.o"],
+        description=description,
+        log_stem=path_append(output_stem, ".assembler")
     )
-    if return_code != 0:
-        msg = f"\t> Failed to assemble: {compiler_log_file_str} {relevant_files('assembler')}"
-        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
+    if log is not None:
+        xml_file.log_failure(test_path=to_assemble, description=description, log=log)
+        progress_bar.update_with_value_and_log(entry="F", log=log)
+        return log
 
     # Link
-    return_code, _, timed_out = run_subprocess(
-        cmd=[gcc, gcc_arch, gcc_abi, "-static", f"{log_path}.o", str(driver), "-o", f"{log_path}"],
-        timeout=timeout,
-        log_path=f"{log_path}.linker",
+    description = f"linking `{output_stem.name}`"
+    log = run_subprocess(
+        cmd=[gcc, gcc_arch, gcc_abi, "-static", f"{output_stem}.o", driver, "-o", output_stem],
+        description=description,
+        log_stem=path_append(output_stem, ".linker"),
+        timeout=timeout
     )
-    if return_code != 0:
-        msg = f"\t> Failed to link driver: {compiler_log_file_str} {relevant_files('linker')}"
-        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
+    if log is not None:
+        xml_file.log_failure(test_path=to_assemble, description=description, log=log)
+        progress_bar.update_with_value_and_log(entry="F", log=log)
+        return log
 
     # Simulate
-    return_code, _, timed_out = run_subprocess(
-        cmd=["spike", "--isa=rv32gc", "pk", log_path],
-        timeout=timeout,
-        log_path=f"{log_path}.simulation",
+    description = f"simulating `{output_stem.name}`"
+    log = run_subprocess(
+        cmd=["spike", "--isa=rv32gc", "pk", output_stem],
+        description=description,
+        log_stem=path_append(output_stem, ".simulation"),
+        timeout=timeout
     )
-    if return_code != 0:
-        msg = f"\t> Failed to simulate: {compiler_log_file_str} {relevant_files('simulation')}"
-        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
+    if log is not None:
+        xml_file.log_failure(test_path=to_assemble, description=description, log=log)
+        progress_bar.update_with_value_and_log(entry="F", log=log)
+        return log
 
-    msg = "Sanitizer warnings: " + " ".join(sanitizer_file_list) if len(sanitizer_file_list) != 0 else None
-    return Result(test_case_name=test_name, return_code=return_code, timeout=False, error_log=msg)
+    if len(unexpected_files) != 0:
+        log = f"Warnings when compiling `{to_assemble}`, see\n\t{'\n\t'.join(unexpected_files)}"
+        xml_file.log_success(test_path=to_assemble, log=log)
+        progress_bar.update_with_value_and_log(entry="W", log=log)
+        return log
+    xml_file.log_success(test_path=to_assemble)
+    progress_bar.update_with_value_and_log(entry="S", log="Passed `{to_assemble}`")
+    return None
 
 def run_tests(
-    build_dir: Path,
+    compiler: Callable[[Path, Path, int], tuple[int, int]],
     output_dir: Path,
     tests_dir: Path,
     xml_file: JUnitXMLFile,
     multithreading: int,
-    verbose: bool,
-    validate_tests: bool = False,
     timeout: int = 30
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """
-    Runs tests against compiler.
+    Runs tests in <test_dir> against compiler provided by <compiler>.
+    Compiler outputs are stored in <output_dir>.
+
+    Return (# passed tests, # total tests)
     """
-    drivers = list(tests_dir.rglob("*_driver.c"))
-    drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
-    results = []
-
-    progress_bar = None
-    if not verbose and sys.stdout.isatty():
-        progress_bar = ProgressBar(len(drivers))
-    else:
-        # Force verbose mode when not a terminal
-        verbose = True
-
-    if multithreading > 1:
-        with ThreadPoolExecutor(max_workers=multithreading) as executor:
-            futures = [executor.submit(
-                run_test,
-                build_dir=build_dir,
-                output_dir=output_dir,
-                tests_dir=tests_dir,
-                driver=driver,
-                validate_tests=validate_tests,
-                timeout=timeout
-            ) for driver in drivers]
-
-            for future in as_completed(futures):
-                result = future.result()
-                results.append(result.passed())
-                process_result(result, xml_file, verbose, progress_bar)
-
-    else:
-        for driver in drivers:
-            result = run_test(
-                build_dir=build_dir,
-                output_dir=output_dir,
-                tests_dir=tests_dir,
-                driver=driver,
-                validate_tests=validate_tests,
-                timeout=timeout
-            )
-            results.append(result.passed())
-            process_result(result, xml_file, verbose, progress_bar)
-
-    passing = sum(results)
+    assert output_dir.is_dir()
+    # Nested directories are not supported because `run_test` doesn't support them
+    drivers = list(tests_dir.glob("*/*_driver.c"))
     total = len(drivers)
 
-    if verbose:
-        print(f"\n>> Test Summary: {GREEN}{passing} Passed, {RED}{total-passing} Failed{RESET}")
+    with AsyncProgressWithLog(
+        total_entries=total,
+        entries_display={"S": COLOR_GREEN, "W": COLOR_YELLOW, "F": COLOR_RED, "I": COLOR_MAGENTA}
+    ) as apwl:
+        if multithreading > 1:
+            with ThreadPoolExecutor(max_workers=multithreading) as executor:
+                futures = wait(executor.submit(
+                    run_test,
+                    compiler=compiler,
+                    driver=driver,
+                    output_dir=output_dir,
+                    xml_file=xml_file,
+                    progress_bar=apwl,
+                    timeout=timeout
+                ) for driver in drivers)
+            logs = [f.result() for f in futures.completed if f.result() is not None]
+        else:
+            logs = []
+            for driver in drivers:
+                log = run_test(
+                    compiler=compiler,
+                    driver=driver,
+                    output_dir=output_dir,
+                    xml_file=xml_file,
+                    progress_bar=apwl,
+                    timeout=timeout
+                )
+                if log is not None:
+                    logs.append(log)
+        passed = apwl["S"]
+        warning = apwl["W"]
+        failed = apwl["F"]
+        invalid = apwl["I"]
 
-    return passing, total
+    print("".join(l + "\n\n" for l in logs), end="")
+    print(
+        "Test Summary:\n"
+        f"\t{passed} Passed ({passed/total:.2%})\n"
+        f"\t{warning} Warnings ({warning/total:.2%})\n"
+        f"\t{failed} Failed ({failed/total:.2%})\n"
+        f"\t{invalid} Invalid tests ({invalid/total:.2%})"
+    )
+    return passed, total
 
-def parse_args(tests_dir: Path) -> argparse.Namespace:
+def parse_args(tests_dir: Path) -> Namespace:
     """
     Wrapper for argument parsing.
     """
-    parser = argparse.ArgumentParser()
+    parser = ArgumentParser()
     parser.add_argument(
         "dir",
         nargs="?",
@@ -547,13 +637,6 @@ def parse_args(tests_dir: Path) -> argparse.Namespace:
         metavar="N",
         help="Build compiler and run tests using multiple threads. "
         "Use -m to use the default thread count, or -m N to use exactly N threads. "
-    )
-    parser.add_argument(
-        "-s", "--silent",
-        action="store_true",
-        default=False,
-        help="Disable verbose output into the terminal. Note that all logs will "
-        "be stored automatically into log files regardless of this option."
     )
     parser.add_argument(
         "--version",
@@ -601,36 +684,35 @@ def main():
 
     # Clean the repo if required
     if not args.no_clean:
-        clean_success = clean(top_dir=root_dir)
-        if not clean_success:
-            raise RuntimeError("Error when running make clean")
+        clean_log = clean(top_dir=root_dir)
+        if clean_log is not None:
+            raise RuntimeError(clean_log)
 
     # Prepare the output folder
-    shutil.rmtree(output_dir, ignore_errors=True)
+    rmtree(output_dir, ignore_errors=True)
     Path(output_dir).mkdir(parents=True, exist_ok=True)
 
     # There is no need for building the student compiler when testing with riscv-gcc
     if not args.validate_tests:
-        build_success = build(
+        build_log = build(
             top_dir=root_dir,
             use_cmake=args.use_cmake,
             coverage=args.coverage,
             multithreading=args.multithreading,
-            verbose=not args.silent
+            log_stem=build_dir / "build"
         )
-        if not build_success:
-            raise RuntimeError("Error when building")
+        if build_log is not None:
+            raise RuntimeError(build_log)
 
     # Run the tests and save the results into JUnit XML file
-    with JUnitXMLFile(build_dir / "junit_results.xml") as xml_file:
+    with JUnitXMLFile(path=build_dir / "junit_results.xml", description="Compiler benchmark") as xml_file:
         passing, total = run_tests(
-            build_dir=build_dir,
+            compiler=fake_compiler if args.validate_tests \
+                else lambda test, out, to: student_compiler(build_dir / "c_compiler", test, out, to),
             output_dir=output_dir,
             tests_dir=Path(args.dir),
             xml_file=xml_file,
-            multithreading=args.multithreading,
-            verbose=not args.silent,
-            validate_tests=args.validate_tests
+            multithreading=args.multithreading
         )
 
     # Skip unavailable coverage and exit immediately for test validation
@@ -639,18 +721,17 @@ def main():
             raise RuntimeError(f"{total - passing} tests failed during test validation")
         return
 
+    # TODO: Is this necessary?
     # Find coverage if required. Note, that the coverage server will be blocking
     if args.coverage:
-        coverage_success = coverage(top_dir=root_dir)
-        if not coverage_success:
-            raise RuntimeError("Error when running make coverage")
+        coverage_log = coverage(top_dir=root_dir)
+        if coverage_log is not None:
+            raise RuntimeError(coverage_log)
         serve_coverage_forever("0.0.0.0", 8000)
 
 if __name__ == "__main__":
-    try:
-        main()
-    finally:
-        print(RESET, end="")
-        if sys.stdout.isatty():
-            # This solves dodgy terminal behaviour on multithreading
-            os.system("stty echo")
+    main()
+    # I think this should not be necessary with the change to AsyncProgressWithLog
+    # if stdout.isatty():
+        # This solves dodgy terminal behaviour on multithreading
+        # os.system("stty echo")
