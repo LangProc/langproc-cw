@@ -30,7 +30,7 @@ from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor, wait
 from curses import setupterm, tparm as _tparm, tigetstr as _tigetstr, tigetflag as ti_get_flag, tigetnum as ti_get_num
 from dataclasses import dataclass
-from os import environ
+from os import environ, cpu_count
 from pathlib import Path
 from shutil import rmtree
 from subprocess import run as _run, DEVNULL
@@ -42,8 +42,31 @@ from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 # Setup terminfo part of the curses library. *Not curses itself*, just terminfo
-setupterm()
-del setupterm
+try:
+    setupterm()
+    del setupterm
+
+    def ti_parm(attr: str, *args) -> str:
+        if not stdout.isatty():
+            return ""
+        b = _tigetstr(attr)
+        if b is None:
+            return ""
+        if len(args) == 0:
+            return b.decode()
+        return _tparm(b, *args).decode()
+
+    def ti_get_str(attr: str) -> str:
+        if not stdout.isatty():
+            return ""
+        b = _tigetstr(attr)
+        return "" if b is None else b.decode()
+except Exception as e:
+    def ti_parm(x: str, *args) -> str:
+        return ""
+    def ti_get_str(attr: str) -> str:
+        return ""
+
 COLOR_BLACK = 0
 COLOR_RED = 1
 COLOR_GREEN = 2
@@ -52,22 +75,6 @@ COLOR_BLUE = 4
 COLOR_MAGENTA = 5
 COLOR_CYAN = 6
 COLOR_WHITE = 7
-
-def ti_parm(attr: str, *args) -> str:
-    if not stdout.isatty():
-        return ""
-    b = _tigetstr(attr)
-    if b is None:
-        return ""
-    if len(args) == 0:
-        return b.decode()
-    return _tparm(b, *args).decode()
-
-def ti_get_str(attr: str) -> str:
-    if not stdout.isatty():
-        return ""
-    b = _tigetstr(attr)
-    return "" if b is None else b.decode()
 
 _progress_bars = []
 unsafe_print = print
@@ -122,7 +129,8 @@ class AsyncProgressWithLog:
 
     Parameters:
     - total_entries: the number of expected entries, progress is computed relative to it.
-    - entries_display: a dict associating the character to display entries with to the color used to display progress of those entries.
+    - entries_display: a dictionary associating the character to display entries with
+        to the color used to display progress of those entries.
     """
 
     # This is just a mutable pair with names
@@ -266,6 +274,7 @@ class AsyncProgressWithLog:
             stdout.write(ti_parm("setaf", self._entries[entry].color))
             stdout.write(log)
             stdout.write(ti_get_str("sgr0"))
+            stdout.write("\n")
         self.update()
 
 def run_subprocess(cmd: list[str], description: str, log_stem: Path | None = None, **kwargs) -> str | None:
@@ -308,7 +317,13 @@ def clean(top_dir: Path, timeout: int | None = 15) -> str | None:
         env=custom_env,
     )
 
-def make(top_dir: Path, build_dir: Path, log_stem: Path | None = None, timeout: int | None = 60) -> str | None:
+def make(
+    top_dir: Path,
+    build_dir: Path,
+    multithreading: int,
+    log_stem: Path | None = None,
+    timeout: int | None = 60
+) -> str | None:
     """
     Wrapper for `make -C <top_dir> build/c_compiler`.
 
@@ -321,7 +336,7 @@ def make(top_dir: Path, build_dir: Path, log_stem: Path | None = None, timeout: 
     custom_env["DEBUG"] = "1"
     compiler = build_dir.relative_to(top_dir) / "c_compiler"
     return run_subprocess(
-        cmd=["make", "-C", top_dir, compiler],
+        cmd=["make", "-C", top_dir, compiler, "-j", str(multithreading)],
         description="building with make",
         log_stem=path_append(log_stem, ".make"),
         timeout=timeout,
@@ -329,7 +344,13 @@ def make(top_dir: Path, build_dir: Path, log_stem: Path | None = None, timeout: 
     )
 
 # TODO: Is cmake worth using for performance? for features? for clarity?
-def cmake(src_dir: Path, build_dir: Path, log_stem: Path | None = None, timeout: int | None = 60) -> str | None:
+def cmake(
+    src_dir: Path,
+    build_dir: Path,
+    multithreading: int,
+    log_stem: Path | None = None,
+    timeout: int | None = 60
+) -> str | None:
     """
     Wrapper for `cmake -S <src_dir> -B <build_dir>` then `cmake --build <build_dir>`
 
@@ -348,7 +369,7 @@ def cmake(src_dir: Path, build_dir: Path, log_stem: Path | None = None, timeout:
 
     # cmake compile
     return run_subprocess(
-        cmd=["cmake", "--build", build_dir],
+        cmd=["cmake", "--build", build_dir, "--parallel", str(multithreading)],
         description="building with cmake (compile)",
         log_stem=path_append(log_stem, ".cmake.compile"),
         timeout=timeout,
@@ -358,6 +379,7 @@ def build(
     top_dir: Path,
     use_cmake: bool = False,
     coverage: bool = False,
+    multithreading: int = 1,
     log_stem: Path | None = None,
     timeout: int | None = 60
 ) -> str | None:
@@ -372,10 +394,27 @@ def build(
 
     # Build the compiler using cmake or make
     if use_cmake and not coverage:
-        return cmake(src_dir=top_dir, build_dir=build_dir, log_stem=log_stem, timeout=timeout)
+        return cmake(
+            src_dir=top_dir,
+            build_dir=build_dir,
+            multithreading=multithreading,
+            log_stem=log_stem,
+            timeout=timeout
+        )
     if use_cmake and coverage:
-        print(ti_parm("setaf", COLOR_RED), "Coverage is not supported with CMake. Switching to make.", ti_get_str("sgr0"), sep="")
-    return make(top_dir=top_dir, build_dir=build_dir, log_stem=log_stem, timeout=timeout)
+        print(
+            ti_parm("setaf", COLOR_RED),
+            "Coverage is not supported with CMake. Switching to make.",
+            ti_get_str("sgr0"),
+            sep=""
+        )
+    return make(
+        top_dir=top_dir,
+        build_dir=build_dir,
+        multithreading=multithreading,
+        log_stem=log_stem,
+        timeout=timeout
+    )
 
 def coverage(top_dir: Path, timeout: int | None = 60) -> str | None:
     """
@@ -432,7 +471,7 @@ def student_compiler(compiler_path: Path, input_test: Path, output_stem: Path, t
     )
     if log is not None:
         log += \
-            f"\t{'\n\t'.join(output_stem.glob('*san.log.*'))}" \
+            f"\t{'\n\t'.join(output_stem.parent.glob('*san.log.*'))}" \
             f"\t{output_stem}.s\n\t{output_stem}.s.printed\n\t{output_stem}.gcc.s"
     return log
 
@@ -501,9 +540,7 @@ def run_test(
         path_append(output_stem, ".reference.stdout.log"),
         path_append(output_stem, ".reference.stderr.log"),
     }
-    all_files = set(output_stem.glob("*"))
-    unexpected_files = all_files - expected_files
-    print("Expected:", expected_files, "got:", all_files)
+    unexpected_files = set(output_stem.parent.glob("*")) - expected_files
 
     # Assemble
     description = f"assembling for `{to_assemble.stem}`"
@@ -628,10 +665,11 @@ def parse_args(tests_dir: Path) -> Namespace:
         help="(Optional) paths to the compiler test folders. Use this to select "
         "certain tests. Leave blank to run all tests."
     )
+    cpus = cpu_count()
     parser.add_argument(
         "-m", "--multithreading",
         nargs="?",
-        const=8,
+        const=8 if cpus is None else cpus,
         default=1,
         type=int,
         metavar="N",
