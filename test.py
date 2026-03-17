@@ -171,10 +171,13 @@ class AsyncProgressWithLog:
         _progress_bars.append(self)
         with stdout_lock:
             # Prevent key presses from showing
-            attrs = tcgetattr(stdout)
-            self._old_attrs = deepcopy(attrs)
-            attrs[3] &= ~ECHO
-            tcsetattr(stdout, TCSANOW, attrs)
+            try:
+                attrs = tcgetattr(stdout)
+                self._old_attrs = deepcopy(attrs)
+                attrs[3] &= ~ECHO
+                tcsetattr(stdout, TCSANOW, attrs)
+            except Exception as e:
+                pass
             # Enter temporary terminal screen
             stdout.write(ti_get_str("smcup"))
             # save pos
@@ -194,7 +197,10 @@ class AsyncProgressWithLog:
             # Exit temporary terminal screen
             stdout.write(ti_get_str("rmcup"))
             # Restore key presses behaviour
-            tcsetattr(stdout, TCSANOW, self._old_attrs)
+            try:
+                tcsetattr(stdout, TCSANOW, self._old_attrs)
+            except Exception as e:
+                pass
             # Sequence to reset terminal (should not have to be done)
             # stdout.write(ti_get_str("rs1"))
             # stdout.write(ti_get_str("rs2"))
