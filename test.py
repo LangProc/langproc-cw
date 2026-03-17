@@ -104,7 +104,7 @@ class JUnitXMLFile():
         del self._path
         self._fd.write(
             "<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n"
-            "<testsuite name={xmlquoteattr(self._description)}>\n"
+            f"<testsuite name={xmlquoteattr(self._description)}>\n"
         )
         del self._description
         return self
@@ -480,8 +480,8 @@ def student_compiler(compiler_path: Path, input_test: Path, output_stem: Path, t
     )
     if log is not None:
         log += \
-            f"\t{'\n\t'.join(output_stem.parent.glob('*san.log.*'))}" \
-            f"\t{output_stem}.s\n\t{output_stem}.s.printed\n\t{output_stem}.gcc.s"
+            f"{''.join(f'\n\t{path}' for path in output_stem.parent.glob('*san.log.*'))}" \
+            f"\n\t{output_stem}.s\n\t{output_stem}.s.printed\n\t{output_stem}.gcc.s"
     return log
 
 def fake_compiler(_input_test: Path, output_stem: Path, timeout: int | None) -> str | None:
