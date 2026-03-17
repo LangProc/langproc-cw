@@ -28,7 +28,7 @@ from collections import namedtuple
 from collections.abc import Callable
 from copy import deepcopy
 from concurrent.futures import ThreadPoolExecutor, wait
-from curses import setupterm, tparm as _tparm, tigetstr as _tigetstr, tigetflag as ti_get_flag, tigetnum as ti_get_num
+from curses import setupterm, tparm as _tparm, tigetstr as _tigetstr, tigetnum as ti_get_num
 from dataclasses import dataclass
 from os import environ, cpu_count
 from pathlib import Path
@@ -66,6 +66,8 @@ except Exception as e:
         return ""
     def ti_get_str(attr: str) -> str:
         return ""
+    def ti_get_num(attr: str) -> int:
+        return 80
 
 COLOR_BLACK = 0
 COLOR_RED = 1
