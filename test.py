@@ -507,6 +507,8 @@ def run_test(
     assert driver.is_file()
     to_assemble = driver.with_stem(driver.stem.removesuffix("_driver"))
     assert to_assemble.is_file()
+    cwd = Path.cwd()
+    test_path = to_assemble.relative_to(cwd) if to_assemble.is_relative_to(cwd) else to_assemble
 
     # Construct the path where logs and outputs would be stored, without the suffix
     # e.g. .../build/output/_example/example/example
@@ -528,14 +530,14 @@ def run_test(
         log_stem=path_append(output_stem, ".reference")
     )
     if log is not None:
-        xml_file.log_failure(test_path=to_assemble, description=description, log=log)
+        xml_file.log_failure(test_path=test_path, description=description, log=log)
         progress_bar.update_with_value_and_log(entry="I", log=log)
         return log
 
     # Compile
     log = compiler(to_assemble, output_stem, timeout)
     if log is not None:
-        xml_file.log_failure(test_path=to_assemble, description=f"compiling `{to_assemble.name}`", log=log)
+        xml_file.log_failure(test_path=test_path, description=f"compiling `{to_assemble.name}`", log=log)
         progress_bar.update_with_value_and_log(entry="F", log=log)
         return log
 
@@ -552,14 +554,14 @@ def run_test(
     unexpected_files = set(output_stem.parent.glob("*")) - expected_files
 
     # Assemble
-    description = f"assembling for `{to_assemble.stem}`"
+    description = f"assembling `{output_stem.name}.s`"
     log = run_subprocess(
         cmd=[gcc, gcc_arch, gcc_abi, "-c", f"{output_stem}.s", "-o", f"{output_stem}.o"],
         description=description,
         log_stem=path_append(output_stem, ".assembler")
     )
     if log is not None:
-        xml_file.log_failure(test_path=to_assemble, description=description, log=log)
+        xml_file.log_failure(test_path=test_path, description=description, log=log)
         progress_bar.update_with_value_and_log(entry="F", log=log)
         return log
 
@@ -572,7 +574,7 @@ def run_test(
         timeout=timeout
     )
     if log is not None:
-        xml_file.log_failure(test_path=to_assemble, description=description, log=log)
+        xml_file.log_failure(test_path=test_path, description=description, log=log)
         progress_bar.update_with_value_and_log(entry="F", log=log)
         return log
 
@@ -585,16 +587,16 @@ def run_test(
         timeout=timeout
     )
     if log is not None:
-        xml_file.log_failure(test_path=to_assemble, description=description, log=log)
+        xml_file.log_failure(test_path=test_path, description=description, log=log)
         progress_bar.update_with_value_and_log(entry="F", log=log)
         return log
 
     if len(unexpected_files) != 0:
         log = f"Warnings when compiling `{to_assemble}`, see\n\t{'\n\t'.join(unexpected_files)}"
-        xml_file.log_success(test_path=to_assemble, log=log)
+        xml_file.log_success(test_path=test_path, log=log)
         progress_bar.update_with_value_and_log(entry="W", log=log)
         return log
-    xml_file.log_success(test_path=to_assemble)
+    xml_file.log_success(test_path=test_path)
     progress_bar.update_with_value_and_log(entry="S", log="Passed `{to_assemble}`")
     return None
 
