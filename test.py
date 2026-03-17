@@ -632,7 +632,7 @@ def run_tests(
                     progress_bar=apwl,
                     timeout=timeout
                 ) for driver in drivers)
-            logs = [f.result() for f in futures.completed if f.result() is not None]
+            logs = [f.result() for f in futures.done if f.result() is not None]
         else:
             logs = []
             for driver in drivers:
