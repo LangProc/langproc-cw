@@ -29,12 +29,11 @@ import argparse
 import shutil
 import subprocess
 import threading
-from glob import glob
+from collections.abc import Callable
 from dataclasses import dataclass
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import List, Optional, Tuple
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
 
@@ -53,7 +52,7 @@ class Result:
     test_case_name: str
     return_code: int
     timeout: bool
-    error_log: Optional[str]
+    error_log: str | None
 
     def passed(self) -> bool:
         return self.return_code == 0
@@ -170,10 +169,10 @@ class ProgressBar:
             self.update()
 
 def run_subprocess(
-    cmd: List[str],
+    cmd: list[str],
     timeout: int,
-    env: Optional[dict] = None,
-    log_path: Optional[str] = None,
+    env: dict | None = None,
+    log_path: str | None = None,
     verbose: bool = True,
 ) -> tuple[int, str, bool]:
     """
@@ -220,7 +219,7 @@ def clean(top_dir: Path, timeout: int = 15) -> bool:
         return False
     return True
 
-def make(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, log_path: Optional[str] = None, timeout: int = 60) -> bool:
+def make(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, log_path: str | None = None, timeout: int = 60) -> bool:
     """
     Wrapper for make build/c_compiler.
 
@@ -359,11 +358,11 @@ def process_result(
     return
 
 def run_test(
+    compiler: Callable[[Path, Path, int], tuple[int, bool]],
     build_dir: Path,
     output_dir: Path,
     tests_dir: Path,
     driver: Path,
-    validate_tests: bool = False,
     timeout: int = 30
 ) -> Result:
     """
@@ -395,31 +394,6 @@ def run_test(
     def relevant_files(component):
         return f"\n\t {log_path}.{component}.stderr.log \n\t {log_path}.{component}.stdout.log"
 
-    # Modifying environment to combat errors on memory leak
-    custom_env = os.environ.copy()
-    custom_env["ASAN_OPTIONS"] = f"log_path={log_path}.asan.log"
-    custom_env["UBSAN_OPTIONS"] = f"log_path={log_path}.ubsan.log"
-
-    # Compile the test case into assembly using the custom compiler or GCC for self validation
-    if validate_tests:
-        compile_cmd = [gcc, "-std=c90", "-pedantic-errors", "-ansi", "-O0", gcc_arch, gcc_abi, "-S", to_assemble, "-o", f"{log_path}.s"]
-    else:
-        compile_cmd = [build_dir / "c_compiler", "-S", to_assemble, "-o", f"{log_path}.s"]
-
-    # Compile
-    return_code, _, timed_out = run_subprocess(
-        cmd=compile_cmd,
-        timeout=timeout,
-        env=custom_env,
-        log_path=f"{log_path}.compiler",
-    )
-    sanitizer_file_list = glob(f"{log_path}.*san.log.*")
-    compiler_log_file_str = f"{relevant_files('compiler')} \n\t {log_path}.s \n\t {log_path}.s.printed" \
-        + "".join("\n\t " + p for p in sanitizer_file_list)
-    if return_code != 0:
-        msg = f"\t> Failed to compile testcase: {compiler_log_file_str}"
-        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
-
     # GCC Reference Output
     return_code, _, timed_out = run_subprocess(
         cmd=[gcc, "-std=c90", "-pedantic", "-ansi", "-O0", gcc_arch, gcc_abi, "-S", to_assemble, "-o", f"{log_path}.gcc.s"],
@@ -428,6 +402,15 @@ def run_test(
     )
     if return_code != 0:
         msg = f"\t> Failed to generate reference: {compiler_log_file_str} {relevant_files('reference')}"
+        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
+
+    # Compile
+    return_code, timed_out = compiler(to_assemble, log_path, timeout)
+    sanitizer_file_list = list(log_path.parent.glob(".*san.log.*"))
+    compiler_log_file_str = f"{relevant_files('compiler')} \n\t {log_path}.s \n\t {log_path}.s.printed" \
+        + "".join("\n\t " + p for p in sanitizer_file_list)
+    if return_code != 0:
+        msg = f"\t> Failed to compile testcase: {compiler_log_file_str}"
         return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
 
     # Assemble
@@ -464,15 +447,15 @@ def run_test(
     return Result(test_case_name=test_name, return_code=return_code, timeout=False, error_log=msg)
 
 def run_tests(
+    compiler: Callable[[Path, Path, int], tuple[int, bool]],
     build_dir: Path,
     output_dir: Path,
     tests_dir: Path,
     xml_file: JUnitXMLFile,
     multithreading: int,
     verbose: bool,
-    validate_tests: bool = False,
     timeout: int = 30
-) -> Tuple[int, int]:
+) -> tuple[int, int]:
     """
     Runs tests against compiler.
     """
@@ -491,11 +474,11 @@ def run_tests(
         with ThreadPoolExecutor(max_workers=multithreading) as executor:
             futures = [executor.submit(
                 run_test,
+                compiler=compiler,
                 build_dir=build_dir,
                 output_dir=output_dir,
                 tests_dir=tests_dir,
                 driver=driver,
-                validate_tests=validate_tests,
                 timeout=timeout
             ) for driver in drivers]
 
@@ -507,11 +490,11 @@ def run_tests(
     else:
         for driver in drivers:
             result = run_test(
+                compiler=compiler,
                 build_dir=build_dir,
                 output_dir=output_dir,
                 tests_dir=tests_dir,
                 driver=driver,
-                validate_tests=validate_tests,
                 timeout=timeout
             )
             results.append(result.passed())
@@ -524,6 +507,31 @@ def run_tests(
         print(f"\n>> Test Summary: {GREEN}{passing} Passed, {RED}{total-passing} Failed{RESET}")
 
     return passing, total
+
+def student_compiler(compiler_path: Path, to_assemble: Path, log_path: Path, timeout: int) -> tuple[int, bool]:
+    """
+    Wrapper for `build/c_compiler -S <input_test> -o <output_stem>.s`.
+
+    Return None if successful, a Result otherwise
+    """
+    # Modifying environment to combat errors on memory leak
+    custom_env = os.environ.copy()
+    custom_env["ASAN_OPTIONS"] = f"log_path={log_path}.asan.log"
+    custom_env["UBSAN_OPTIONS"] = f"log_path={log_path}.ubsan.log"
+
+    # Compile
+    return_code, _, timed_out = run_subprocess(
+        cmd=[compiler_path, "-S", to_assemble, "-o", f"{log_path}.s"],
+        timeout=timeout,
+        env=custom_env,
+        log_path=f"{log_path}.compiler",
+    )
+
+    return return_code, timed_out
+
+def fake_compiler(to_assemble: Path, log_path: Path, timeout: int) -> tuple[int, bool]:
+    Path(f"{log_path}.s").symlink_to(f"{log_path}.gcc.s")
+    return 0, False
 
 def parse_args(tests_dir: Path) -> argparse.Namespace:
     """
@@ -538,10 +546,11 @@ def parse_args(tests_dir: Path) -> argparse.Namespace:
         help="(Optional) paths to the compiler test folders. Use this to select "
         "certain tests. Leave blank to run all tests."
     )
+    cpus = os.cpu_count()
     parser.add_argument(
         "-m", "--multithreading",
         nargs="?",
-        const=8,
+        const=8 if cpus is None else cpus,
         default=1,
         type=int,
         metavar="N",
@@ -624,13 +633,14 @@ def main():
     # Run the tests and save the results into JUnit XML file
     with JUnitXMLFile(build_dir / "junit_results.xml") as xml_file:
         passing, total = run_tests(
+            compiler=fake_compiler if args.validate_tests \
+                else lambda test, out, to: student_compiler(build_dir / "c_compiler", test, out, to),
             build_dir=build_dir,
             output_dir=output_dir,
             tests_dir=Path(args.dir),
             xml_file=xml_file,
             multithreading=args.multithreading,
-            verbose=not args.silent,
-            validate_tests=args.validate_tests
+            verbose=not args.silent
         )
 
     # Skip unavailable coverage and exit immediately for test validation
