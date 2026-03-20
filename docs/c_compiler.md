@@ -136,6 +136,7 @@ Here is a (partial) list of features that will not be tested.
 * the `void` type is not tested explicitly, but it appears in some helper functions in the test cases, so your compiler cannot break when it encounters this keyword
 * the `static` keyword
 * standard library support (e.g. `printf(...)` from `<stdio.h>` header)
+* heap-allocation: follows from "standard library support", any system call functions typically used in heap-memory allocation/deallocation like `malloc`, `calloc`, `realloc`, `free`
 
 ## Test cases
 
