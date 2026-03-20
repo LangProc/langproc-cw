@@ -187,7 +187,7 @@ def run_subprocess(
     """
     Wrapper for subprocess.run(...) with common arguments and error handling.
 
-    Returns tuple of (return_code: int, error_message: str, timed_out: bool)
+    Returns a tuple of (return_code: int, error_message: str, timed_out: bool)
     """
     timeout_returncode = 124
 
@@ -295,6 +295,8 @@ def build(
 ):
     """
     Wrapper for building the student compiler. Assumes output folder exists.
+
+    Return True if successful, False otherwise
     """
     # Prepare the build folder
     build_dir = top_dir / "build"
@@ -359,16 +361,12 @@ def process_result(
 
     if verbose:
         print(result.to_log())
-        return
 
-    if progress_bar:
+    elif progress_bar:
         progress_bar.update_with_value(result.passed())
-
-    return
 
 def run_test(
     compiler: Callable[[Path, Path, int], subprocess_status],
-    build_dir: Path,
     output_dir: Path,
     tests_dir: Path,
     driver: Path,
@@ -400,12 +398,12 @@ def run_test(
     shutil.rmtree(log_path.parent, ignore_errors=True)
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def relevant_files(component: str):
+    def get_relevant_files(component: str):
         return "\n".join(f"\t{log_path}.{component}.{suffix}" for suffix in ["stderr.log", "stdout.log"])
 
     sanitizer_file_list = list(log_path.parent.glob(".*san.log.*"))
     compiler_log_file_str = "\n".join([
-        relevant_files("compiler"),
+        get_relevant_files("compiler"),
         f"\t{log_path}.s",
         f"\t{log_path}.s.printed",
         *(f"\t{p}" for p in sanitizer_file_list),
@@ -414,7 +412,7 @@ def run_test(
     def get_msg(component: str):
         msg = f"{component.capitalize()} failed:\n{compiler_log_file_str}"
         if component != "compiler":
-            msg += f"\n{relevant_files(component)}"
+            msg += f"\n{get_relevant_files(component)}"
         return msg
 
     def fail(component: str, return_code: int, timed_out: bool):
@@ -472,7 +470,6 @@ def run_test(
 
 def run_tests(
     compiler: Callable[[Path, Path, int], subprocess_status],
-    build_dir: Path,
     output_dir: Path,
     tests_dir: Path,
     xml_file: JUnitXMLFile,
@@ -482,6 +479,8 @@ def run_tests(
 ) -> tuple[int, int]:
     """
     Runs tests against compiler.
+
+    Returns a tuple of (passing: int, total: int) tests
     """
     drivers = list(tests_dir.rglob("*_driver.c"))
     drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
@@ -499,7 +498,6 @@ def run_tests(
             futures = [executor.submit(
                 run_test,
                 compiler=compiler,
-                build_dir=build_dir,
                 output_dir=output_dir,
                 tests_dir=tests_dir,
                 driver=driver,
@@ -515,7 +513,6 @@ def run_tests(
         for driver in drivers:
             result = run_test(
                 compiler=compiler,
-                build_dir=build_dir,
                 output_dir=output_dir,
                 tests_dir=tests_dir,
                 driver=driver,
@@ -657,7 +654,6 @@ def main():
         passing, total = run_tests(
             compiler=fake_compiler if args.validate_tests \
                 else lambda test, out, to: student_compiler(build_dir / "c_compiler", test, out, to),
-            build_dir=build_dir,
             output_dir=output_dir,
             tests_dir=Path(args.dir),
             xml_file=xml_file,
