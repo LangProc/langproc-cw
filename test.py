@@ -174,15 +174,13 @@ class ProgressBar:
         with self._lock:
             self.update()
 
-type subprocess_status = tuple[int, str, bool]
-
 def run_subprocess(
     cmd: list[str],
     timeout: int,
     env: dict | None = None,
     log_path: str | None = None,
     verbose: bool = True,
-) -> subprocess_status:
+) -> tuple[int, str, bool]:
     """
     Wrapper for subprocess.run(...) with common arguments and error handling.
 
@@ -294,6 +292,8 @@ def build(
 ):
     """
     Wrapper for building the student compiler. Assumes output folder exists.
+
+    Return True if successful, False otherwise
     """
     # Prepare the build folder
     build_dir = top_dir / "build"
