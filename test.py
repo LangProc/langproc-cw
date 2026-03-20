@@ -184,7 +184,7 @@ def run_subprocess(
     """
     Wrapper for subprocess.run(...) with common arguments and error handling.
 
-    Returns tuple of (return_code: int, error_message: str, timed_out: bool)
+    Returns a tuple of (return_code: int, error_message: str, timed_out: bool)
     """
     timeout_returncode = 124
 
@@ -358,12 +358,9 @@ def process_result(
 
     if verbose:
         print(result.to_log())
-        return
 
-    if progress_bar:
+    elif progress_bar:
         progress_bar.update_with_value(result.passed())
-
-    return
 
 def run_test(
     build_dir: Path,
@@ -490,6 +487,8 @@ def run_tests(
 ) -> tuple[int, int]:
     """
     Runs tests against compiler.
+
+    Returns a tuple of (passing: int, total: int) tests
     """
     drivers = list(tests_dir.rglob("*_driver.c"))
     drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
