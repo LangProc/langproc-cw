@@ -41,6 +41,8 @@ GREEN = "\033[32m"
 YELLOW = "\033[33m"
 RESET = "\033[0m"
 
+COMPILER_NAME = "c_compiler"
+
 if not sys.stdout.isatty():
     # Don't output colours when we're not in a TTY
     RED, GREEN, YELLOW, RESET = "", "", "", ""
@@ -241,7 +243,7 @@ def make(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, log
     cmd = ["make", "-C", str(top_dir)]
     if multithreading > 1:
         cmd += ["-j", str(multithreading)]
-    cmd += [f"{build_dir.name}/c_compiler"]
+    cmd += [f"{build_dir.name}/{COMPILER_NAME}"]
 
     return_code, error_msg, _ = run_subprocess(
         cmd=cmd, timeout=timeout, verbose=verbose, env=custom_env, log_path=log_path
@@ -653,7 +655,7 @@ def main():
     with JUnitXMLFile(build_dir / "junit_results.xml") as xml_file:
         passing, total = run_tests(
             compiler=fake_compiler if args.validate_tests \
-                else lambda test, out, to: student_compiler(build_dir / "c_compiler", test, out, to),
+                else lambda test, out, to: student_compiler(build_dir / COMPILER_NAME, test, out, to),
             output_dir=output_dir,
             tests_dir=Path(args.dir),
             xml_file=xml_file,
