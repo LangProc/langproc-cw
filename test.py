@@ -32,6 +32,7 @@ import threading
 from collections.abc import Callable
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from pathlib import Path
+from functools import partial
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 
@@ -550,7 +551,7 @@ def student_compiler(compiler_path: Path, to_assemble: Path, log_path: Path, tim
         log_path=f"{log_path}.compiler",
     )
 
-def fake_compiler(to_assemble: Path, log_path: Path, timeout: int) -> subprocess_status:
+def symlink_reference_compiler(to_assemble: Path, log_path: Path, timeout: int) -> subprocess_status:
     Path(f"{log_path}.s").symlink_to(f"{log_path}.gcc.s")
     return 0, "", False
 
@@ -654,8 +655,8 @@ def main():
     # Run the tests and save the results into JUnit XML file
     with JUnitXMLFile(build_dir / "junit_results.xml") as xml_file:
         passing, total = run_tests(
-            compiler=fake_compiler if args.validate_tests \
-                else lambda test, out, to: student_compiler(build_dir / COMPILER_NAME, test, out, to),
+            compiler=symlink_reference_compiler if args.validate_tests \
+                else partial(student_compiler, build_dir / COMPILER_NAME),
             output_dir=output_dir,
             tests_dir=Path(args.dir),
             xml_file=xml_file,
