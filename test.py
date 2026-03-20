@@ -30,7 +30,6 @@ import shutil
 import subprocess
 import threading
 from collections.abc import Callable
-from dataclasses import dataclass
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -46,42 +45,50 @@ if not sys.stdout.isatty():
     # Don't output colours when we're not in a TTY
     RED, GREEN, YELLOW, RESET = "", "", "", ""
 
-@dataclass
 class Result:
     """Class for keeping track of each test case result"""
-    test_case_name: str
-    return_code: int
-    timeout: bool
-    error_log: str | None
+
+    def __init__(self, test_case_name: str, return_code: int, timeout: bool, error_log: str | None):
+        self._test_case_name = test_case_name
+        self._return_code = return_code
+        self._timeout = timeout
+        self._error_log = error_log
+        self._timeout = "[TIMED OUT] " if self._timeout else ""
 
     def passed(self) -> bool:
-        return self.return_code == 0
+        return self._return_code == 0
 
     def to_xml(self) -> str:
         if self.passed():
-            system_out = f"<system-out>{self.error_log}</system-out>\n" if self.error_log else ""
+            system_out = f"<system-out>{self._error_log}</system-out>\n" if self._error_log else ""
             return (
-                f"<testcase name=\"{self.test_case_name}\">\n"
+                f"<testcase name=\"{self._test_case_name}\">\n"
                 f"{system_out}"
                 f"</testcase>\n"
             )
 
-        timeout = "[TIMED OUT] " if self.timeout else ""
-        attribute = xmlquoteattr(timeout + self.error_log)
-        xml_tag_body = xmlescape(timeout + self.error_log)
+        attribute = xmlquoteattr(self._timeout + self._error_log)
+        xml_tag_body = xmlescape(self._timeout + self._error_log)
         return (
-            f"<testcase name=\"{self.test_case_name}\">\n"
+            f"<testcase name=\"{self._test_case_name}\">\n"
             f"<error type=\"error\" message={attribute}>\n{xml_tag_body}</error>\n"
             f"</testcase>\n"
         )
 
     def to_log(self) -> str:
-        timeout = "[TIMED OUT] " if self.timeout else ""
-        if self.return_code != 0:
-            return f"{self.test_case_name}\n{RED}{timeout + self.error_log}{RESET}\n"
-        if self.error_log is None:
-            return f"{self.test_case_name}\n\t> {GREEN}Pass{RESET}\n"
-        return f"{self.test_case_name}\n\t> {YELLOW}{self.error_log}{RESET}\n"
+        if self._return_code != 0:
+            msg = f"{RED}{self._timeout + self._error_log}"
+        elif self._error_log is None:
+            msg = f"{GREEN}Pass"
+        else:
+            msg = f"{YELLOW}{self._error_log}"
+
+        return f"{self._test_case_name}\n\t{msg}{RESET}\n"
+
+class TestFailed(Exception):
+    def __init__(self, result: Result):
+        self.result = result
+        super().__init__(str(result._error_log))
 
 class JUnitXMLFile():
     def __init__(self, path: Path):
@@ -168,13 +175,15 @@ class ProgressBar:
         with self._lock:
             self.update()
 
+type subprocess_status = tuple[int, str, bool]
+
 def run_subprocess(
     cmd: list[str],
     timeout: int,
     env: dict | None = None,
     log_path: str | None = None,
     verbose: bool = True,
-) -> tuple[int, str, bool]:
+) -> subprocess_status:
     """
     Wrapper for subprocess.run(...) with common arguments and error handling.
 
@@ -358,7 +367,7 @@ def process_result(
     return
 
 def run_test(
-    compiler: Callable[[Path, Path, int], tuple[int, bool]],
+    compiler: Callable[[Path, Path, int], subprocess_status],
     build_dir: Path,
     output_dir: Path,
     tests_dir: Path,
@@ -391,63 +400,78 @@ def run_test(
     shutil.rmtree(log_path.parent, ignore_errors=True)
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def relevant_files(component):
-        return f"\n\t {log_path}.{component}.stderr.log \n\t {log_path}.{component}.stdout.log"
+    def relevant_files(component: str):
+        return "\n".join(f"\t{log_path}.{component}.{suffix}" for suffix in ["stderr.log", "stdout.log"])
 
-    # GCC Reference Output
-    return_code, _, timed_out = run_subprocess(
-        cmd=[gcc, "-std=c90", "-pedantic", "-ansi", "-O0", gcc_arch, gcc_abi, "-S", to_assemble, "-o", f"{log_path}.gcc.s"],
-        timeout=timeout,
-        log_path=f"{log_path}.reference",
-    )
-    if return_code != 0:
-        msg = f"\t> Failed to generate reference: {compiler_log_file_str} {relevant_files('reference')}"
-        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
-
-    # Compile
-    return_code, timed_out = compiler(to_assemble, log_path, timeout)
     sanitizer_file_list = list(log_path.parent.glob(".*san.log.*"))
-    compiler_log_file_str = f"{relevant_files('compiler')} \n\t {log_path}.s \n\t {log_path}.s.printed" \
-        + "".join("\n\t " + p for p in sanitizer_file_list)
-    if return_code != 0:
-        msg = f"\t> Failed to compile testcase: {compiler_log_file_str}"
-        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
+    compiler_log_file_str = "\n".join([
+        relevant_files("compiler"),
+        f"\t{log_path}.s",
+        f"\t{log_path}.s.printed",
+        *(f"\t{p}" for p in sanitizer_file_list),
+    ])
 
-    # Assemble
-    return_code, _, timed_out = run_subprocess(
-        cmd=[gcc, gcc_arch, gcc_abi, "-c", f"{log_path}.s", "-o", f"{log_path}.o"],
-        timeout=timeout,
-        log_path=f"{log_path}.assembler",
-    )
-    if return_code != 0:
-        msg = f"\t> Failed to assemble: {compiler_log_file_str} {relevant_files('assembler')}"
-        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
+    def get_msg(component: str):
+        msg = f"{component.capitalize()} failed:\n{compiler_log_file_str}"
+        if component != "compiler":
+            msg += f"\n{relevant_files(component)}"
+        return msg
 
-    # Link
-    return_code, _, timed_out = run_subprocess(
-        cmd=[gcc, gcc_arch, gcc_abi, "-static", f"{log_path}.o", str(driver), "-o", f"{log_path}"],
-        timeout=timeout,
-        log_path=f"{log_path}.linker",
-    )
-    if return_code != 0:
-        msg = f"\t> Failed to link driver: {compiler_log_file_str} {relevant_files('linker')}"
-        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
+    def fail(component: str, return_code: int, timed_out: bool):
+        raise TestFailed(Result(
+            test_case_name=test_name,
+            return_code=return_code,
+            timeout=timed_out,
+            error_log=get_msg(component),
+        ))
 
-    # Simulate
-    return_code, _, timed_out = run_subprocess(
-        cmd=["spike", "--isa=rv32gc", "pk", log_path],
-        timeout=timeout,
-        log_path=f"{log_path}.simulation",
-    )
-    if return_code != 0:
-        msg = f"\t> Failed to simulate: {compiler_log_file_str} {relevant_files('simulation')}"
-        return Result(test_case_name=test_name, return_code=return_code, timeout=timed_out, error_log=msg)
+    def run_component(component: str, cmd: list[str]):
+        return_code, _, timed_out = run_subprocess(
+            cmd=cmd,
+            timeout=timeout,
+            log_path=f"{log_path}.{component}",
+        )
+        if return_code != 0:
+            fail(component, return_code, timed_out)
 
-    msg = "Sanitizer warnings: " + " ".join(sanitizer_file_list) if len(sanitizer_file_list) != 0 else None
-    return Result(test_case_name=test_name, return_code=return_code, timeout=False, error_log=msg)
+    try:
+        # GCC Reference Output
+        run_component(
+            component="reference",
+            cmd=[gcc, "-std=c90", "-pedantic", "-ansi", "-O0", gcc_arch, gcc_abi, "-S", to_assemble, "-o", f"{log_path}.gcc.s"]
+        )
+
+        # Compile
+        return_code, _, timed_out = compiler(to_assemble, log_path, timeout)
+        if return_code != 0:
+            fail("compiler", return_code, timed_out)
+
+        # Assemble
+        run_component(
+            component="assembler",
+            cmd=[gcc, gcc_arch, gcc_abi, "-c", f"{log_path}.s", "-o", f"{log_path}.o"]
+        )
+
+        # Link
+        run_component(
+            component="linker",
+            cmd=[gcc, gcc_arch, gcc_abi, "-static", f"{log_path}.o", str(driver), "-o", f"{log_path}"]
+        )
+
+        # Simulate
+        run_component(
+            component="simulation",
+            cmd=["spike", "--isa=rv32gc", "pk", log_path]
+        )
+
+    except TestFailed as e:
+        return e.result
+
+    msg = f"Sanitizer warnings: {" ".join(sanitizer_file_list)}" if len(sanitizer_file_list) != 0 else None
+    return Result(test_case_name=test_name, return_code=0, timeout=False, error_log=msg)
 
 def run_tests(
-    compiler: Callable[[Path, Path, int], tuple[int, bool]],
+    compiler: Callable[[Path, Path, int], subprocess_status],
     build_dir: Path,
     output_dir: Path,
     tests_dir: Path,
@@ -508,7 +532,7 @@ def run_tests(
 
     return passing, total
 
-def student_compiler(compiler_path: Path, to_assemble: Path, log_path: Path, timeout: int) -> tuple[int, bool]:
+def student_compiler(compiler_path: Path, to_assemble: Path, log_path: Path, timeout: int) -> subprocess_status:
     """
     Wrapper for `build/c_compiler -S <input_test> -o <output_stem>.s`.
 
@@ -520,18 +544,16 @@ def student_compiler(compiler_path: Path, to_assemble: Path, log_path: Path, tim
     custom_env["UBSAN_OPTIONS"] = f"log_path={log_path}.ubsan.log"
 
     # Compile
-    return_code, _, timed_out = run_subprocess(
+    return run_subprocess(
         cmd=[compiler_path, "-S", to_assemble, "-o", f"{log_path}.s"],
         timeout=timeout,
         env=custom_env,
         log_path=f"{log_path}.compiler",
     )
 
-    return return_code, timed_out
-
-def fake_compiler(to_assemble: Path, log_path: Path, timeout: int) -> tuple[int, bool]:
+def fake_compiler(to_assemble: Path, log_path: Path, timeout: int) -> subprocess_status:
     Path(f"{log_path}.s").symlink_to(f"{log_path}.gcc.s")
-    return 0, False
+    return 0, "", False
 
 def parse_args(tests_dir: Path) -> argparse.Namespace:
     """
@@ -546,11 +568,11 @@ def parse_args(tests_dir: Path) -> argparse.Namespace:
         help="(Optional) paths to the compiler test folders. Use this to select "
         "certain tests. Leave blank to run all tests."
     )
-    cpus = os.cpu_count()
+    CPUs = os.cpu_count()
     parser.add_argument(
         "-m", "--multithreading",
         nargs="?",
-        const=8 if cpus is None else cpus,
+        const=8 if CPUs is None else CPUs,
         default=1,
         type=int,
         metavar="N",
