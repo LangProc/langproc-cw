@@ -545,7 +545,7 @@ def student_compiler(compiler_path: Path, to_assemble: Path, log_path: Path, tim
 
     # Compile
     return run_subprocess(
-        cmd=["unshare", "-n", compiler_path, "-S", to_assemble, "-o", f"{log_path}.s"],
+        cmd=["unshare", "-Un", compiler_path, "-S", to_assemble, "-o", f"{log_path}.s"],
         timeout=timeout,
         env=custom_env,
         log_path=f"{log_path}.compiler",
