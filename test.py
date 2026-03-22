@@ -187,7 +187,7 @@ def run_subprocess(
     **kwargs
 ) -> subprocess_status:
     """
-    Wrapper for subprocess.run(...) with common arguments and error handling.
+    Wrapper for `subprocess.run` with common arguments and error handling.
 
     Returns a tuple of (return_code: int, error_message: str, timed_out: bool)
     """
@@ -214,7 +214,8 @@ def run_subprocess(
 
 def clean(top_dir: Path, **kwargs) -> bool:
     """
-    Wrapper for make clean.
+    Wrapper for `make clean`.
+    Additional arguments are passed to `run_subprocess`.
 
     Return True if successful, False otherwise
     """
@@ -232,7 +233,8 @@ def clean(top_dir: Path, **kwargs) -> bool:
 
 def make(top_dir: Path, build_dir: Path, multithreading: int, **kwargs) -> bool:
     """
-    Wrapper for make build/c_compiler.
+    Wrapper for `make -j <multithreading> build/c_compiler`.
+    Additional arguments are passed to `run_subprocess`.
 
     Return True if successful, False otherwise
     """
@@ -254,7 +256,8 @@ def make(top_dir: Path, build_dir: Path, multithreading: int, **kwargs) -> bool:
 
 def cmake(top_dir: Path, build_dir: Path, multithreading: int, **kwargs) -> bool:
     """
-    Wrapper for cmake --build build
+    Wrapper for `cmake -S <top_dir> -B <build_dir> && cmake --parallel <multithreading> --build <build_dir>`.
+    Additional arguments are passed to `run_subprocess`.
 
     Return True if successful, False otherwise
     """
@@ -285,6 +288,8 @@ def cmake(top_dir: Path, build_dir: Path, multithreading: int, **kwargs) -> bool
 def build(top_dir: Path, use_cmake: bool = False, coverage: bool = False, **kwargs) -> bool:
     """
     Wrapper for building the student compiler. Assumes output folder exists.
+    If present, `multithreading` is passed to `make` or `cmake`.
+    Additional arguments are passed to `run_sbprocess`.
 
     Return True if successful, False otherwise
     """
@@ -302,7 +307,8 @@ def build(top_dir: Path, use_cmake: bool = False, coverage: bool = False, **kwar
 
 def coverage(top_dir: Path, **kwargs) -> bool:
     """
-    Wrapper for make coverage.
+    Wrapper for `make coverage`.
+    Additional arguments are passed to `run_subprocess`.
 
     Return True if successful, False otherwise
     """
@@ -310,7 +316,7 @@ def coverage(top_dir: Path, **kwargs) -> bool:
     custom_env = os.environ.copy()
     custom_env["DEBUG"] = "1"
     return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", top_dir, "coverage"], verbose=False, env=custom_env, **kwaargs
+        cmd=["make", "-C", top_dir, "coverage"], verbose=False, env=custom_env, **kwargs
     )
     if return_code != 0:
         print(f"{RED}Error when running make coverage: {error_msg}{RESET}")
@@ -360,12 +366,11 @@ def run_test(
     **kwargs
 ) -> Result:
     """
-    Run an instance of a test case.
+    Run an instance of a test case whose driver is given by <driver>.
+    The output of all the steps are put in <output_dir>.
+    Additional arguments are passed to `compiler` and `run_subprocess`.
 
-    Parameters:
-    - driver: driver path.
-
-    Returns Result object
+    Return Result object
     """
     gcc = "riscv32-unknown-elf-gcc"
     # GCC is not targetting rv32imfd because it is compatible with rv32gc which is the more widespread 32bits target
@@ -464,7 +469,9 @@ def run_tests(
     **kwargs
 ) -> tuple[int, int]:
     """
-    Runs tests against compiler.
+    Runs tests is <tests_dir> against compiler provided by <compiler> and puts output inside <output_dir>.
+    Arguments `compiler` and `output_dir` are mandatory and are passed to `run_test`.
+    Additional arguments are passed to `compiler` and `run_subprocess`.
 
     Returns a tuple of (passing: int, total: int) tests
     """
@@ -510,6 +517,7 @@ def student_compiler(
 ) -> subprocess_status:
     """
     Wrapper for `build/c_compiler -S <input_test> -o <output_stem>.s`.
+    Additional arguments are passed to `run_subprocess`.
 
     Return None if successful, a Result otherwise
     """
@@ -527,6 +535,11 @@ def student_compiler(
     )
 
 def symlink_reference_compiler(to_assemble: Path, log_path: Path, **kwargs) -> subprocess_status:
+    """
+    Fake compiler symlinking the result of riscv-gcc as its own result.
+
+    Never fails.
+    """
     Path(f"{log_path}.s").symlink_to(f"{log_path}.gcc.s")
     return 0, "", False
 
