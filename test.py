@@ -28,7 +28,6 @@ import sys
 import argparse
 import shutil
 import subprocess
-import threading
 from collections.abc import Callable
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from pathlib import Path
@@ -57,7 +56,7 @@ class Result:
         self._return_code = return_code
         self._timeout = timeout
         self._error_log = error_log
-        self._timeout = "[TIMED OUT] " if self._timeout else ""
+        self._timeout_prefix = "[TIMED OUT] " if self._timeout else ""
 
     def passed(self) -> bool:
         return self._return_code == 0
@@ -71,8 +70,8 @@ class Result:
                 f"</testcase>\n"
             )
 
-        attribute = xmlquoteattr(self._timeout + self._error_log)
-        xml_tag_body = xmlescape(self._timeout + self._error_log)
+        attribute = xmlquoteattr(self._timeout_prefix + self._error_log)
+        xml_tag_body = xmlescape(self._timeout_prefix + self._error_log)
         return (
             f"<testcase name=\"{self._test_case_name}\">\n"
             f"<error type=\"error\" message={attribute}>\n{xml_tag_body}</error>\n"
@@ -81,7 +80,7 @@ class Result:
 
     def to_log(self) -> str:
         if self._return_code != 0:
-            msg = f"{RED}{self._timeout + self._error_log}"
+            msg = f"{RED}{self._timeout_prefix + self._error_log}"
         elif self._error_log is None:
             msg = f"{GREEN}Pass"
         else:
