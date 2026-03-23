@@ -35,6 +35,7 @@ from pathlib import Path
 from functools import partial
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from http.server import HTTPServer, SimpleHTTPRequestHandler
+from tqdm import tqdm
 
 
 RED = "\033[31m"
@@ -110,73 +111,6 @@ class JUnitXMLFile():
     def __exit__(self, exception_type, exception_value, exception_traceback):
         self.fd.write("</testsuite>\n")
         self.fd.close()
-
-class ProgressBar:
-    """
-    Creates a CLI progress bar that can update itself, provided nothing gets
-    in the way.
-
-    Parameters:
-    - total_tests: the length of the progress bar.
-    """
-
-    def __init__(self, total_tests: int):
-        self.total_tests = total_tests
-        self.passed = 0
-        self.failed = 0
-        self._lock = threading.Lock()
-
-        _, max_line_length = os.popen("stty size", "r").read().split()
-        self.max_line_length = min(
-            int(max_line_length) - len("Running Tests []"),
-            80 - len("Running Tests []")
-        )
-
-        # Initialize the lines for the progress bar and stats
-        print("Running Tests [" + " " * self.max_line_length + "]")
-        print(f"{GREEN}Pass: 0 | {RED}Fail: 0 | {RESET}Remaining: {total_tests:2}")
-
-        # Initialize the progress bar
-        self.update()
-
-    def update(self):
-        remaining_tests = self.total_tests - (self.passed + self.failed)
-
-        if self.total_tests == 0:
-            prop_passed = 0
-            prop_failed = 0
-        else:
-            prop_passed = round(self.passed / self.total_tests * self.max_line_length)
-            prop_failed = round(self.failed / self.total_tests * self.max_line_length)
-
-        # Ensure at least one # for passed and failed, if they exist
-        prop_passed = max(prop_passed, 1) if self.passed > 0 else 0
-        prop_failed = max(prop_failed, 1) if self.failed > 0 else 0
-
-        remaining = self.max_line_length - prop_passed - prop_failed
-
-        progress_bar = f"{GREEN}{'#' * prop_passed}{RED}{'#' * prop_failed}{RESET}{' ' * remaining}"
-
-        frame = (
-            "\033[2A"                                                                     # Move up 2 lines
-            "\r\033[2K" + f"Running Tests [{progress_bar}]\n"                             # Clear + rewrite line 1
-            "\r\033[2K" + f"{GREEN}Pass: {self.passed:2} | {RED}Fail: {self.failed:2} | "
-            f"{RESET}Remaining: {remaining_tests:2}\n"                                    # Clear + rewrite line 2
-        )
-
-        # Write + flush on a single frame instead of 3 separate print(...) prevents a flickering visual glitch
-        sys.stdout.write(frame)
-        sys.stdout.flush()
-
-    def update_with_value(self, passed: bool):
-        if passed:
-            self.passed += 1
-        else:
-            self.failed += 1
-
-        # Lock prevents race conditions when multithreading is enabled
-        with self._lock:
-            self.update()
 
 type subprocess_status = tuple[int, str, bool]
 
@@ -354,21 +288,29 @@ def serve_coverage_forever(root: Path, host: str, port: int):
 def process_result(
     result: Result,
     xml_file: JUnitXMLFile,
+    counts: dict[str, int],
     verbose: bool = False,
-    progress_bar: ProgressBar = None,
+    progress_bar: tqdm | None = None,
 ):
     """
     Processes results and updates progress bar if necessary.
     """
     xml_file.write(result.to_xml())
-    if progress_bar:
-        progress_bar.update_with_value(result.passed())
+    if result.passed():
+        counts["passed"] += 1
+    else:
+        counts["failed"] += 1
 
-    # if verbose:
-    #     print(result.to_log())
+    if progress_bar is not None:
+        progress_bar.update(1)
+        rate = progress_bar.format_dict["rate"] or 0.0
+        progress_bar.set_description_str(
+            f"{GREEN}passed={counts['passed']}{RESET}, {RED}failed={counts['failed']}{RESET}, {rate:.2f} test/s",
+            refresh=False,
+        )
 
-    # elif progress_bar:
-    #     progress_bar.update_with_value(result.passed())
+    if verbose:
+        tqdm.write(result.to_log())
 
 def run_test(
     compiler: Callable[[Path, Path, int], subprocess_status],
@@ -489,52 +431,40 @@ def run_tests(
     """
     drivers = list(tests_dir.rglob("*_driver.c"))
     drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
-    results = []
+    counts = {"passed": 0, "failed": 0}
 
-    if sys.stdout.isatty():
-        progress_bar = ProgressBar(len(drivers))
-    else:
-        # Force verbose mode and no progress bar when not a terminal
+    show_progress = sys.stdout.isatty()
+    if not show_progress:
         verbose = True
-        progress_bar = None
 
-    if multithreading > 1:
+    with tqdm(
+        total=len(drivers),
+        unit=" test",
+        disable=not show_progress,
+        leave=verbose, # Finished progress is removed unless verbose
+        desc=f"{GREEN}passed=0{RESET}, {RED}failed=0{RESET}, 0.00 test/s",
+        bar_format="{percentage:3.0f}%|{bar}| [{desc}]",
+    ) as progress_bar:
         with ThreadPoolExecutor(max_workers=multithreading) as executor:
-            futures = [executor.submit(
-                run_test,
-                compiler=compiler,
-                output_dir=output_dir,
-                tests_dir=tests_dir,
-                driver=driver,
-                timeout=timeout
-            ) for driver in drivers]
+            futures = [
+                executor.submit(
+                    run_test,
+                    compiler=compiler,
+                    output_dir=output_dir,
+                    tests_dir=tests_dir,
+                    driver=driver,
+                    timeout=timeout
+                )
+                for driver in drivers
+            ]
 
             for future in as_completed(futures):
-                result = future.result()
-                results.append(result)
-                process_result(result, xml_file, verbose, progress_bar)
+                process_result(future.result(), xml_file, counts, verbose, progress_bar)
 
-    else:
-        for driver in drivers:
-            result = run_test(
-                compiler=compiler,
-                output_dir=output_dir,
-                tests_dir=tests_dir,
-                driver=driver,
-                timeout=timeout
-            )
-            results.append(result)
-            process_result(result, xml_file, verbose, progress_bar)
-
-    passing = sum([result.passed() for result in results])
+    passing = counts["passed"]
     total = len(drivers)
 
-    # Print all results after finishing to avoid interrupting progress bar
-    if verbose:
-        for result in results:
-            print(result.to_log())
-
-        print(f"{GREEN}\nPassed {passing}/{total} found test cases{RESET}")
+    print(f"{GREEN}Passed {passing}/{total} found test cases{RESET}")
 
     return passing, total
 
