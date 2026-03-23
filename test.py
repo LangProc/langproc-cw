@@ -528,9 +528,8 @@ def student_compiler(
 
     # Compile
     return run_subprocess(
-        cmd=[compiler_path, "-S", to_assemble, "-o", f"{log_path}.s"],
+        cmd=["sudo", "unshare", "-n", compiler_path, "-S", to_assemble, "-o", f"{log_path}.s"],
         env=custom_env,
-        log_path=f"{log_path}.compiler",
         **kwargs
     )
 
@@ -617,6 +616,13 @@ def main():
     output_dir = build_dir / "output"
 
     args = parse_args(tests_dir=root_dir / "tests")
+
+    # Test unshare
+    print("curl test:")
+    subprocess.run(["curl", "http://example.com/"])
+    print("unshare test:")
+    subprocess.run(["sudo", "unshare", "-n", "curl", "https://example.com/"])
+    return
 
     # Clean the repo if required
     if not args.no_clean:
