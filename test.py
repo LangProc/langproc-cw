@@ -361,12 +361,14 @@ def process_result(
     Processes results and updates progress bar if necessary.
     """
     xml_file.write(result.to_xml())
-
-    if verbose:
-        print(result.to_log())
-
-    elif progress_bar:
+    if progress_bar:
         progress_bar.update_with_value(result.passed())
+
+    # if verbose:
+    #     print(result.to_log())
+
+    # elif progress_bar:
+    #     progress_bar.update_with_value(result.passed())
 
 def run_test(
     compiler: Callable[[Path, Path, int], subprocess_status],
@@ -489,12 +491,12 @@ def run_tests(
     drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
     results = []
 
-    progress_bar = None
-    if not verbose and sys.stdout.isatty():
+    if sys.stdout.isatty():
         progress_bar = ProgressBar(len(drivers))
     else:
-        # Force verbose mode when not a terminal
+        # Force verbose mode and no progress bar when not a terminal
         verbose = True
+        progress_bar = None
 
     if multithreading > 1:
         with ThreadPoolExecutor(max_workers=multithreading) as executor:
@@ -509,7 +511,7 @@ def run_tests(
 
             for future in as_completed(futures):
                 result = future.result()
-                results.append(result.passed())
+                results.append(result)
                 process_result(result, xml_file, verbose, progress_bar)
 
     else:
@@ -521,14 +523,18 @@ def run_tests(
                 driver=driver,
                 timeout=timeout
             )
-            results.append(result.passed())
+            results.append(result)
             process_result(result, xml_file, verbose, progress_bar)
 
-    passing = sum(results)
+    passing = sum([result.passed() for result in results])
     total = len(drivers)
 
+    # Print all results after finishing to avoid interrupting progress bar
     if verbose:
-        print(f"\n>> Test Summary: {GREEN}{passing} Passed, {RED}{total-passing} Failed{RESET}")
+        for result in results:
+            print(result.to_log())
+
+        print(f"{GREEN}\nPassed {passing}/{total} found test cases{RESET}")
 
     return passing, total
 
