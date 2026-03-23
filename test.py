@@ -289,7 +289,7 @@ def build(top_dir: Path, use_cmake: bool = False, coverage: bool = False, **kwar
     """
     Wrapper for building the student compiler. Assumes output folder exists.
     If present, `multithreading` is passed to `make` or `cmake`.
-    Additional arguments are passed to `run_sbprocess`.
+    Additional arguments are passed to `run_subprocess`.
 
     Return True if successful, False otherwise
     """
@@ -536,7 +536,9 @@ def student_compiler(
 
 def symlink_reference_compiler(to_assemble: Path, log_path: Path, **kwargs) -> subprocess_status:
     """
-    Fake compiler symlinking the result of riscv-gcc as its own result.
+    Symlinks the result of riscv-gcc as its own result.
+    It isn't really a compiler but can be passed as a compiler function to use the result of
+    riscv-gcc as the output of the compiler, thus testing the ability of riscv-gcc to pass tests.
 
     Never fails.
     """
