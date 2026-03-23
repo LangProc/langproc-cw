@@ -28,6 +28,7 @@ import sys
 import argparse
 import shutil
 import subprocess
+from dataclasses import dataclass
 from collections.abc import Callable
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from pathlib import Path
@@ -48,50 +49,37 @@ if not sys.stdout.isatty():
     # Don't output colours when we're not in a TTY
     RED, GREEN, YELLOW, RESET = "", "", "", ""
 
+@dataclass
 class Result:
     """Class for keeping track of each test case result"""
 
-    def __init__(self, test_case_name: str, return_code: int, timeout: bool, error_log: str | None):
-        self._test_case_name = test_case_name
-        self._return_code = return_code
-        self._timeout = timeout
-        self._error_log = error_log
-        self._timeout_prefix = "[TIMED OUT] " if self._timeout else ""
+    test_case_name: str
+    return_code: int
+    timeout: bool
+    error_log: str | None
 
+    @property
+    def timeout_prefix(self) -> str:
+        return "[TIMED OUT] " if self.timeout else ""
+
+    @property
     def passed(self) -> bool:
-        return self._return_code == 0
+        return self.return_code == 0
 
-    def to_xml(self) -> str:
-        if self.passed():
-            system_out = f"<system-out>{self._error_log}</system-out>\n" if self._error_log else ""
-            return (
-                f"<testcase name=\"{self._test_case_name}\">\n"
-                f"{system_out}"
-                f"</testcase>\n"
-            )
-
-        attribute = xmlquoteattr(self._timeout_prefix + self._error_log)
-        xml_tag_body = xmlescape(self._timeout_prefix + self._error_log)
-        return (
-            f"<testcase name=\"{self._test_case_name}\">\n"
-            f"<error type=\"error\" message={attribute}>\n{xml_tag_body}</error>\n"
-            f"</testcase>\n"
-        )
-
-    def to_log(self) -> str:
-        if self._return_code != 0:
-            msg = f"{RED}{self._timeout_prefix + self._error_log}"
-        elif self._error_log is None:
+    def __str__(self) -> str:
+        if self.return_code != 0:
+            msg = f"{RED}{self.timeout_prefix + self.error_log}"
+        elif self.error_log is None:
             msg = f"{GREEN}Pass"
         else:
-            msg = f"{YELLOW}{self._error_log}"
+            msg = f"{YELLOW}{self.error_log}"
 
-        return f"{self._test_case_name}\n\t{msg}{RESET}\n"
+        return f"{self.test_case_name}\n\t{msg}{RESET}\n"
 
 class TestFailed(Exception):
     def __init__(self, result: Result):
         self.result = result
-        super().__init__(str(result._error_log))
+        super().__init__(str(result.error_log))
 
 class JUnitXMLFile():
     def __init__(self, path: Path):
@@ -104,10 +92,29 @@ class JUnitXMLFile():
         self.fd.write("<testsuite name=\"Integration test\">\n")
         return self
 
-    def write(self, __s: str) -> int:
-        return self.fd.write(__s)
+    def _write(self, msg: str) -> int:
+        return self.fd.write(msg)
 
-    def __exit__(self, exception_type, exception_value, exception_traceback):
+    def write_result(self, result: Result) -> int:
+        if result.passed:
+            system_out = f"<system-out>{result.error_log}</system-out>\n" if result.error_log else ""
+            return self._write(
+                f"<testcase name=\"{result.test_case_name}\">\n"
+                f"{system_out}"
+                f"</testcase>\n"
+            )
+
+        else:
+            error_text = result.timeout_prefix + result.error_log
+            attribute = xmlquoteattr(error_text)
+            xml_tag_body = xmlescape(error_text)
+            return self._write(
+                f"<testcase name=\"{result.test_case_name}\">\n"
+                f"<error type=\"error\" message={attribute}>\n{xml_tag_body}</error>\n"
+                f"</testcase>\n"
+            )
+
+    def __exit__(self, *_):
         self.fd.write("</testsuite>\n")
         self.fd.close()
 
@@ -294,8 +301,9 @@ def process_result(
     """
     Processes results and updates progress bar if necessary.
     """
-    xml_file.write(result.to_xml())
-    if result.passed():
+    xml_file.write_result(result)
+
+    if result.passed:
         counts["passed"] += 1
     else:
         counts["failed"] += 1
@@ -309,7 +317,7 @@ def process_result(
         )
 
     if verbose:
-        tqdm.write(result.to_log())
+        tqdm.write(str(result))
 
 def run_test(
     compiler: Callable[[Path, Path, int], subprocess_status],
