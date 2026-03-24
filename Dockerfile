@@ -6,6 +6,7 @@ RUN apt-get update && apt-get install -y --fix-missing \
     lsb-release \
     python3 \
     python3-pip \
+    python3-rich \
     autoconf \
     bc \
     bison \
@@ -25,10 +26,9 @@ RUN apt-get update && apt-get install -y --fix-missing \
     ccache \
     cmake \
     clangd-18 \
-    bear
-
+    bear; \
 # Set clangd as the default language server
-RUN update-alternatives --install /usr/bin/clangd clangd /usr/bin/clangd-18 100
+    update-alternatives --install /usr/bin/clangd clangd /usr/bin/clangd-18 100
 
 ARG ARTIFACT_TAG=v2.1.0
 
@@ -56,7 +56,7 @@ RUN set -eux; \
     \
     /opt/riscv/bin/riscv32-unknown-elf-gcc --version
 
-ENV RISCV="/opt/riscv"
-ENV PATH="/opt/riscv/bin:${PATH}"
+ENV RISCV="/opt/riscv" \
+    PATH="/opt/riscv/bin:${PATH}"
 
 ENTRYPOINT [ "/bin/bash" ]
