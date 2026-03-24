@@ -14,15 +14,19 @@ on:
         type: string
   workflow_dispatch:
     inputs:
+      commit:
+        description: "The commit-like to checkout and build Docker image from."
+        required: true
+        type: string
       tag:
-        description: "The tag to checkout and build from."
+        description: "The tag for the artifact."
         required: true
         type: string
       cohort:
         description: "Cohort tag (e.g. 2025-26) to update the 'latest-YYYY-YY' cohort tag for the Docker image. Optional."
         required: false
         type: string
-        default: '2025-26'
+        default: ''
 
 permissions:
   contents: read
@@ -37,7 +41,7 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ inputs.tag }}
+          ref: ${{ case(github.event_name == 'workflow_call', inputs.tag, inputs.commit) }}
 
       - uses: docker/setup-qemu-action@v3
 
@@ -50,9 +54,16 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Lowercase image name
+      - name: Setup env
         run: |
           echo "IMAGE_LC=${IMAGE,,}" >>${GITHUB_ENV}
+          if [ -z ${{ inputs.cohort }} ]; then
+            YEAR=$(echo "year=$(date +%Y); month=$(date +%m); if (month <= 10) year-1 else year" | bc)
+            SHORT_NEXT=$(echo ${YEAR}+1 | cut -c 3- | bc)
+            echo "COHORT=${YEAR}-${SHORT_NEXT}" >>${GITHUB_ENV}
+          else
+            echo "COHORT=${{ inputs.cohort }}" >>${GITHUB_ENV}
+          fi
         env:
           IMAGE: '${{ env.IMAGE }}'
 
@@ -62,9 +73,8 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          build-args: |
-            ARTIFACT_TAG=${{ inputs.tag }}
+          build-args: ARTIFACT_TAG=${{ inputs.tag }}
           tags: |
             ${{ env.IMAGE_LC }}:${{ inputs.tag }}
             ${{ env.IMAGE_LC }}:latest
-            ${{ inputs.cohort != '' && format('{0}:latest-{1}', env.IMAGE_LC, inputs.cohort) || '' }}
+            ${{ format('{0}:latest-{1}', env.IMAGE_LC, env.COHORT) }}
