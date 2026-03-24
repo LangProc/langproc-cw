@@ -176,7 +176,7 @@ class JUnitXMLFile():
         self._fd.write("</testsuite>\n")
         self._fd.close()
 
-type subprocess_status = tuple[int, str, bool]
+type subprocess_status = tuple[int, str]
 
 def run_subprocess(
     cmd: list[str],
@@ -204,11 +204,11 @@ def run_subprocess(
         try:
             subprocess.run(cmd, stdout=stdout, stderr=stderr, check=True, **kwargs)
         except subprocess.CalledProcessError as e:
-            return e.returncode, f"{e.cmd} failed with return code {e.returncode}", False
+            return e.returncode, f"{e.cmd} failed with return code {e.returncode}"
         except subprocess.TimeoutExpired as e:
-            return TIMEOUT_RETURNCODE, f"{e.cmd} took more than {e.timeout}", True
+            return TIMEOUT_RETURNCODE, f"{e.cmd} took more than {e.timeout}"
 
-    return 0, "", False
+    return 0, ""
 
 def clean(top_dir: Path, **kwargs) -> bool:
     """
@@ -220,7 +220,7 @@ def clean(top_dir: Path, **kwargs) -> bool:
     cmd = ["make", "-C", top_dir, "clean"]
 
     with reporter.status("Cleaning project..."):
-        return_code, error_msg, _ = run_subprocess(cmd=cmd, verbose=False, **kwargs)
+        return_code, error_msg = run_subprocess(cmd=cmd, verbose=False, **kwargs)
     if return_code != 0:
         reporter.error(f"Error when cleaning: {error_msg}")
         return False
@@ -244,7 +244,7 @@ def make(top_dir: Path, build_dir: Path, multithreading: int, **kwargs) -> bool:
     cmd += [f"{build_dir.name}/{COMPILER_NAME}"]
 
     with reporter.status("Building with make..."):
-        return_code, error_msg, _ = run_subprocess(cmd=cmd, env=custom_env, verbose=verbose, **kwargs)
+        return_code, error_msg = run_subprocess(cmd=cmd, env=custom_env, verbose=verbose, **kwargs)
     if return_code != 0:
         reporter.error(f"Error when running make: {error_msg}")
         return False
@@ -265,7 +265,7 @@ def cmake(top_dir: Path, build_dir: Path, multithreading: int, **kwargs) -> bool
     cmd = ["cmake", "-S", top_dir, "-B", build_dir, "-DCMAKE_BUILD_TYPE=Release"]
 
     with reporter.status("Building (configure + generate) with cmake..."):
-        return_code, error_msg, _ = run_subprocess(cmd=cmd, verbose=verbose, **kwargs)
+        return_code, error_msg = run_subprocess(cmd=cmd, verbose=verbose, **kwargs)
     if return_code != 0:
         reporter.error(f"Error when running cmake (configure + generate): {error_msg}")
         return False
@@ -276,7 +276,7 @@ def cmake(top_dir: Path, build_dir: Path, multithreading: int, **kwargs) -> bool
         cmd += ["--parallel", str(multithreading)]
 
     with reporter.status("Building (compile) with cmake..."):
-        return_code, error_msg, _ = run_subprocess(cmd=cmd, verbose=verbose, **kwargs)
+        return_code, error_msg = run_subprocess(cmd=cmd, verbose=verbose, **kwargs)
     if return_code != 0:
         reporter.error(f"Error when running cmake (compile): {error_msg}")
         return False
@@ -316,7 +316,7 @@ def coverage(top_dir: Path, **kwargs) -> bool:
     cmd = ["make", "-C", top_dir, "coverage"]
 
     with reporter.status("Running make coverage..."):
-        return_code, error_msg, _ = run_subprocess(cmd=cmd, verbose=False, env=custom_env, **kwargs)
+        return_code, error_msg = run_subprocess(cmd=cmd, verbose=False, env=custom_env, **kwargs)
     if return_code != 0:
         reporter.error(f"Error when running make coverage: {error_msg}")
         return False
@@ -386,7 +386,7 @@ def run_test(
         )
 
     def run_component(component: str, cmd: list[str]):
-        return_code, _, _ = run_subprocess(
+        return_code, _ = run_subprocess(
             cmd=cmd,
             log_path=f"{log_path}.{component}",
             **kwargs
@@ -402,7 +402,7 @@ def run_test(
         )
 
         # Compile
-        return_code, _, _ = compiler(to_assemble, log_path, **kwargs)
+        return_code, _ = compiler(to_assemble, log_path, **kwargs)
         if return_code != 0:
             fail(COMPILER_NAME, return_code)
 
