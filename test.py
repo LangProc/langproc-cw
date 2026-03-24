@@ -29,6 +29,7 @@ import argparse
 import shutil
 import subprocess
 from enum import IntEnum
+from contextlib import nullcontext
 from dataclasses import dataclass
 from collections.abc import Callable
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
@@ -51,7 +52,7 @@ class Reporter:
 
     def _emit(self, message: str, style: str, min_verbosity: Verbosity):
         if self.verbosity >= min_verbosity:
-            self.console.print(message, style=style)
+            self.console.print(message, style=style, highlight=False)
 
     def debug(self, message: str, style: str = ""):
         self._emit(message, style, Verbosity.VERBOSE)
@@ -60,10 +61,18 @@ class Reporter:
         self._emit(message, style, Verbosity.NORMAL)
 
     def warning(self, message: str, style: str = "yellow"):
-        self._emit(message, style, Verbosity.QUIET)
+        self._emit(message, style, Verbosity.NORMAL)
 
     def error(self, message: str, style: str = "red"):
         self._emit(message, style, Verbosity.QUIET)
+
+    def status(self, message: str, style: str = "cyan"):
+        if self.verbosity < Verbosity.VERBOSE:
+            return self.console.status(f"[{style}]{message}[/]" , spinner="dots")
+
+        # For high verbosity (when other logs are printed as well), fall back to info(...)
+        self.info(message, style=style)
+        return nullcontext()
 
 reporter = Reporter()
 
@@ -211,13 +220,12 @@ def clean(top_dir: Path, timeout: int = 15) -> bool:
 
     Return True if successful, False otherwise
     """
-    reporter.info("Cleaning project...")
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", top_dir, "clean"],
-        timeout=timeout,
-        verbose=False,
-    )
-
+    with reporter.status("Cleaning project..."):
+        return_code, error_msg, _ = run_subprocess(
+            cmd=["make", "-C", top_dir, "clean"],
+            timeout=timeout,
+            verbose=False,
+        )
     if return_code != 0:
         reporter.error(f"Error when cleaning: {error_msg}")
         return False
@@ -239,10 +247,10 @@ def make(top_dir: Path, build_dir: Path, multithreading: int, log_path: str | No
         cmd += ["-j", str(multithreading)]
     cmd += [f"{build_dir.name}/{COMPILER_NAME}"]
 
-    reporter.info("Building with make...")
-    return_code, error_msg, _ = run_subprocess(
-        cmd=cmd, timeout=timeout, verbose=verbose, env=custom_env, log_path=log_path
-    )
+    with reporter.status("Building with make..."):
+        return_code, error_msg, _ = run_subprocess(
+            cmd=cmd, timeout=timeout, verbose=verbose, env=custom_env, log_path=log_path
+        )
     if return_code != 0:
         reporter.error(f"Error when running make: {error_msg}")
         return False
@@ -257,15 +265,15 @@ def cmake(top_dir: Path, build_dir: Path, multithreading: int, timeout: int = 60
     """
     verbose = reporter.verbosity >= Verbosity.VERBOSE
 
-    reporter.info("Building with cmake...")
 
     # cmake configure + generate
     # -DCMAKE_BUILD_TYPE=Release is equal to -O3
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["cmake", "-S", top_dir, "-B", build_dir, "-DCMAKE_BUILD_TYPE=Release"],
-        timeout=timeout,
-        verbose=verbose
-    )
+    with reporter.status("Building (configure + generate) with cmake..."):
+        return_code, error_msg, _ = run_subprocess(
+            cmd=["cmake", "-S", top_dir, "-B", build_dir, "-DCMAKE_BUILD_TYPE=Release"],
+            timeout=timeout,
+            verbose=verbose
+        )
     if return_code != 0:
         reporter.error(f"Error when running cmake (configure + generate): {error_msg}")
         return False
@@ -275,9 +283,10 @@ def cmake(top_dir: Path, build_dir: Path, multithreading: int, timeout: int = 60
     if multithreading > 1:
         cmd += ["--parallel", str(multithreading)]
 
-    return_code, error_msg, _ = run_subprocess(
-        cmd=cmd, timeout=timeout, verbose=verbose
-    )
+    with reporter.status("Building (compile) with cmake..."):
+        return_code, error_msg, _ = run_subprocess(
+            cmd=cmd, timeout=timeout, verbose=verbose
+        )
     if return_code != 0:
         reporter.error(f"Error when running cmake (compile): {error_msg}")
         return False
@@ -316,12 +325,13 @@ def coverage(top_dir: Path, timeout: int = 60) -> bool:
 
     Return True if successful, False otherwise
     """
-    reporter.info("Running make coverage...")
     custom_env = os.environ.copy()
     custom_env["DEBUG"] = "1"
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", top_dir, "coverage"], timeout=timeout, verbose=False, env=custom_env
-    )
+
+    with reporter.status("Running make coverage..."):
+        return_code, error_msg, _ = run_subprocess(
+            cmd=["make", "-C", top_dir, "coverage"], timeout=timeout, verbose=False, env=custom_env
+        )
     if return_code != 0:
         reporter.error(f"Error when running make coverage: {error_msg}")
         return False
@@ -340,11 +350,11 @@ def serve_coverage_forever(root: Path, host: str, port: int):
             pass
 
     httpd = HTTPServer((host, port), Handler)
-    reporter.info(f"Serving coverage on http://{host}:{port}/ ... (Ctrl+C to exit)")
     try:
-        httpd.serve_forever()
+        with reporter.status(f"Serving coverage on http://{host}:{port}/ (Ctrl+C to exit)"):
+            httpd.serve_forever()
     except KeyboardInterrupt:
-        reporter.error("\nServer has been stopped!")
+        reporter.info("Server has been stopped!", style="red")
 
 def run_test(
     compiler: Callable[[Path, Path, int], subprocess_status],
@@ -453,8 +463,6 @@ def run_tests(
 
     passed = failed = 0
 
-    show_progress = sys.stdout.isatty()
-
     with Progress(
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
         BarColumn(bar_width=None),
@@ -464,8 +472,8 @@ def run_tests(
             "{task.fields[rate]:.2f} test/s"
         ),
         console=reporter.console,
-        transient=True, # Finished progress is removed unless verbose
-        disable=not show_progress,
+        transient=True,
+        disable=not sys.stdout.isatty(),
     ) as progress, ThreadPoolExecutor(max_workers=multithreading) as executor:
         task_id = progress.add_task(
             "tests",
@@ -657,4 +665,4 @@ if __name__ == "__main__":
         coverage_success = coverage(top_dir=root_dir)
         if not coverage_success:
             raise RuntimeError("Error when running make coverage")
-        serve_coverage_forever("0.0.0.0", 8000)
+        serve_coverage_forever(root_dir, "0.0.0.0", 8000)
