@@ -288,7 +288,7 @@ def cmake(top_dir: Path, build_dir: Path, multithreading: int, **kwargs) -> bool
 def build(top_dir: Path, use_cmake: bool = False, coverage: bool = False, **kwargs) -> bool:
     """
     Wrapper for building the student compiler. Assumes output folder exists.
-    If present, `multithreading` is passed to `make` or `cmake`.
+    `multithreading` is passed to `make` or `cmake`, the default value is used if absent.
     Additional arguments are passed to `run_subprocess`.
 
     Return True if successful, False otherwise
