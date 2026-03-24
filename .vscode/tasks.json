@@ -3,12 +3,28 @@
     // for the documentation about the tasks.json format
     "version": "2.0.0",
     "tasks": [
-        {
+        { // Building task referenced in launch.json (see the file for more)
             "type": "shell",
             "label": "Run make",
             "command": "make",
-            "args": [],
-            "problemMatcher": [],
+            "args": [
+                "DEBUG=1",
+                "build/c_compiler"
+            ],
+            "group": "build"
+        },
+        { // Testing task run with Ctrl+Shift+B
+            "type": "shell",
+            "label": "Run tests",
+            "command": "./test.py",
+            "args": [
+                "-j",
+                "--silent"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true // <--- this associates the shortcut
+            },
         }
     ]
 }

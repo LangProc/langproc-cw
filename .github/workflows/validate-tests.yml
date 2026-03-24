@@ -23,7 +23,7 @@ jobs:
       - name: Tests tests (or tests test, whichever you want)
         id: test
         timeout-minutes: 1
-        run: ./test.py --validate_tests --multithreading 4
+        run: ./test.py -j --silent --generate_report --validate_tests
 
       - name: Perm issue fix
         if: failure()

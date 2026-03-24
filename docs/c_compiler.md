@@ -7,46 +7,55 @@ Your program should read C source code from a given file, and write correspondin
 
 ## Developing your compiler
 
-If you wish to use C++, then a basic framework for building your compiler has been provided. You are strongly recommended to check out its structure [here](./basic_compiler.md).
+If you wish to use C++, then a basic framework for building your compiler has been provided.
+You are strongly recommended to check out its structure [here](./basic_compiler.md).
 
 Source files can be found in the [./src](../src) directory and header files can be found in the [./include](../include) directory.
 
-You can test your compiler by running [`./test.py`](../test.py) from the top of this repo. The output should look as follows:
+You can test your compiler by running [`./test.py`](../test.py) from the top of this repo.
+The output should look as follows:
 
 ```console
-> user@host:langproc-cw# ./test.py
-
-Cleaning project...
-Running make...
-
+> root@host:/workspaces/langproc-YYYY-cw-XXX# ./test.py
+Building compiler...
 [...]
 
-types/unsigned.c
-        > Failed to compile testcase:
-         /workspaces/langproc-cw/build/output/types/unsigned/unsigned.compiler.stderr.log
-         /workspaces/langproc-cw/build/output/types/unsigned/unsigned.compiler.stdout.log
-         /workspaces/langproc-cw/build/output/types/unsigned/unsigned.s
-         /workspaces/langproc-cw/build/output/types/unsigned/unsigned.s.printed
+tests/types/unsigned.c: Error when compiling with `build/c_compiler -S tests/types/unsigned.c -o build/output/types/unsigned/unsigned.s`, see
+        build/output/types/unsigned/unsigned.c_compiler.stdout.log
+        build/output/types/unsigned/unsigned.c_compiler.stderr.log
 
->> Test Summary: 1 Passed, 85 Failed
+Processing coverage data...
+Check detailed coverage at coverage/index.html (open in a web browser or in vscode using Ctrl+P >workbench.action.browser.open)
+
+Passed 1/86 found test cases
 ```
 
-You can make also run in a *silent* mode with [`./test.py --silent`](../test.py), which displays a live CLI progress bar (note: the progress bar and results will be coloured):
+You can also run in *silent* mode with [`./test.py --silent`](../test.py).
+This is the default when using Ctrl+Shift+B in VS Code.
+
+
+The provided starting framework is only able to compile a very simple program, as described [here](./basic_compiler.md).
+By default, only the first [`_example/example.c`](../tests/_example/example.c) test should be passing.
+
+Full usage guide of [`test.py`](../test.py) is found in the file header or after running `./test.py --help`.
+At the time this doc was written, the output was:
 
 ```console
-> user@host:langproc-cw# ./test.py --silent
+> root@host:/workspaces/langproc-YYYY-cw-XXX# ./test.py --help
+usage: test.py [-h] [-j [N]] [-s] [--version] [--clean] [--optimise] [--generate_report] [--validate_tests] [dir]
 
-Cleaning project...
-Running make...
-Running Tests [#################################################]
-Pass:  1 | Fail: 85 | Remaining:  0
-```
-The provided starting framework is only able to compile a very simple program, as described [here](./basic_compiler.md). By default, only the first [`_example/example.c`](../tests/_example/example.c) test should be passing.
+positional arguments:
+  dir                (Optional) paths to the compiler test folders. Use this to select certain tests. Leave blank to run all tests.
 
-Full usage guide of [`test.py`](../test.py) is found in the file header or after running:
-
-```console
-> user@host:langproc-cw# ./test.py --help
+options:
+  -h, --help         show this help message and exit
+  -j, --jobs [N]     Build compiler and run tests using multiple threads. Use -m to use the default thread count, or -m N to use exactly N threads.
+  -s, --silent       Disable verbose output into the terminal. Note that all logs will be stored automatically into log files regardless of this option.
+  --version          show program's version number and exit
+  --clean            Clean the repository before testing. This will make it slower but it can solve some compilation issues when source files are deleted.
+  --optimise         Optimise the compiler for speed, at the cost building time and debugging.
+  --generate_report  Generate a JUnit report to use as a test summary for CI/CD.
+  --validate_tests   Use GCC to validate tests instead of testing the custom compiler. This is used for CI/CD pipeline, not for normal student usage. YOUR COMPILER WILL NOT BE USED NOR BUILT WITH THIS OPTION.
 ```
 
 ## Program build and execution
@@ -54,26 +63,33 @@ Full usage guide of [`test.py`](../test.py) is found in the file header or after
 Your program should be built by running the following command in the top-level directory of your repo:
 
 ```console
-> user@host:langproc-cw# make build/c_compiler
+> root@host:/workspaces/langproc-YYYY-cw-XXX# make build/c_compiler
 ```
 
 The compilation function is invoked using the flag `-S`, with the source file and output file specified on the command line:
 
 ```console
-> user@host:langproc-cw# build/c_compiler -S [source-file.c] -o [dest-file.s]
+> root@host:/workspaces/langproc-YYYY-cw-XXX# build/c_compiler -S [source-file.c] -o [dest-file.s]
 ```
 
-You can assume that the command-line (CLI) arguments will always be in this order, and that there will be no spaces in source or destination paths. Note that the provided starting point in this repository already functions as specified above, so these CLI arguments should work out of the box (unless you decide not to use the provided base compiler).
+You can assume that the command-line (CLI) arguments will always be in this order, and that there will be no spaces in source or destination paths.
+Note that the provided starting point in this repository already functions as specified above, so these CLI arguments should work out of the box (unless you decide not to use the provided base compiler).
 
 ## Input
 
-The input file will be pre-processed [ANSI C](https://en.wikipedia.org/wiki/ANSI_C), also called C90 or C89. It is what is generally thought of as "classic" or "normal" C, but not the _really_ old one without function prototypes (you may never have come across that). C90 is still often used in embedded systems, and pretty much the entire Linux kernel is in C90.
+The input file will be pre-processed [ANSI C](https://en.wikipedia.org/wiki/ANSI_C), also called C90 or C89.
+It is what is generally thought of as "classic" or "normal" C, but not the _really_ old one without function prototypes (you may never have come across that).
+C90 is still often used in embedded systems, and pretty much the entire Linux kernel is in C90.
 
-You have mainly been taught C++, but you are probably aware of C as a subset of C++ without classes, which is a good mental model. Your programs (lexer, parser and compiler) will never be given code that has different parsing or execution semantics under C and C++ (so, for example, I will not give you code that uses `class` as an identifier).
+You have mainly been taught C++, but you are probably aware of C as a subset of C++ without classes, which is a good mental model.
+Your programs (lexer, parser and compiler) will never be given code that has different parsing or execution semantics under C and C++ (so, for example, I will not give you code that uses `class` as an identifier).
 
-The source code will not contain any compiler-specific or platform-specific extensions. If you pre-process a typical program (see later), you will see many things such as `__attribute__` or `__declspec` coming from the system headers. You will not need to deal with any of these.
+The source code will not contain any compiler-specific or platform-specific extensions.
+If you pre-process a typical program (see later), you will see many things such as `__attribute__` or `__declspec` coming from the system headers.
+You will not need to deal with any of these.
 
-The test inputs will be a set of files of increasing complexity and variety. The test inputs will not have syntax errors or other programming errors, so your code does not need to handle these gracefully.
+The test inputs will be a set of files of increasing complexity and variety.
+The test inputs will not have syntax errors or other programming errors, so your code does not need to handle these gracefully.
 
 ## Features
 
@@ -117,7 +133,8 @@ Here is a list of more advanced features like you might like to implement once t
 * strings (as NULL-terminated character arrays)
 * declaration and use of structs
 
-Your compiler will be assessed using test inputs that exercise the above features. No feature not listed above will be tested.
+Your compiler will be assessed using test inputs that exercise the above features.
+No feature not listed above will be tested.
 Here is a (partial) list of features that will not be tested.
 
 * multithreading
@@ -140,13 +157,21 @@ Here is a (partial) list of features that will not be tested.
 
 ## Test cases
 
-All test inputs will be valid; that is, you can assume the absence of programmer errors like syntax faults, type mismatches, and array out-of-bounds errors. The entire compilation and testing process (including compilation, assembly, linking, and RISC-V simulation) is expected to complete within ten seconds per program (which should be plenty of time!), and is expected not to use an inordinate amount of memory or disk space.
+All test inputs will be valid; that is, you can assume the absence of programmer errors like syntax faults, type mismatches, and array out-of-bounds errors.
+The entire compilation and testing process (including compilation, assembly, linking, and RISC-V simulation) is expected to complete within ten seconds per program (which should be plenty of time!), and is expected not to use an inordinate amount of memory or disk space.
 
-There is no requirement for the generated assembly to be optimised in any way for the vast majority of test cases -- the only requirement for them is that your compiler produces the correct answer. However, for the very small number of students who would _like_ to go "above and beyond" by implementing some optimisations, and would like to be recognised for this, we have added a very small number of test cases that will only pass if the compiler has some ability to remove dead code. If you do not implement any optimisations, failing these test cases will not have an appreciable impact on your final mark.
+There is no requirement for the generated assembly to be optimised in any way for the vast majority of test cases -- the only requirement for them is that your compiler produces the correct answer.
+However, for the very small number of students who would _like_ to go "above and beyond" by implementing some optimisations, and would like to be recognised for this, we have added a very small number of test cases that will only pass if the compiler has some ability to remove dead code.
+If you do not implement any optimisations, failing these test cases will not have an appreciable impact on your final mark.
 
-The [tests](../tests) contains a large number of example inputs, divided into various categories, that you might like to use as testcases. Your compiler will be assessed on these "seen" inputs together with a further set of "unseen" inputs that are of a similar form. It is worth emphasising that it is not expected that many compilers will correctly compile all of the "seen" inputs (let alone the "unseen" ones!). You are encouraged to focus on compiling the "basic" features (as listed above) first, before moving on to more advanced features if you have time.
+The [tests](../tests) contains a large number of example inputs, divided into various categories, that you might like to use as testcases.
+Your compiler will be assessed on these "seen" inputs together with a further set of "unseen" inputs that are of a similar form.
+It is worth emphasising that it is not expected that many compilers will correctly compile all of the "seen" inputs (let alone the "unseen" ones!).
+You are encouraged to focus on compiling the "basic" features (as listed above) first, before moving on to more advanced features if you have time.
 
-The split between test cases last year can be seen below. Do not assume it will stay the same this year, but you can use it as a rough estimate of what to focus on in case you are running short on time. **Remember that tests for advanced features will also test basic features, so you should implement the basic features first (e.g. without working functions the array tests will fail).**
+The split between test cases last year can be seen below.
+Do not assume it will stay the same this year, but you can use it as a rough estimate of what to focus on in case you are running short on time.
+**Remember that tests for advanced features will also test basic features, so you should implement the basic features first (e.g. without working functions the array tests will fail).**
 
 ![Testcase distribution](./assets/testcase_distribution.png)
 
@@ -176,48 +201,62 @@ int main() {
 I run the compiler on the test program, like so:
 
 ```console
-> user@host:langproc-cw# build/c_compiler -S test_program.c -o test_program.s
+> root@host:/workspaces/langproc-YYYY-cw-XXX# build/c_compiler -S test_program.c -o test_program.s
 ```
 
 I then use GCC to assemble the generated assembly program (`test_program.s`), like so:
 
 ```console
-> user@host:langproc-cw# riscv32-unknown-elf-gcc -march=rv32gc -mabi=ilp32d -o test_program.o -c test_program.s
+> root@host:/workspaces/langproc-YYYY-cw-XXX# riscv32-unknown-elf-gcc -march=rv32gc -mabi=ilp32d -o test_program.o -c test_program.s
 ```
 
 I then use GCC to link the generated object file (`test_program.o`) with the driver program (`test_program_driver.c`), to produce an executable (`test_program`), like so:
 
 ```console
-> user@host:langproc-cw# riscv32-unknown-elf-gcc -march=rv32gc -mabi=ilp32d -static -o test_program test_program.o test_program_driver.c
+> root@host:/workspaces/langproc-YYYY-cw-XXX# riscv32-unknown-elf-gcc -march=rv32gc -mabi=ilp32d -static -o test_program test_program.o test_program_driver.c
 ```
 
 I then use spike to simulate the executable on RISC-V, like so:
 
 ```console
-> user@host:langproc-cw# spike --isa=rv32gc pk test_program
+> root@host:/workspaces/langproc-YYYY-cw-XXX# spike --isa=rv32gc pk test_program
 ```
 
 This command should produce the exit code `0`.
+You can verify it like so:
+
+```console
+> root@host:/workspaces/langproc-YYYY-cw-XXX# echo $?
+0
+```
 
 ## Assembler directives
 [You will need to consider assembler directives in your output](./assembler_directives.md)
 
 ## Useful links
-* [Godbolt](https://godbolt.org/z/vMMnWbsff) - Great tool for viewing what a real (`gcc` in this case) RISC-V compiler would produce for a given snippet of C code. This link is pre-configured for the correct architecture (`RV32IMFD`) and ABI (`ILP32D`) that the coursework targets. Code optimisation is also disabled to best mimic what you might want your compiler to output. You can replicate Godbolt locally by running `riscv32-unknown-elf-gcc -std=c90 -pedantic -ansi -O0 -march=rv32imfd -mabi=ilp32d -S [source-file.c] -o [dest-file.s]`, which might make debugging and directives analysis easier for some.
+* [Godbolt](https://godbolt.org/z/vMMnWbsff) - Great tool for viewing what a real (`gcc` in this case) RISC-V compiler would produce for a given snippet of C code.
+  This link is pre-configured for the correct architecture (`RV32IMFD`) and ABI (`ILP32D`) that the coursework targets.
+  Code optimisation is also disabled to best mimic what you might want your compiler to output.
+  You can replicate Godbolt locally by running `riscv32-unknown-elf-gcc -std=c90 -pedantic -ansi -O0 -march=rv32imfd -mabi=ilp32d -S [source-file.c] -o [dest-file.s]`, which might make debugging and directives analysis easier for some.
 
 * [Interactive RISC-V simulator](https://creatorsim.github.io/creator) - Might be helpful when trying to work out the behaviour of certain instructions that Godbolt emits.
 
 * [RISC-V ISA](https://docs.riscv.org/reference/isa/unpriv/unpriv-index.html) - Instruction Set Manual, where you should only be generating assembly using instructions from the I, M, F, and D sections.
 
-* [RISC-V ABI](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/9a77e8801592b3d194796ea5ba6ec670e4fe054f/riscv-cc.adoc) - Calling conventions for registers and functions depending on their types. For example, it is expected that certain registers will contain the same value before and after making a function call. Additionally, it is expected that function arguments are passed in a certain order - so pay careful attention to the standard ABI called [`ILP32D`](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/9a77e8801592b3d194796ea5ba6ec670e4fe054f/riscv-cc.adoc#abi-ilp32d) with `XLEN` of 32.
+* [RISC-V ABI](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/9a77e8801592b3d194796ea5ba6ec670e4fe054f/riscv-cc.adoc) - Calling conventions for registers and functions depending on their types.
+  For example, it is expected that certain registers will contain the same value before and after making a function call.
+  Additionally, it is expected that function arguments are passed in a certain order - so pay careful attention to the standard ABI called [`ILP32D`](https://github.com/riscv-non-isa/riscv-elf-psabi-doc/blob/9a77e8801592b3d194796ea5ba6ec670e4fe054f/riscv-cc.adoc#abi-ilp32d) with `XLEN` of 32.
 
 * [RISC-V Assembler Reference](https://marks.page/riscv/asm.html) - Very useful resource containing information about structuring your output assembly files and most importantly the assembler directives - if you don't know the meaning behind `.data`, `.text`, or `.word` then definitely check this out as well as experiment with Godbolt to see how it actually emits them.
 
 ## Getting started
 [How to get started? (previous students' perspectives)](./starting_guide.md)
 
-## Coverage information
-[Do you want to know which part of your code is executed when running your compiler on a file?](./coverage.md)
+## Adding meaningful tests
+[Do you want to add a test that is actually demonstrating you compiler features like no provided test does?](./coverage.md)
+
+## Encoutering a bug?
+[Do you want to know which tools you can use to help you solve bugs?](./debugging.md)
 
 ## Compiler extensions
 [Have you finished your compiler and you are looking for possible extensions?](./extension_ideas.md)
