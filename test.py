@@ -28,7 +28,7 @@ import sys
 import argparse
 import shutil
 import subprocess
-import logging
+from enum import IntEnum
 from dataclasses import dataclass
 from collections.abc import Callable
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
@@ -36,34 +36,36 @@ from pathlib import Path
 from functools import partial
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from http.server import HTTPServer, SimpleHTTPRequestHandler
-from tqdm import tqdmf
+from rich.progress import Progress, BarColumn, TextColumn
+from rich.console import Console
 
-RED = "\033[31m"
-GREEN = "\033[32m"
-YELLOW = "\033[33m"
-RESET = "\033[0m"
+class Verbosity(IntEnum):
+    QUIET = 0
+    NORMAL = 1
+    VERBOSE = 2
 
-if not sys.stdout.isatty():
-    # Don't output colours when we're not in a TTY
-    RED, GREEN, YELLOW, RESET = "", "", "", ""
+class Reporter:
+    def __init__(self, verbosity: Verbosity = Verbosity.NORMAL):
+        self.console = Console()
+        self.verbosity = verbosity
 
-class ColorFormatter(logging.Formatter):
-    def format(self, record: logging.LogRecord) -> str:
-        msg = super().format(record)
+    def _emit(self, message: str, style: str, min_verbosity: Verbosity):
+        if self.verbosity >= min_verbosity:
+            self.console.print(message, style=style)
 
-        if not sys.stdout.isatty():
-            return msg
+    def debug(self, message: str, style: str = ""):
+        self._emit(message, style, Verbosity.VERBOSE)
 
-        if record.levelno == logging.INFO:
-            return f"{GREEN}{msg}{RESET}"
-        if record.levelno == logging.WARNING:
-            return f"{YELLOW}{msg}{RESET}"
-        if record.levelno >= logging.ERROR:
-            return f"{RED}{msg}{RESET}"
+    def info(self, message: str, style: str = "green"):
+        self._emit(message, style, Verbosity.NORMAL)
 
-        return msg
+    def warning(self, message: str, style: str = "yellow"):
+        self._emit(message, style, Verbosity.QUIET)
 
-logger = logging.getLogger("langproc.test")
+    def error(self, message: str, style: str = "red"):
+        self._emit(message, style, Verbosity.QUIET)
+
+reporter = Reporter()
 
 COMPILER_NAME = "c_compiler"
 TIMEOUT_RETURNCODE = 124
@@ -87,12 +89,12 @@ class Result:
     def __str__(self) -> str:
         if self.error_log is None:
             msg = "Pass"
-            color = GREEN
+            color = "[green]"
         else:
             msg = self.get_error_log()
-            color = RED if self.return_code != 0 else YELLOW
+            color = "[red]" if self.return_code != 0 else "[yellow]"
 
-        return f"{self.test_case_name}: {color}{msg}{RESET}"
+        return f"{self.test_case_name}: {color}{msg}[/]"
 
 class TestFailed(Exception):
     def __init__(
@@ -209,7 +211,7 @@ def clean(top_dir: Path, timeout: int = 15) -> bool:
 
     Return True if successful, False otherwise
     """
-    logger.info("Cleaning project...")
+    reporter.info("Cleaning project...")
     return_code, error_msg, _ = run_subprocess(
         cmd=["make", "-C", top_dir, "clean"],
         timeout=timeout,
@@ -217,17 +219,18 @@ def clean(top_dir: Path, timeout: int = 15) -> bool:
     )
 
     if return_code != 0:
-        logger.error(f"Error when cleaning: {error_msg}")
+        reporter.error(f"Error when cleaning: {error_msg}")
         return False
     return True
 
-def make(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, log_path: str | None = None, timeout: int = 60) -> bool:
+def make(top_dir: Path, build_dir: Path, multithreading: int, log_path: str | None = None, timeout: int = 60) -> bool:
     """
     Wrapper for make build/c_compiler.
 
     Return True if successful, False otherwise
     """
-    logger.info("Running make...")
+    verbose = reporter.verbosity >= Verbosity.VERBOSE
+
     custom_env = os.environ.copy()
     custom_env["DEBUG"] = "1"
 
@@ -236,22 +239,25 @@ def make(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, log
         cmd += ["-j", str(multithreading)]
     cmd += [f"{build_dir.name}/{COMPILER_NAME}"]
 
+    reporter.info("Building with make...")
     return_code, error_msg, _ = run_subprocess(
         cmd=cmd, timeout=timeout, verbose=verbose, env=custom_env, log_path=log_path
     )
     if return_code != 0:
-        logger.error(f"Error when running make: {error_msg}")
+        reporter.error(f"Error when running make: {error_msg}")
         return False
 
     return True
 
-def cmake(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, timeout: int = 60) -> bool:
+def cmake(top_dir: Path, build_dir: Path, multithreading: int, timeout: int = 60) -> bool:
     """
     Wrapper for cmake --build build
 
     Return True if successful, False otherwise
     """
-    logger.info("Running cmake...")
+    verbose = reporter.verbosity >= Verbosity.VERBOSE
+
+    reporter.info("Building with cmake...")
 
     # cmake configure + generate
     # -DCMAKE_BUILD_TYPE=Release is equal to -O3
@@ -261,7 +267,7 @@ def cmake(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, ti
         verbose=verbose
     )
     if return_code != 0:
-        logger.error(f"Error when running cmake (configure + generate): {error_msg}")
+        reporter.error(f"Error when running cmake (configure + generate): {error_msg}")
         return False
 
     # cmake compile
@@ -273,7 +279,7 @@ def cmake(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, ti
         cmd=cmd, timeout=timeout, verbose=verbose
     )
     if return_code != 0:
-        logger.error(f"Error when running cmake (compile): {error_msg}")
+        reporter.error(f"Error when running cmake (compile): {error_msg}")
         return False
 
     return True
@@ -283,7 +289,6 @@ def build(
     use_cmake: bool = False,
     coverage: bool = False,
     multithreading: int = 1,
-    verbose: bool = True,
     timeout: int = 60
 ):
     """
@@ -297,11 +302,11 @@ def build(
 
     # Build the compiler using cmake or make
     if use_cmake and not coverage:
-        build_success = cmake(top_dir, build_dir=build_dir, multithreading=multithreading, verbose=verbose, timeout=timeout)
+        build_success = cmake(top_dir, build_dir=build_dir, multithreading=multithreading, timeout=timeout)
     else:
         if use_cmake and coverage:
-            logger.warning("Coverage is not supported with CMake. Switching to make.")
-        build_success = make(top_dir, build_dir=build_dir, multithreading=multithreading, verbose=verbose, timeout=timeout)
+            reporter.warning("Coverage is not supported with CMake. Switching to make.")
+        build_success = make(top_dir, build_dir=build_dir, multithreading=multithreading, timeout=timeout)
 
     return build_success
 
@@ -311,14 +316,14 @@ def coverage(top_dir: Path, timeout: int = 60) -> bool:
 
     Return True if successful, False otherwise
     """
-    logger.info("Running make coverage...")
+    reporter.info("Running make coverage...")
     custom_env = os.environ.copy()
     custom_env["DEBUG"] = "1"
     return_code, error_msg, _ = run_subprocess(
         cmd=["make", "-C", top_dir, "coverage"], timeout=timeout, verbose=False, env=custom_env
     )
     if return_code != 0:
-        logger.error(f"Error when running make coverage: {error_msg}")
+        reporter.error(f"Error when running make coverage: {error_msg}")
         return False
     return True
 
@@ -335,11 +340,11 @@ def serve_coverage_forever(root: Path, host: str, port: int):
             pass
 
     httpd = HTTPServer((host, port), Handler)
-    logger.info(f"Serving coverage on http://{host}:{port}/ ... (Ctrl+C to exit)")
+    reporter.info(f"Serving coverage on http://{host}:{port}/ ... (Ctrl+C to exit)")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        logger.error("\nServer has been stopped!")
+        reporter.error("\nServer has been stopped!")
 
 def run_test(
     compiler: Callable[[Path, Path, int], subprocess_status],
@@ -436,7 +441,6 @@ def run_tests(
     tests_dir: Path,
     xml_file: JUnitXMLFile,
     multithreading: int,
-    verbose: bool,
     timeout: int = 30
 ) -> tuple[int, int]:
     """
@@ -448,21 +452,29 @@ def run_tests(
     drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
 
     passed = failed = 0
-    def _get_progress_desc(rate: float) -> str:
-        return f"{GREEN}passed={passed}{RESET}, {RED}failed={failed}{RESET}, {rate:.2f} test/s"
 
     show_progress = sys.stdout.isatty()
-    if not show_progress:
-        verbose = True
 
-    with tqdm(
-        total=len(drivers),
-        unit=" test",
+    with Progress(
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        BarColumn(bar_width=None),
+        TextColumn(
+            "[green]passed={task.fields[passed]}[/], "
+            "[red]failed={task.fields[failed]}[/], "
+            "{task.fields[rate]:.2f} test/s"
+        ),
+        console=reporter.console,
+        transient=True, # Finished progress is removed unless verbose
         disable=not show_progress,
-        leave=verbose, # Finished progress is removed unless verbose
-        desc=_get_progress_desc(0.0),
-        bar_format="{percentage:3.0f}%|{bar}| [{desc}]",
-    ) as progress_bar, ThreadPoolExecutor(max_workers=multithreading) as executor:
+    ) as progress, ThreadPoolExecutor(max_workers=multithreading) as executor:
+        task_id = progress.add_task(
+            "tests",
+            total=len(drivers),
+            passed=0,
+            failed=0,
+            rate=0.0,
+        )
+
         futures = [
             executor.submit(
                 run_test,
@@ -484,19 +496,22 @@ def run_tests(
             else:
                 failed += 1
 
-            if progress_bar is not None:
-                progress_bar.update(1)
-                progress_bar.set_description_str(
-                    _get_progress_desc(progress_bar.format_dict["rate"] or 0.0),
-                    refresh=False,
-                )
+            elapsed = progress.tasks[task_id].elapsed or 0.0
+            rate = (passed + failed) / elapsed if elapsed > 0 else 0.0
 
-            if verbose:
-                tqdm.write(f"{result}\n")
+            progress.update(
+                task_id,
+                advance=1,
+                passed=passed,
+                failed=failed,
+                rate=rate,
+            )
+
+            reporter.debug(f"{result}\n")
 
     assert len(drivers) == passed + failed, f"Mismatch between total tests and processed results"
 
-    logger.info(f"Passed {passed}/{passed + failed} found test cases")
+    reporter.info(f"[bold]Passed {passed}/{passed + failed} found test cases[/]")
 
     return (passed, passed + failed)
 
@@ -591,12 +606,14 @@ def parse_args(tests_dir: Path) -> argparse.Namespace:
     )
     return parser.parse_args()
 
-def main():
+if __name__ == "__main__":
     root_dir = Path(__file__).resolve().parent
     build_dir = root_dir / "build"
     output_dir = build_dir / "output"
 
     args = parse_args(tests_dir=root_dir / "tests")
+
+    reporter.verbosity = Verbosity.NORMAL if args.silent else Verbosity.VERBOSE
 
     # Clean the repo if required
     if not args.no_clean:
@@ -614,8 +631,7 @@ def main():
             top_dir=root_dir,
             use_cmake=args.use_cmake,
             coverage=args.coverage,
-            multithreading=args.multithreading,
-            verbose=not args.silent
+            multithreading=args.multithreading
         )
         if not build_success:
             raise RuntimeError("Error when building")
@@ -629,34 +645,16 @@ def main():
             tests_dir=Path(args.dir),
             xml_file=xml_file,
             multithreading=args.multithreading,
-            verbose=not args.silent
         )
 
     # Skip unavailable coverage and exit immediately for test validation
     if args.validate_tests:
         if passing != total:
             raise RuntimeError(f"{total - passing} tests failed during test validation")
-        return
 
     # Find coverage if required. Note, that the coverage server will be blocking
-    if args.coverage:
+    elif args.coverage:
         coverage_success = coverage(top_dir=root_dir)
         if not coverage_success:
             raise RuntimeError("Error when running make coverage")
         serve_coverage_forever("0.0.0.0", 8000)
-
-if __name__ == "__main__":
-    handler = logging.StreamHandler()
-    handler.setFormatter(ColorFormatter("%(message)s"))
-
-    logger.setLevel(logging.INFO)
-    logger.handlers.clear()
-    logger.addHandler(handler)
-    logger.propagate = False
-    try:
-        main()
-    finally:
-        print(RESET, end="")
-        if sys.stdout.isatty():
-            # This solves dodgy terminal behaviour on multithreading
-            os.system("stty echo")
