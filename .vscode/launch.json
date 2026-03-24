@@ -8,17 +8,11 @@
             "program": "${workspaceFolder}/build/c_compiler",
             "args": [
                 "-S",
-                "compiler_tests/_example/example.c",
+                "tests/_example/example.c",
                 "-o",
                 "build/debug.s",
             ],
             "cwd": "${workspaceFolder}",
-            "environment": [
-                {
-                    "name": "ASAN_OPTIONS",
-                    "value": "exitcode=0,detect_leaks=0"
-                }
-            ],
             "externalConsole": false,
             "MIMode": "gdb",
             "preLaunchTask": "Run make",
@@ -34,6 +28,6 @@
                     "ignoreFailures": true
                 }
             ]
-        }
+        },
     ]
 }

@@ -19,7 +19,8 @@
 				"daohong-emilio.yash",
 				"EditorConfig.EditorConfig",
 				"llvm-vs-code-extensions.vscode-clangd",
-				"ms-vscode.cmake-tools"
+				"ryanluker.vscode-coverage-gutters",
+				"ms-vscode.live-server"
 			]
 		}
 	}

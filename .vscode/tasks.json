@@ -7,8 +7,8 @@
             "type": "shell",
             "label": "Run make",
             "command": "make",
-            "args": [],
-            "problemMatcher": [],
-        }
+            "args": ["DEBUG=1", "build/c_compiler"],
+            "group": "build",
+        },
     ]
 }
