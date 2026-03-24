@@ -44,6 +44,7 @@ YELLOW = "\033[33m"
 RESET = "\033[0m"
 
 COMPILER_NAME = "c_compiler"
+TIMEOUT_RETURNCODE = 124
 
 if not sys.stdout.isatty():
     # Don't output colours when we're not in a TTY
@@ -53,70 +54,102 @@ if not sys.stdout.isatty():
 class Result:
     """Class for keeping track of each test case result"""
 
-    test_case_name: str
+    test_case_name: Path
     return_code: int
-    timeout: bool
     error_log: str | None
 
-    @property
-    def timeout_prefix(self) -> str:
-        return "[TIMED OUT] " if self.timeout else ""
+    def get_error_log(self) -> str | None:
+        prefix = f"[TIMED OUT] " if self.return_code == TIMEOUT_RETURNCODE else ""
+        return f"{prefix}{self.error_log}"
 
     @property
     def passed(self) -> bool:
         return self.return_code == 0
 
     def __str__(self) -> str:
-        if self.return_code != 0:
-            msg = f"{RED}{self.timeout_prefix + self.error_log}"
-        elif self.error_log is None:
-            msg = f"{GREEN}Pass"
+        if self.error_log is None:
+            msg = "Pass"
+            color = GREEN
         else:
-            msg = f"{YELLOW}{self.error_log}"
+            msg = self.get_error_log()
+            color = RED if self.return_code != 0 else YELLOW
 
-        return f"{self.test_case_name}\n\t{msg}{RESET}\n"
+        return f"{self.test_case_name}: {color}{msg}{RESET}\n"
 
 class TestFailed(Exception):
-    def __init__(self, result: Result):
-        self.result = result
-        super().__init__(str(result.error_log))
+    def __init__(
+        self,
+        component: str,
+        test_name: Path,
+        return_code: int,
+        log_path: Path,
+        sanitizer_files: list[Path]
+    ):
+        self._log_path = log_path
+
+        details = "\n".join([
+            self._get_relevant_files(COMPILER_NAME),
+            f"\t{self._log_path}.s",
+            f"\t{self._log_path}.s.printed",
+            *(f"\t{f}" for f in sanitizer_files),
+        ])
+
+        if component != COMPILER_NAME:
+            details += f"\n{self._get_relevant_files(component)}"
+
+        full_error_log = f"{component} failed:\n{details}"
+
+        self.result = Result(
+            test_case_name=test_name,
+            return_code=return_code,
+            error_log=full_error_log,
+        )
+
+        super().__init__(full_error_log)
+
+    def _get_relevant_files(self, component: str):
+        return "\n".join(f"\t{self._log_path}.{component}.{suffix}" for suffix in ["stderr.log", "stdout.log"])
 
 class JUnitXMLFile():
     def __init__(self, path: Path):
-        self.path = path
-        self.fd = None
+        self._path = path
+        self._fd = None
 
     def __enter__(self):
-        self.fd = open(self.path, "w")
-        self.fd.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-        self.fd.write("<testsuite name=\"Integration test\">\n")
+        self._fd = open(self._path, "w")
+        self._fd.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+        self._fd.write(f"<testsuite name={xmlquoteattr('Integration test')}>\n")
         return self
 
     def _write(self, msg: str) -> int:
-        return self.fd.write(msg)
+        return self._fd.write(msg)
+
+    def _write_testcase(self, test_case_name: str, body: str = "") -> int:
+        name_attr = xmlquoteattr(str(test_case_name))
+        return self._write(
+            f"<testcase name={name_attr}>\n"
+            f"{body}"
+            f"</testcase>\n"
+        )
 
     def write_result(self, result: Result) -> int:
         if result.passed:
-            system_out = f"<system-out>{result.error_log}</system-out>\n" if result.error_log else ""
-            return self._write(
-                f"<testcase name=\"{result.test_case_name}\">\n"
-                f"{system_out}"
-                f"</testcase>\n"
-            )
+            body = ""
+            if result.error_log:
+                body = f"<system-out>{xmlescape(result.error_log)}</system-out>\n"
+            return self._write_testcase(result.test_case_name, body)
 
         else:
-            error_text = result.timeout_prefix + result.error_log
-            attribute = xmlquoteattr(error_text)
-            xml_tag_body = xmlescape(error_text)
-            return self._write(
-                f"<testcase name=\"{result.test_case_name}\">\n"
-                f"<error type=\"error\" message={attribute}>\n{xml_tag_body}</error>\n"
-                f"</testcase>\n"
+            error_text = result.get_error_log()
+            body = (
+                f"<error type={xmlquoteattr('error')} message={xmlquoteattr(error_text)}>\n"
+                f"{xmlescape(error_text)}</error>\n"
             )
+            return self._write_testcase(result.test_case_name, body)
 
     def __exit__(self, *_):
-        self.fd.write("</testsuite>\n")
-        self.fd.close()
+        self._fd.write("</testsuite>\n")
+        self._fd.close()
 
 type subprocess_status = tuple[int, str, bool]
 
@@ -132,7 +165,6 @@ def run_subprocess(
 
     Returns a tuple of (return_code: int, error_message: str, timed_out: bool)
     """
-    timeout_returncode = 124
 
     # None means that stdout and stderr are handled by parent, i.e., they go to console by default
     stdout = None
@@ -150,7 +182,7 @@ def run_subprocess(
     except subprocess.CalledProcessError as e:
         return e.returncode, f"{e.cmd} failed with return code {e.returncode}", False
     except subprocess.TimeoutExpired as e:
-        return timeout_returncode, f"{e.cmd} took more than {e.timeout}", True
+        return TIMEOUT_RETURNCODE, f"{e.cmd} took more than {e.timeout}", True
     return 0, "", False
 
 def clean(top_dir: Path, timeout: int = 15) -> bool:
@@ -291,34 +323,6 @@ def serve_coverage_forever(root: Path, host: str, port: int):
     except KeyboardInterrupt:
         print(f"{RED}\nServer has been stopped!{RESET}")
 
-def process_result(
-    result: Result,
-    xml_file: JUnitXMLFile,
-    counts: dict[str, int],
-    verbose: bool = False,
-    progress_bar: tqdm | None = None,
-):
-    """
-    Processes results and updates progress bar if necessary.
-    """
-    xml_file.write_result(result)
-
-    if result.passed:
-        counts["passed"] += 1
-    else:
-        counts["failed"] += 1
-
-    if progress_bar is not None:
-        progress_bar.update(1)
-        rate = progress_bar.format_dict["rate"] or 0.0
-        progress_bar.set_description_str(
-            f"{GREEN}passed={counts['passed']}{RESET}, {RED}failed={counts['failed']}{RESET}, {rate:.2f} test/s",
-            refresh=False,
-        )
-
-    if verbose:
-        tqdm.write(str(result))
-
 def run_test(
     compiler: Callable[[Path, Path, int], subprocess_status],
     output_dir: Path,
@@ -352,39 +356,25 @@ def run_test(
     shutil.rmtree(log_path.parent, ignore_errors=True)
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def get_relevant_files(component: str):
-        return "\n".join(f"\t{log_path}.{component}.{suffix}" for suffix in ["stderr.log", "stdout.log"])
+    sanitizer_files = list(log_path.parent.glob(".*san.log.*"))
 
-    sanitizer_file_list = list(log_path.parent.glob(".*san.log.*"))
-    compiler_log_file_str = "\n".join([
-        get_relevant_files("compiler"),
-        f"\t{log_path}.s",
-        f"\t{log_path}.s.printed",
-        *(f"\t{p}" for p in sanitizer_file_list),
-    ])
-
-    def get_msg(component: str):
-        msg = f"{component.capitalize()} failed:\n{compiler_log_file_str}"
-        if component != "compiler":
-            msg += f"\n{get_relevant_files(component)}"
-        return msg
-
-    def fail(component: str, return_code: int, timed_out: bool):
-        raise TestFailed(Result(
-            test_case_name=test_name,
+    def fail(component: str, return_code: int):
+        raise TestFailed(
+            component=component,
+            test_name=test_name,
             return_code=return_code,
-            timeout=timed_out,
-            error_log=get_msg(component),
-        ))
+            log_path=log_path,
+            sanitizer_files=sanitizer_files
+        )
 
     def run_component(component: str, cmd: list[str]):
-        return_code, _, timed_out = run_subprocess(
+        return_code, _, _ = run_subprocess(
             cmd=cmd,
             timeout=timeout,
             log_path=f"{log_path}.{component}",
         )
         if return_code != 0:
-            fail(component, return_code, timed_out)
+            fail(component, return_code)
 
     try:
         # GCC Reference Output
@@ -394,9 +384,9 @@ def run_test(
         )
 
         # Compile
-        return_code, _, timed_out = compiler(to_assemble, log_path, timeout)
+        return_code, _, _ = compiler(to_assemble, log_path, timeout)
         if return_code != 0:
-            fail("compiler", return_code, timed_out)
+            fail(COMPILER_NAME, return_code)
 
         # Assemble
         run_component(
@@ -419,8 +409,8 @@ def run_test(
     except TestFailed as e:
         return e.result
 
-    msg = f"Sanitizer warnings: {" ".join(sanitizer_file_list)}" if len(sanitizer_file_list) != 0 else None
-    return Result(test_case_name=test_name, return_code=0, timeout=False, error_log=msg)
+    msg = f"Sanitizer warnings: {" ".join(sanitizer_files)}" if len(sanitizer_files) != 0 else None
+    return Result(test_case_name=test_name, return_code=0, error_log=msg)
 
 def run_tests(
     compiler: Callable[[Path, Path, int], subprocess_status],
@@ -438,7 +428,10 @@ def run_tests(
     """
     drivers = list(tests_dir.rglob("*_driver.c"))
     drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
-    counts = {"passed": 0, "failed": 0}
+
+    passed = failed = 0
+    def _get_progress_desc(rate: float) -> str:
+        return f"{GREEN}passed={passed}{RESET}, {RED}failed={failed}{RESET}, {rate:.2f} test/s"
 
     show_progress = sys.stdout.isatty()
     if not show_progress:
@@ -449,31 +442,45 @@ def run_tests(
         unit=" test",
         disable=not show_progress,
         leave=verbose, # Finished progress is removed unless verbose
-        desc=f"{GREEN}passed=0{RESET}, {RED}failed=0{RESET}, 0.00 test/s",
+        desc=_get_progress_desc(0.0),
         bar_format="{percentage:3.0f}%|{bar}| [{desc}]",
-    ) as progress_bar:
-        with ThreadPoolExecutor(max_workers=multithreading) as executor:
-            futures = [
-                executor.submit(
-                    run_test,
-                    compiler=compiler,
-                    output_dir=output_dir,
-                    tests_dir=tests_dir,
-                    driver=driver,
-                    timeout=timeout
+    ) as progress_bar, ThreadPoolExecutor(max_workers=multithreading) as executor:
+        futures = [
+            executor.submit(
+                run_test,
+                compiler=compiler,
+                output_dir=output_dir,
+                tests_dir=tests_dir,
+                driver=driver,
+                timeout=timeout
+            )
+            for driver in drivers
+        ]
+
+        for future in as_completed(futures):
+            result = future.result()
+            xml_file.write_result(result)
+
+            if result.passed:
+                passed += 1
+            else:
+                failed += 1
+
+            if progress_bar is not None:
+                progress_bar.update(1)
+                progress_bar.set_description_str(
+                    _get_progress_desc(progress_bar.format_dict["rate"] or 0.0),
+                    refresh=False,
                 )
-                for driver in drivers
-            ]
 
-            for future in as_completed(futures):
-                process_result(future.result(), xml_file, counts, verbose, progress_bar)
+            if verbose:
+                tqdm.write(str(result))
 
-    passing = counts["passed"]
-    total = len(drivers)
+    assert len(drivers) == passed + failed, f"Mismatch between total tests and processed results"
 
-    print(f"{GREEN}Passed {passing}/{total} found test cases{RESET}")
+    print(f"{GREEN}Passed {passed}/{passed + failed} found test cases{RESET}")
 
-    return passing, total
+    return (passed, passed + failed)
 
 def student_compiler(compiler_path: Path, to_assemble: Path, log_path: Path, timeout: int) -> subprocess_status:
     """
@@ -491,7 +498,7 @@ def student_compiler(compiler_path: Path, to_assemble: Path, log_path: Path, tim
         cmd=[compiler_path, "-S", to_assemble, "-o", f"{log_path}.s"],
         timeout=timeout,
         env=custom_env,
-        log_path=f"{log_path}.compiler",
+        log_path=f"{log_path}.{COMPILER_NAME}",
     )
 
 def symlink_reference_compiler(to_assemble: Path, log_path: Path, timeout: int) -> subprocess_status:
