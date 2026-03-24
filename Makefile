@@ -5,7 +5,6 @@ CXXFLAGS += -Wall # enable most warnings
 CXXFLAGS += -Wextra # enable extra warnings
 CXXFLAGS += -Werror # treat all warnings as errors
 CXXFLAGS += -fsanitize=address -fsanitize-recover=address # enable address sanitization
-CXXFLAGS += -static-libasan # statically link with Address Sanitizer
 CXXFLAGS += -fsanitize=leak # enable leak sanitization
 CXXFLAGS += -fsanitize=undefined # enable undefined behaviour sanitization
 CXXFLAGS += -I include # look for header files in the `include` directory
@@ -15,6 +14,7 @@ CXXFLAGS += -O0 # perform minimal optimisations
 CXXFLAGS += -rdynamic # to get more helpful traces when debugging
 CXXFLAGS += --coverage # enable code coverage
 CXXFLAGS += -DDEBUG # enable code behind "ifdef DEBUG"
+COVFLAGS = -j `nproc` --no-external --exclude "`pwd`/build/*" --demangle-cpp -d .
 else
 CXXFLAGS += -O3 # perform optimisations
 endif
@@ -33,6 +33,9 @@ build/c_compiler: $(OBJECTS)
 	@find . -name "*.gcda" -delete
 	@mkdir -p build
 	g++ $(CXXFLAGS) -o $@ $^
+ifdef DEBUG
+	lcov -c -i $(COVFLAGS) -o build/base.info
+endif
 
 -include $(DEPENDENCIES)
 
@@ -52,8 +55,9 @@ ifdef DEBUG
 coverage:
 	@rm -rf coverage/
 	@mkdir -p coverage
-	lcov -c --no-external --exclude "`pwd`/src/lexer.*" --exclude "`pwd`/src/parser.*" --exclude "`pwd`/build/*" -d . -o coverage/cov.info
-	genhtml coverage/cov.info -o coverage
+	@lcov -c $(COVFLAGS) -o coverage/runtime.info
+	@lcov -a build/base.info -a coverage/runtime.info -o coverage/lcov.info
+	@genhtml -j `nproc` --flat --ignore-errors unmapped -o coverage coverage/lcov.info
 	@find . -name "*.gcda" -delete
 endif
 
