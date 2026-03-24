@@ -26,8 +26,11 @@ __author__ = "William Huynh, Filip Wojcicki, James Nock, Quentin Corradi"
 import os
 import sys
 import argparse
+import time
+import re
 import shutil
 import subprocess
+from statistics import mean
 from enum import IntEnum
 from contextlib import nullcontext, ExitStack
 from dataclasses import dataclass
@@ -87,6 +90,7 @@ class Result:
     test_case_name: Path
     return_code: int
     error_log: tuple[str, str] | None
+    stats: dict[str, int] | None = None
 
     def get_error_log(self) -> str | None:
         prefix = f"[TIMED OUT] " if self.return_code == TIMEOUT_RETURNCODE else ""
@@ -187,7 +191,7 @@ def run_subprocess(
     """
     Wrapper for `subprocess.run` with common arguments and error handling.
 
-    Returns a tuple of (return_code: int, error_message: str, timed_out: bool)
+    Returns a tuple of (return_code: int, error_message: str)
     """
     with ExitStack() as stack:
         # None means that stdout and stderr are handled by parent, i.e., they go to console by default
@@ -342,10 +346,40 @@ def serve_coverage_forever(root: Path, host: str, port: int):
     except KeyboardInterrupt:
         reporter.info("Server has been stopped!", style="red")
 
+def get_compiler_stats(log_path: str, elapsed_time: int) -> dict[str, int]:
+    """
+    Measure compiler's performance using compile time, asm size and static instructions count
+    """
+    stats = {
+        "compile_time": elapsed_time,
+        "asm_size": Path(f"{log_path}.s").stat().st_size,
+    }
+
+    objdump_log = f"{log_path}.objdump"
+    return_code, error_msg = run_subprocess(
+        cmd=["riscv32-unknown-elf-objdump", "-d", f"{log_path}.o"],
+        log_path=objdump_log
+    )
+    if return_code != 0:
+        reporter.error(f"Error when running objdump: {error_msg}")
+        return stats
+
+    instruction_re = re.compile(r"^\s*[0-9a-f]+:\s+(?:[0-9a-f]{4}|[0-9a-f]{8})\s+")
+
+    with Path(f"{objdump_log}.stdout.log").open("r", encoding="utf-8") as f:
+        stats["static_instructions"] = sum(
+            1
+            for line in f
+            if instruction_re.match(line)
+        )
+
+    return stats
+
 def run_test(
     compiler: Callable[[Path, Path, int], subprocess_status],
     output_dir: Path,
     driver: Path,
+    gather_stats: bool,
     **kwargs
 ) -> Result:
     """
@@ -402,7 +436,9 @@ def run_test(
         )
 
         # Compile
+        start_time = time.perf_counter()
         return_code, _ = compiler(to_assemble, log_path, **kwargs)
+        elapsed_time = time.perf_counter() - start_time
         if return_code != 0:
             fail(COMPILER_NAME, return_code)
 
@@ -427,13 +463,16 @@ def run_test(
     except TestFailed as e:
         return e.result
 
+    compiler_stats = get_compiler_stats(log_path=log_path, elapsed_time=elapsed_time) if gather_stats else None
+
     msg = f"Sanitizer warnings: {" ".join(sanitizer_files)}" if len(sanitizer_files) != 0 else None
-    return Result(test_case_name=test_name, return_code=0, error_log=msg)
+    return Result(test_case_name=test_name, return_code=0, error_log=msg, stats=compiler_stats)
 
 def run_tests(
     tests_dir: Path,
     xml_file: JUnitXMLFile,
     multithreading: int,
+    gather_stats: bool,
     **kwargs
 ) -> tuple[int, int]:
     """
@@ -447,6 +486,7 @@ def run_tests(
     drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
 
     passed = failed = 0
+    compiler_stats = [] if gather_stats else None
 
     with Progress(
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
@@ -468,7 +508,10 @@ def run_tests(
             rate=0.0,
         )
 
-        futures = [executor.submit(run_test, driver=driver, **kwargs) for driver in drivers]
+        futures = [
+            executor.submit(run_test, driver=driver, gather_stats=gather_stats, **kwargs)
+            for driver in drivers
+        ]
 
         for future in as_completed(futures):
             result = future.result()
@@ -476,6 +519,8 @@ def run_tests(
 
             if result.passed:
                 passed += 1
+                if gather_stats:
+                    compiler_stats.append(result.stats)
             else:
                 failed += 1
 
@@ -495,6 +540,20 @@ def run_tests(
     assert len(drivers) == passed + failed, f"Mismatch between total tests and processed results"
 
     reporter.info(f"[bold]Passed {passed}/{passed + failed} found test cases[/]")
+
+    if compiler_stats:
+        assert len(compiler_stats) == passed, "Some compiler stats could not be collected"
+
+        avg_compile_time_ms = 1000.0 * mean(s["compile_time"] for s in compiler_stats)
+        avg_asm_size_bytes = mean(s["asm_size"] for s in compiler_stats)
+        avg_static_instructions = mean(s["static_instructions"] for s in compiler_stats)
+
+        reporter.info(
+            f"[bold]Measured averages:[/] "
+            f"compile time = [bold]{avg_compile_time_ms:.3f} ms[/], "
+            f"asm size = [bold]{avg_asm_size_bytes:.1f} B[/], "
+            f"static instructions = [bold]{avg_static_instructions:.1f}[/]"
+        )
 
     return (passed, passed + failed)
 
@@ -528,7 +587,7 @@ def symlink_reference_compiler(to_assemble: Path, log_path: Path, **kwargs) -> s
     Never fails.
     """
     Path(f"{log_path}.s").symlink_to(f"{log_path}.gcc.s")
-    return 0, "", False
+    return 0, ""
 
 def parse_args(tests_dir: Path) -> argparse.Namespace:
     """
@@ -589,6 +648,13 @@ def parse_args(tests_dir: Path) -> argparse.Namespace:
         "and you may run into issues."
     )
     parser.add_argument(
+        "--gather_stats",
+        action="store_true",
+        default=False,
+        help="Gather compiler related statistics like compile time, asm file size, "
+        "static instructions count, dynamic instructions count."
+    )
+    parser.add_argument(
         "--validate_tests",
         action="store_true",
         default=False,
@@ -634,6 +700,7 @@ if __name__ == "__main__":
             tests_dir=Path(args.dir),
             xml_file=xml_file,
             multithreading=args.multithreading,
+            gather_stats=args.gather_stats,
             compiler=symlink_reference_compiler if args.validate_tests \
                 else partial(student_compiler, build_dir / COMPILER_NAME),
             output_dir=output_dir
