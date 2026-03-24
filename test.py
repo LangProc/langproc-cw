@@ -29,7 +29,7 @@ import argparse
 import shutil
 import subprocess
 from enum import IntEnum
-from contextlib import nullcontext
+from contextlib import nullcontext, ExitStack
 from dataclasses import dataclass
 from collections.abc import Callable
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
@@ -77,6 +77,7 @@ class Reporter:
 reporter = Reporter()
 
 COMPILER_NAME = "c_compiler"
+REFERENCE_COMPILER_NAME = "gcc_reference"
 TIMEOUT_RETURNCODE = 124
 
 @dataclass
@@ -85,11 +86,11 @@ class Result:
 
     test_case_name: Path
     return_code: int
-    error_log: str | None
+    error_log: tuple[str, str] | None
 
     def get_error_log(self) -> str | None:
         prefix = f"[TIMED OUT] " if self.return_code == TIMEOUT_RETURNCODE else ""
-        return f"{prefix}{self.error_log}"
+        return f"{prefix}{self.error_log[0]} failed:\n\t{self.error_log[1]}"
 
     @property
     def passed(self) -> bool:
@@ -116,28 +117,25 @@ class TestFailed(Exception):
     ):
         self._log_path = log_path
 
-        details = "\n".join([
-            self._get_relevant_files(COMPILER_NAME),
-            f"\t{self._log_path}.s",
-            f"\t{self._log_path}.s.printed",
-            *(f"\t{f}" for f in sanitizer_files),
-        ])
+        details = self._get_relevant_log_files(component)
 
-        if component != COMPILER_NAME:
-            details += f"\n{self._get_relevant_files(component)}"
+        if component != REFERENCE_COMPILER_NAME:
+            details += [f"{self._log_path}.gcc.s"]
 
-        full_error_log = f"{component} failed:\n{details}"
+            if component != COMPILER_NAME:
+                details += self._get_relevant_log_files(COMPILER_NAME)
+                details += [f"{self._log_path}.s", f"{self._log_path}.s.printed"]
 
         self.result = Result(
             test_case_name=test_name,
             return_code=return_code,
-            error_log=full_error_log,
+            error_log=(component, "\n\t".join(details)),
         )
 
-        super().__init__(full_error_log)
+        super().__init__(self.result.get_error_log())
 
-    def _get_relevant_files(self, component: str):
-        return "\n".join(f"\t{self._log_path}.{component}.{suffix}" for suffix in ["stderr.log", "stdout.log"])
+    def _get_relevant_log_files(self, component: str) -> list[str]:
+        return [f"{self._log_path}.{component}.{suffix}" for suffix in ["stderr.log", "stdout.log"]]
 
 class JUnitXMLFile():
     def __init__(self, path: Path):
@@ -147,7 +145,7 @@ class JUnitXMLFile():
     def __enter__(self):
         self._fd = open(self._path, "w")
         self._fd.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-        self._fd.write(f"<testsuite name={xmlquoteattr('Integration test')}>\n")
+        self._fd.write(f"<testsuite name={xmlquoteattr('Compiler benchmark')}>\n")
         return self
 
     def _write(self, msg: str) -> int:
@@ -163,18 +161,16 @@ class JUnitXMLFile():
 
     def write_result(self, result: Result) -> int:
         if result.passed:
-            body = ""
-            if result.error_log:
-                body = f"<system-out>{xmlescape(result.error_log)}</system-out>\n"
-            return self._write_testcase(result.test_case_name, body)
+            body = f"<system-out>{xmlescape(result.error_log)}</system-out>\n" if result.error_log else ""
 
         else:
-            error_text = result.get_error_log()
+            error_text = result.error_log[0]
             body = (
                 f"<error type={xmlquoteattr('error')} message={xmlquoteattr(error_text)}>\n"
                 f"{xmlescape(error_text)}</error>\n"
             )
-            return self._write_testcase(result.test_case_name, body)
+
+        return self._write_testcase(result.test_case_name, body)
 
     def __exit__(self, *_):
         self._fd.write("</testsuite>\n")
@@ -193,24 +189,25 @@ def run_subprocess(
 
     Returns a tuple of (return_code: int, error_message: str, timed_out: bool)
     """
+    with ExitStack() as stack:
+        # None means that stdout and stderr are handled by parent, i.e., they go to console by default
+        stdout = None
+        stderr = None
 
-    # None means that stdout and stderr are handled by parent, i.e., they go to console by default
-    stdout = None
-    stderr = None
+        if not verbose:
+            stdout = subprocess.DEVNULL
+            stderr = subprocess.DEVNULL
+        elif log_path:
+            stdout = stack.enter_context(open(f"{log_path}.stdout.log", "w"))
+            stderr = stack.enter_context(open(f"{log_path}.stderr.log", "w"))
 
-    if not verbose:
-        stdout = subprocess.DEVNULL
-        stderr = subprocess.DEVNULL
-    elif log_path:
-        stdout = open(f"{log_path}.stdout.log", "w")
-        stderr = open(f"{log_path}.stderr.log", "w")
+        try:
+            subprocess.run(cmd, stdout=stdout, stderr=stderr, check=True, **kwargs)
+        except subprocess.CalledProcessError as e:
+            return e.returncode, f"{e.cmd} failed with return code {e.returncode}", False
+        except subprocess.TimeoutExpired as e:
+            return TIMEOUT_RETURNCODE, f"{e.cmd} took more than {e.timeout}", True
 
-    try:
-        subprocess.run(cmd, stdout=stdout, stderr=stderr, check=True, **kwargs)
-    except subprocess.CalledProcessError as e:
-        return e.returncode, f"{e.cmd} failed with return code {e.returncode}", False
-    except subprocess.TimeoutExpired as e:
-        return TIMEOUT_RETURNCODE, f"{e.cmd} took more than {e.timeout}", True
     return 0, "", False
 
 def clean(top_dir: Path, **kwargs) -> bool:
@@ -400,7 +397,7 @@ def run_test(
     try:
         # GCC Reference Output
         run_component(
-            component="reference",
+            component=REFERENCE_COMPILER_NAME,
             cmd=[gcc, "-std=c90", "-pedantic", "-ansi", "-O0", gcc_arch, gcc_abi, "-S", to_assemble, "-o", f"{log_path}.gcc.s"]
         )
 
