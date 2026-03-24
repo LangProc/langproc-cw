@@ -182,13 +182,12 @@ type subprocess_status = tuple[int, str, bool]
 
 def run_subprocess(
     cmd: list[str],
-    timeout: int,
-    env: dict | None = None,
     log_path: str | None = None,
     verbose: bool = True,
+    **kwargs
 ) -> subprocess_status:
     """
-    Wrapper for subprocess.run(...) with common arguments and error handling.
+    Wrapper for `subprocess.run` with common arguments and error handling.
 
     Returns a tuple of (return_code: int, error_message: str, timed_out: bool)
     """
@@ -206,24 +205,25 @@ def run_subprocess(
         stderr = open(f"{log_path}.stderr.log", "w")
 
     try:
-        subprocess.run(cmd, env=env, stdout=stdout, stderr=stderr, timeout=timeout, check=True)
+        subprocess.run(cmd, stdout=stdout, stderr=stderr, check=True, **kwargs)
     except subprocess.CalledProcessError as e:
         return e.returncode, f"{e.cmd} failed with return code {e.returncode}", False
     except subprocess.TimeoutExpired as e:
         return timeout_returncode, f"{e.cmd} took more than {e.timeout}", True
     return 0, "", False
 
-def clean(top_dir: Path, timeout: int = 15) -> bool:
+def clean(top_dir: Path, **kwargs) -> bool:
     """
-    Wrapper for make clean.
+    Wrapper for `make clean`.
+    Additional arguments are passed to `run_subprocess`.
 
     Return True if successful, False otherwise
     """
     print(f"{GREEN}Cleaning project...{RESET}")
     return_code, error_msg, _ = run_subprocess(
         cmd=["make", "-C", top_dir, "clean"],
-        timeout=timeout,
         verbose=False,
+        **kwargs
     )
 
     if return_code != 0:
@@ -231,9 +231,10 @@ def clean(top_dir: Path, timeout: int = 15) -> bool:
         return False
     return True
 
-def make(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, log_path: str | None = None, timeout: int = 60) -> bool:
+def make(top_dir: Path, build_dir: Path, multithreading: int, **kwargs) -> bool:
     """
-    Wrapper for make build/c_compiler.
+    Wrapper for `make -j <multithreading> build/c_compiler`.
+    Additional arguments are passed to `run_subprocess`.
 
     Return True if successful, False otherwise
     """
@@ -246,18 +247,17 @@ def make(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, log
         cmd += ["-j", str(multithreading)]
     cmd += [f"{build_dir.name}/{COMPILER_NAME}"]
 
-    return_code, error_msg, _ = run_subprocess(
-        cmd=cmd, timeout=timeout, verbose=verbose, env=custom_env, log_path=log_path
-    )
+    return_code, error_msg, _ = run_subprocess(cmd=cmd, env=custom_env, **kwargs)
     if return_code != 0:
         print(f"{RED}Error when running make: {error_msg}{RESET}")
         return False
 
     return True
 
-def cmake(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, timeout: int = 60) -> bool:
+def cmake(top_dir: Path, build_dir: Path, multithreading: int, **kwargs) -> bool:
     """
-    Wrapper for cmake --build build
+    Wrapper for `cmake -S <top_dir> -B <build_dir> && cmake --parallel <multithreading> --build <build_dir>`.
+    Additional arguments are passed to `run_subprocess`.
 
     Return True if successful, False otherwise
     """
@@ -267,8 +267,7 @@ def cmake(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, ti
     # -DCMAKE_BUILD_TYPE=Release is equal to -O3
     return_code, error_msg, _ = run_subprocess(
         cmd=["cmake", "-S", top_dir, "-B", build_dir, "-DCMAKE_BUILD_TYPE=Release"],
-        timeout=timeout,
-        verbose=verbose
+        **kwargs
     )
     if return_code != 0:
         print(f"{RED}Error when running cmake (configure + generate): {error_msg}{RESET}")
@@ -279,25 +278,18 @@ def cmake(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, ti
     if multithreading > 1:
         cmd += ["--parallel", str(multithreading)]
 
-    return_code, error_msg, _ = run_subprocess(
-        cmd=cmd, timeout=timeout, verbose=verbose
-    )
+    return_code, error_msg, _ = run_subprocess(cmd=cmd, **kwargs)
     if return_code != 0:
         print(f"{RED}Error when running cmake (compile): {error_msg}{RESET}")
         return False
 
     return True
 
-def build(
-    top_dir: Path,
-    use_cmake: bool = False,
-    coverage: bool = False,
-    multithreading: int = 1,
-    verbose: bool = True,
-    timeout: int = 60
-):
+def build(top_dir: Path, use_cmake: bool = False, coverage: bool = False, **kwargs) -> bool:
     """
     Wrapper for building the student compiler. Assumes output folder exists.
+    `multithreading` is passed to `make` or `cmake`, the default value is used if absent.
+    Additional arguments are passed to `run_subprocess`.
 
     Return True if successful, False otherwise
     """
@@ -307,17 +299,16 @@ def build(
 
     # Build the compiler using cmake or make
     if use_cmake and not coverage:
-        build_success = cmake(top_dir, build_dir=build_dir, multithreading=multithreading, verbose=verbose, timeout=timeout)
-    else:
-        if use_cmake and coverage:
-            print(f"{RED}Coverage is not supported with CMake. Switching to make.{RESET}")
-        build_success = make(top_dir, build_dir=build_dir, multithreading=multithreading, verbose=verbose, timeout=timeout)
+        return cmake(top_dir, build_dir=build_dir, **kwargs)
 
-    return build_success
+    if use_cmake and coverage:
+        print(f"{RED}Coverage is not supported with CMake. Switching to make.{RESET}")
+    return make(top_dir, build_dir=build_dir, **kwargs)
 
-def coverage(top_dir: Path, timeout: int = 60) -> bool:
+def coverage(top_dir: Path, **kwargs) -> bool:
     """
-    Wrapper for make coverage.
+    Wrapper for `make coverage`.
+    Additional arguments are passed to `run_subprocess`.
 
     Return True if successful, False otherwise
     """
@@ -325,7 +316,7 @@ def coverage(top_dir: Path, timeout: int = 60) -> bool:
     custom_env = os.environ.copy()
     custom_env["DEBUG"] = "1"
     return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", top_dir, "coverage"], timeout=timeout, verbose=False, env=custom_env
+        cmd=["make", "-C", top_dir, "coverage"], verbose=False, env=custom_env, **kwargs
     )
     if return_code != 0:
         print(f"{RED}Error when running make coverage: {error_msg}{RESET}")
@@ -371,17 +362,15 @@ def process_result(
 def run_test(
     compiler: Callable[[Path, Path, int], subprocess_status],
     output_dir: Path,
-    tests_dir: Path,
     driver: Path,
-    timeout: int = 30
+    **kwargs
 ) -> Result:
     """
-    Run an instance of a test case.
+    Run an instance of a test case whose driver is given by <driver>.
+    The output of all the steps are put in <output_dir>.
+    Additional arguments are passed to `compiler` and `run_subprocess`.
 
-    Parameters:
-    - driver: driver path.
-
-    Returns Result object
+    Return Result object
     """
     gcc = "riscv32-unknown-elf-gcc"
     # GCC is not targetting rv32imfd because it is compatible with rv32gc which is the more widespread 32bits target
@@ -391,7 +380,8 @@ def run_test(
     # Replaces example_driver.c -> example.c
     new_name = driver.stem.replace("_driver", "") + ".c"
     to_assemble = driver.parent.joinpath(new_name).resolve()
-    test_name = to_assemble.relative_to(tests_dir)
+    cwd = Path.cwd()
+    test_name = to_assemble.relative_to(cwd) if to_assemble.is_relative_to(cwd) else to_assemble
 
     # Construct the path where logs would be stored, without the suffix
     # e.g. .../build/output/_example/example/example
@@ -401,7 +391,7 @@ def run_test(
     shutil.rmtree(log_path.parent, ignore_errors=True)
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def get_relevant_files(component: str):
+    def get_relevant_files(component: str) -> str:
         return "\n".join(f"\t{log_path}.{component}.{suffix}" for suffix in ["stderr.log", "stdout.log"])
 
     sanitizer_file_list = list(log_path.parent.glob(".*san.log.*"))
@@ -412,7 +402,7 @@ def run_test(
         *(f"\t{p}" for p in sanitizer_file_list),
     ])
 
-    def get_msg(component: str):
+    def get_msg(component: str) -> str:
         msg = f"{component.capitalize()} failed:\n{compiler_log_file_str}"
         if component != "compiler":
             msg += f"\n{get_relevant_files(component)}"
@@ -429,8 +419,8 @@ def run_test(
     def run_component(component: str, cmd: list[str]):
         return_code, _, timed_out = run_subprocess(
             cmd=cmd,
-            timeout=timeout,
             log_path=f"{log_path}.{component}",
+            **kwargs
         )
         if return_code != 0:
             fail(component, return_code, timed_out)
@@ -443,7 +433,7 @@ def run_test(
         )
 
         # Compile
-        return_code, _, timed_out = compiler(to_assemble, log_path, timeout)
+        return_code, _, timed_out = compiler(to_assemble, log_path, **kwargs)
         if return_code != 0:
             fail("compiler", return_code, timed_out)
 
@@ -472,16 +462,16 @@ def run_test(
     return Result(test_case_name=test_name, return_code=0, timeout=False, error_log=msg)
 
 def run_tests(
-    compiler: Callable[[Path, Path, int], subprocess_status],
-    output_dir: Path,
     tests_dir: Path,
     xml_file: JUnitXMLFile,
     multithreading: int,
     verbose: bool,
-    timeout: int = 30
+    **kwargs
 ) -> tuple[int, int]:
     """
-    Runs tests against compiler.
+    Runs tests is <tests_dir> against compiler provided by <compiler> and puts output inside <output_dir>.
+    Arguments `compiler` and `output_dir` are mandatory and are passed to `run_test`.
+    Additional arguments are passed to `compiler` and `run_subprocess`.
 
     Returns a tuple of (passing: int, total: int) tests
     """
@@ -498,14 +488,7 @@ def run_tests(
 
     if multithreading > 1:
         with ThreadPoolExecutor(max_workers=multithreading) as executor:
-            futures = [executor.submit(
-                run_test,
-                compiler=compiler,
-                output_dir=output_dir,
-                tests_dir=tests_dir,
-                driver=driver,
-                timeout=timeout
-            ) for driver in drivers]
+            futures = [executor.submit(run_test, driver=driver, **kwargs) for driver in drivers]
 
             for future in as_completed(futures):
                 result = future.result()
@@ -514,13 +497,7 @@ def run_tests(
 
     else:
         for driver in drivers:
-            result = run_test(
-                compiler=compiler,
-                output_dir=output_dir,
-                tests_dir=tests_dir,
-                driver=driver,
-                timeout=timeout
-            )
+            result = run_test(driver=driver, **kwargs)
             results.append(result.passed())
             process_result(result, xml_file, verbose, progress_bar)
 
@@ -532,9 +509,15 @@ def run_tests(
 
     return passing, total
 
-def student_compiler(compiler_path: Path, to_assemble: Path, log_path: Path, timeout: int) -> subprocess_status:
+def student_compiler(
+    compiler_path: Path,
+    to_assemble: Path,
+    log_path: Path,
+    **kwargs
+) -> subprocess_status:
     """
     Wrapper for `build/c_compiler -S <input_test> -o <output_stem>.s`.
+    Additional arguments are passed to `run_subprocess`.
 
     Return None if successful, a Result otherwise
     """
@@ -546,12 +529,19 @@ def student_compiler(compiler_path: Path, to_assemble: Path, log_path: Path, tim
     # Compile
     return run_subprocess(
         cmd=[compiler_path, "-S", to_assemble, "-o", f"{log_path}.s"],
-        timeout=timeout,
         env=custom_env,
         log_path=f"{log_path}.compiler",
+        **kwargs
     )
 
-def symlink_reference_compiler(to_assemble: Path, log_path: Path, timeout: int) -> subprocess_status:
+def symlink_reference_compiler(to_assemble: Path, log_path: Path, **kwargs) -> subprocess_status:
+    """
+    Symlinks the result of riscv-gcc as its own result.
+    It isn't really a compiler but can be passed as a compiler function to use the result of
+    riscv-gcc as the output of the compiler, thus testing the ability of riscv-gcc to pass tests.
+
+    Never fails.
+    """
     Path(f"{log_path}.s").symlink_to(f"{log_path}.gcc.s")
     return 0, "", False
 
@@ -655,13 +645,13 @@ def main():
     # Run the tests and save the results into JUnit XML file
     with JUnitXMLFile(build_dir / "junit_results.xml") as xml_file:
         passing, total = run_tests(
-            compiler=symlink_reference_compiler if args.validate_tests \
-                else partial(student_compiler, build_dir / COMPILER_NAME),
-            output_dir=output_dir,
             tests_dir=Path(args.dir),
             xml_file=xml_file,
             multithreading=args.multithreading,
-            verbose=not args.silent
+            verbose=not args.silent,
+            compiler=symlink_reference_compiler if args.validate_tests \
+                else partial(student_compiler, build_dir / COMPILER_NAME),
+            output_dir=output_dir
         )
 
     # Skip unavailable coverage and exit immediately for test validation
