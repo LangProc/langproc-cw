@@ -28,6 +28,7 @@ import sys
 import argparse
 import shutil
 import subprocess
+import logging
 from dataclasses import dataclass
 from collections.abc import Callable
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
@@ -35,20 +36,37 @@ from pathlib import Path
 from functools import partial
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from http.server import HTTPServer, SimpleHTTPRequestHandler
-from tqdm import tqdm
-
+from tqdm import tqdmf
 
 RED = "\033[31m"
 GREEN = "\033[32m"
 YELLOW = "\033[33m"
 RESET = "\033[0m"
 
-COMPILER_NAME = "c_compiler"
-TIMEOUT_RETURNCODE = 124
-
 if not sys.stdout.isatty():
     # Don't output colours when we're not in a TTY
     RED, GREEN, YELLOW, RESET = "", "", "", ""
+
+class ColorFormatter(logging.Formatter):
+    def format(self, record: logging.LogRecord) -> str:
+        msg = super().format(record)
+
+        if not sys.stdout.isatty():
+            return msg
+
+        if record.levelno == logging.INFO:
+            return f"{GREEN}{msg}{RESET}"
+        if record.levelno == logging.WARNING:
+            return f"{YELLOW}{msg}{RESET}"
+        if record.levelno >= logging.ERROR:
+            return f"{RED}{msg}{RESET}"
+
+        return msg
+
+logger = logging.getLogger("langproc.test")
+
+COMPILER_NAME = "c_compiler"
+TIMEOUT_RETURNCODE = 124
 
 @dataclass
 class Result:
@@ -74,7 +92,7 @@ class Result:
             msg = self.get_error_log()
             color = RED if self.return_code != 0 else YELLOW
 
-        return f"{self.test_case_name}: {color}{msg}{RESET}\n"
+        return f"{self.test_case_name}: {color}{msg}{RESET}"
 
 class TestFailed(Exception):
     def __init__(
@@ -191,7 +209,7 @@ def clean(top_dir: Path, timeout: int = 15) -> bool:
 
     Return True if successful, False otherwise
     """
-    print(f"{GREEN}Cleaning project...{RESET}")
+    logger.info("Cleaning project...")
     return_code, error_msg, _ = run_subprocess(
         cmd=["make", "-C", top_dir, "clean"],
         timeout=timeout,
@@ -199,7 +217,7 @@ def clean(top_dir: Path, timeout: int = 15) -> bool:
     )
 
     if return_code != 0:
-        print(f"{RED}Error when cleaning: {error_msg}{RESET}")
+        logger.error(f"Error when cleaning: {error_msg}")
         return False
     return True
 
@@ -209,7 +227,7 @@ def make(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, log
 
     Return True if successful, False otherwise
     """
-    print(f"{GREEN}Running make...{RESET}")
+    logger.info("Running make...")
     custom_env = os.environ.copy()
     custom_env["DEBUG"] = "1"
 
@@ -222,7 +240,7 @@ def make(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, log
         cmd=cmd, timeout=timeout, verbose=verbose, env=custom_env, log_path=log_path
     )
     if return_code != 0:
-        print(f"{RED}Error when running make: {error_msg}{RESET}")
+        logger.error(f"Error when running make: {error_msg}")
         return False
 
     return True
@@ -233,7 +251,7 @@ def cmake(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, ti
 
     Return True if successful, False otherwise
     """
-    print(f"{GREEN}Running cmake...{RESET}")
+    logger.info("Running cmake...")
 
     # cmake configure + generate
     # -DCMAKE_BUILD_TYPE=Release is equal to -O3
@@ -243,7 +261,7 @@ def cmake(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, ti
         verbose=verbose
     )
     if return_code != 0:
-        print(f"{RED}Error when running cmake (configure + generate): {error_msg}{RESET}")
+        logger.error(f"Error when running cmake (configure + generate): {error_msg}")
         return False
 
     # cmake compile
@@ -255,7 +273,7 @@ def cmake(top_dir: Path, build_dir: Path, multithreading: int, verbose: bool, ti
         cmd=cmd, timeout=timeout, verbose=verbose
     )
     if return_code != 0:
-        print(f"{RED}Error when running cmake (compile): {error_msg}{RESET}")
+        logger.error(f"Error when running cmake (compile): {error_msg}")
         return False
 
     return True
@@ -282,7 +300,7 @@ def build(
         build_success = cmake(top_dir, build_dir=build_dir, multithreading=multithreading, verbose=verbose, timeout=timeout)
     else:
         if use_cmake and coverage:
-            print(f"{RED}Coverage is not supported with CMake. Switching to make.{RESET}")
+            logger.warning("Coverage is not supported with CMake. Switching to make.")
         build_success = make(top_dir, build_dir=build_dir, multithreading=multithreading, verbose=verbose, timeout=timeout)
 
     return build_success
@@ -293,14 +311,14 @@ def coverage(top_dir: Path, timeout: int = 60) -> bool:
 
     Return True if successful, False otherwise
     """
-    print(f"{GREEN}Running make coverage...{RESET}")
+    logger.info("Running make coverage...")
     custom_env = os.environ.copy()
     custom_env["DEBUG"] = "1"
     return_code, error_msg, _ = run_subprocess(
         cmd=["make", "-C", top_dir, "coverage"], timeout=timeout, verbose=False, env=custom_env
     )
     if return_code != 0:
-        print(f"{RED}Error when running make coverage: {error_msg}{RESET}")
+        logger.error(f"Error when running make coverage: {error_msg}")
         return False
     return True
 
@@ -317,11 +335,11 @@ def serve_coverage_forever(root: Path, host: str, port: int):
             pass
 
     httpd = HTTPServer((host, port), Handler)
-    print(f"{GREEN}Serving coverage on{RESET} http://{host}:{port}/ ... (Ctrl+C to exit)")
+    logger.info(f"Serving coverage on http://{host}:{port}/ ... (Ctrl+C to exit)")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:
-        print(f"{RED}\nServer has been stopped!{RESET}")
+        logger.error("\nServer has been stopped!")
 
 def run_test(
     compiler: Callable[[Path, Path, int], subprocess_status],
@@ -474,11 +492,11 @@ def run_tests(
                 )
 
             if verbose:
-                tqdm.write(str(result))
+                tqdm.write(f"{result}\n")
 
     assert len(drivers) == passed + failed, f"Mismatch between total tests and processed results"
 
-    print(f"{GREEN}Passed {passed}/{passed + failed} found test cases{RESET}")
+    logger.info(f"Passed {passed}/{passed + failed} found test cases")
 
     return (passed, passed + failed)
 
@@ -628,6 +646,13 @@ def main():
         serve_coverage_forever("0.0.0.0", 8000)
 
 if __name__ == "__main__":
+    handler = logging.StreamHandler()
+    handler.setFormatter(ColorFormatter("%(message)s"))
+
+    logger.setLevel(logging.INFO)
+    logger.handlers.clear()
+    logger.addHandler(handler)
+    logger.propagate = False
     try:
         main()
     finally:
