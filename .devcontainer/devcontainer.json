@@ -18,8 +18,6 @@
 				"ms-python.python",
 				"daohong-emilio.yash",
 				"EditorConfig.EditorConfig",
-				"llvm-vs-code-extensions.vscode-clangd",
-				"ryanluker.vscode-coverage-gutters",
 				"ms-vscode.live-server"
 			]
 		}
