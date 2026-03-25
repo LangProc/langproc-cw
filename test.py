@@ -28,157 +28,156 @@ import sys
 import argparse
 import shutil
 import subprocess
-import threading
+from enum import IntEnum
+from contextlib import nullcontext, ExitStack
+from dataclasses import dataclass
 from collections.abc import Callable
 from xml.sax.saxutils import escape as xmlescape, quoteattr as xmlquoteattr
 from pathlib import Path
 from functools import partial
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from http.server import HTTPServer, SimpleHTTPRequestHandler
+from rich.progress import Progress, BarColumn, TextColumn
+from rich.console import Console
 
+class Verbosity(IntEnum):
+    QUIET = 0
+    NORMAL = 1
+    VERBOSE = 2
 
-RED = "\033[31m"
-GREEN = "\033[32m"
-YELLOW = "\033[33m"
-RESET = "\033[0m"
+class Reporter:
+    def __init__(self, verbosity: Verbosity = Verbosity.NORMAL):
+        self.console = Console()
+        self.verbosity = verbosity
+
+    def _emit(self, message: str, style: str, min_verbosity: Verbosity):
+        if self.verbosity >= min_verbosity:
+            self.console.print(message, style=style, highlight=False)
+
+    def debug(self, message: str, style: str = ""):
+        self._emit(message, style, Verbosity.VERBOSE)
+
+    def info(self, message: str, style: str = "green"):
+        self._emit(message, style, Verbosity.NORMAL)
+
+    def warning(self, message: str, style: str = "yellow"):
+        self._emit(message, style, Verbosity.NORMAL)
+
+    def error(self, message: str, style: str = "red"):
+        self._emit(message, style, Verbosity.QUIET)
+
+    def status(self, message: str, style: str = "cyan"):
+        if self.verbosity < Verbosity.VERBOSE:
+            return self.console.status(f"[{style}]{message}[/]" , spinner="dots")
+
+        # For high verbosity (when other logs are printed as well), fall back to info(...)
+        self.info(message, style=style)
+        return nullcontext()
+
+reporter = Reporter()
 
 COMPILER_NAME = "c_compiler"
+REFERENCE_COMPILER_NAME = "gcc_reference"
+TIMEOUT_RETURNCODE = 124
 
-if not sys.stdout.isatty():
-    # Don't output colours when we're not in a TTY
-    RED, GREEN, YELLOW, RESET = "", "", "", ""
-
+@dataclass
 class Result:
     """Class for keeping track of each test case result"""
 
-    def __init__(self, test_case_name: str, return_code: int, timeout: bool, error_log: str | None):
-        self._test_case_name = test_case_name
-        self._return_code = return_code
-        self._timeout = timeout
-        self._error_log = error_log
-        self._timeout = "[TIMED OUT] " if self._timeout else ""
+    test_case_name: Path
+    return_code: int
+    error_log: tuple[str, str] | None
 
+    def get_error_log(self) -> str | None:
+        prefix = f"[TIMED OUT] " if self.return_code == TIMEOUT_RETURNCODE else ""
+        return f"{prefix}{self.error_log[0]} failed:\n\t{self.error_log[1]}"
+
+    @property
     def passed(self) -> bool:
-        return self._return_code == 0
+        return self.return_code == 0
 
-    def to_xml(self) -> str:
-        if self.passed():
-            system_out = f"<system-out>{self._error_log}</system-out>\n" if self._error_log else ""
-            return (
-                f"<testcase name=\"{self._test_case_name}\">\n"
-                f"{system_out}"
-                f"</testcase>\n"
-            )
-
-        attribute = xmlquoteattr(self._timeout + self._error_log)
-        xml_tag_body = xmlescape(self._timeout + self._error_log)
-        return (
-            f"<testcase name=\"{self._test_case_name}\">\n"
-            f"<error type=\"error\" message={attribute}>\n{xml_tag_body}</error>\n"
-            f"</testcase>\n"
-        )
-
-    def to_log(self) -> str:
-        if self._return_code != 0:
-            msg = f"{RED}{self._timeout + self._error_log}"
-        elif self._error_log is None:
-            msg = f"{GREEN}Pass"
+    def __str__(self) -> str:
+        if self.error_log is None:
+            msg = "Pass"
+            color = "[green]"
         else:
-            msg = f"{YELLOW}{self._error_log}"
+            msg = self.get_error_log()
+            color = "[red]" if self.return_code != 0 else "[yellow]"
 
-        return f"{self._test_case_name}\n\t{msg}{RESET}\n"
+        return f"{self.test_case_name}: {color}{msg}[/]"
 
 class TestFailed(Exception):
-    def __init__(self, result: Result):
-        self.result = result
-        super().__init__(str(result._error_log))
+    def __init__(
+        self,
+        component: str,
+        test_name: Path,
+        return_code: int,
+        log_path: Path,
+        sanitizer_files: list[Path]
+    ):
+        self._log_path = log_path
+
+        details = self._get_relevant_log_files(component)
+        details += [str(p) for p in sanitizer_files]
+
+        if component != REFERENCE_COMPILER_NAME:
+            details += [f"{self._log_path}.gcc.s"]
+
+            if component != COMPILER_NAME:
+                details += self._get_relevant_log_files(COMPILER_NAME)
+                details += [f"{self._log_path}.s", f"{self._log_path}.s.printed"]
+
+        self.result = Result(
+            test_case_name=test_name,
+            return_code=return_code,
+            error_log=(component, "\n\t".join(details)),
+        )
+
+        super().__init__(self.result.get_error_log())
+
+    def _get_relevant_log_files(self, component: str) -> list[str]:
+        return [f"{self._log_path}.{component}.{suffix}" for suffix in ["stderr.log", "stdout.log"]]
 
 class JUnitXMLFile():
     def __init__(self, path: Path):
-        self.path = path
-        self.fd = None
+        self._path = path
+        self._fd = None
 
     def __enter__(self):
-        self.fd = open(self.path, "w")
-        self.fd.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-        self.fd.write("<testsuite name=\"Integration test\">\n")
+        self._fd = open(self._path, "w")
+        self._fd.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+        self._fd.write(f"<testsuite name={xmlquoteattr('Compiler benchmark')}>\n")
         return self
 
-    def write(self, __s: str) -> int:
-        return self.fd.write(__s)
+    def _write(self, msg: str) -> int:
+        return self._fd.write(msg)
 
-    def __exit__(self, exception_type, exception_value, exception_traceback):
-        self.fd.write("</testsuite>\n")
-        self.fd.close()
-
-class ProgressBar:
-    """
-    Creates a CLI progress bar that can update itself, provided nothing gets
-    in the way.
-
-    Parameters:
-    - total_tests: the length of the progress bar.
-    """
-
-    def __init__(self, total_tests: int):
-        self.total_tests = total_tests
-        self.passed = 0
-        self.failed = 0
-        self._lock = threading.Lock()
-
-        _, max_line_length = os.popen("stty size", "r").read().split()
-        self.max_line_length = min(
-            int(max_line_length) - len("Running Tests []"),
-            80 - len("Running Tests []")
+    def _write_testcase(self, test_case_name: str, body: str = "") -> int:
+        name_attr = xmlquoteattr(str(test_case_name))
+        return self._write(
+            f"<testcase name={name_attr}>\n"
+            f"{body}"
+            f"</testcase>\n"
         )
 
-        # Initialize the lines for the progress bar and stats
-        print("Running Tests [" + " " * self.max_line_length + "]")
-        print(f"{GREEN}Pass: 0 | {RED}Fail: 0 | {RESET}Remaining: {total_tests:2}")
+    def write_result(self, result: Result) -> int:
+        if result.passed:
+            body = f"<system-out>{xmlescape(result.error_log)}</system-out>\n" if result.error_log else ""
 
-        # Initialize the progress bar
-        self.update()
-
-    def update(self):
-        remaining_tests = self.total_tests - (self.passed + self.failed)
-
-        if self.total_tests == 0:
-            prop_passed = 0
-            prop_failed = 0
         else:
-            prop_passed = round(self.passed / self.total_tests * self.max_line_length)
-            prop_failed = round(self.failed / self.total_tests * self.max_line_length)
+            error_text = result.error_log[0]
+            body = (
+                f"<error type={xmlquoteattr('error')} message={xmlquoteattr(error_text)}>\n"
+                f"{xmlescape(error_text)}</error>\n"
+            )
 
-        # Ensure at least one # for passed and failed, if they exist
-        prop_passed = max(prop_passed, 1) if self.passed > 0 else 0
-        prop_failed = max(prop_failed, 1) if self.failed > 0 else 0
+        return self._write_testcase(result.test_case_name, body)
 
-        remaining = self.max_line_length - prop_passed - prop_failed
+    def __exit__(self, *_):
+        self._fd.write("</testsuite>\n")
+        self._fd.close()
 
-        progress_bar = f"{GREEN}{'#' * prop_passed}{RED}{'#' * prop_failed}{RESET}{' ' * remaining}"
-
-        frame = (
-            "\033[2A"                                                                     # Move up 2 lines
-            "\r\033[2K" + f"Running Tests [{progress_bar}]\n"                             # Clear + rewrite line 1
-            "\r\033[2K" + f"{GREEN}Pass: {self.passed:2} | {RED}Fail: {self.failed:2} | "
-            f"{RESET}Remaining: {remaining_tests:2}\n"                                    # Clear + rewrite line 2
-        )
-
-        # Write + flush on a single frame instead of 3 separate print(...) prevents a flickering visual glitch
-        sys.stdout.write(frame)
-        sys.stdout.flush()
-
-    def update_with_value(self, passed: bool):
-        if passed:
-            self.passed += 1
-        else:
-            self.failed += 1
-
-        # Lock prevents race conditions when multithreading is enabled
-        with self._lock:
-            self.update()
-
-type subprocess_status = tuple[int, str, bool]
+type subprocess_status = tuple[int, str]
 
 def run_subprocess(
     cmd: list[str],
@@ -191,26 +190,26 @@ def run_subprocess(
 
     Returns a tuple of (return_code: int, error_message: str, timed_out: bool)
     """
-    timeout_returncode = 124
+    with ExitStack() as stack:
+        # None means that stdout and stderr are handled by parent, i.e., they go to console by default
+        stdout = None
+        stderr = None
 
-    # None means that stdout and stderr are handled by parent, i.e., they go to console by default
-    stdout = None
-    stderr = None
+        if not verbose:
+            stdout = subprocess.DEVNULL
+            stderr = subprocess.DEVNULL
+        elif log_path:
+            stdout = stack.enter_context(open(f"{log_path}.stdout.log", "w"))
+            stderr = stack.enter_context(open(f"{log_path}.stderr.log", "w"))
 
-    if not verbose:
-        stdout = subprocess.DEVNULL
-        stderr = subprocess.DEVNULL
-    elif log_path:
-        stdout = open(f"{log_path}.stdout.log", "w")
-        stderr = open(f"{log_path}.stderr.log", "w")
+        try:
+            subprocess.run(cmd, stdout=stdout, stderr=stderr, check=True, **kwargs)
+        except subprocess.CalledProcessError as e:
+            return e.returncode, f"{e.cmd} failed with return code {e.returncode}"
+        except subprocess.TimeoutExpired as e:
+            return TIMEOUT_RETURNCODE, f"{e.cmd} took more than {e.timeout}"
 
-    try:
-        subprocess.run(cmd, stdout=stdout, stderr=stderr, check=True, **kwargs)
-    except subprocess.CalledProcessError as e:
-        return e.returncode, f"{e.cmd} failed with return code {e.returncode}", False
-    except subprocess.TimeoutExpired as e:
-        return timeout_returncode, f"{e.cmd} took more than {e.timeout}", True
-    return 0, "", False
+    return 0, ""
 
 def clean(top_dir: Path, **kwargs) -> bool:
     """
@@ -219,15 +218,12 @@ def clean(top_dir: Path, **kwargs) -> bool:
 
     Return True if successful, False otherwise
     """
-    print(f"{GREEN}Cleaning project...{RESET}")
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", top_dir, "clean"],
-        verbose=False,
-        **kwargs
-    )
+    cmd = ["make", "-C", top_dir, "clean"]
 
+    with reporter.status("Cleaning project..."):
+        return_code, error_msg = run_subprocess(cmd=cmd, verbose=False, **kwargs)
     if return_code != 0:
-        print(f"{RED}Error when cleaning: {error_msg}{RESET}")
+        reporter.error(f"Error when cleaning: {error_msg}")
         return False
     return True
 
@@ -238,7 +234,8 @@ def make(top_dir: Path, build_dir: Path, multithreading: int, **kwargs) -> bool:
 
     Return True if successful, False otherwise
     """
-    print(f"{GREEN}Running make...{RESET}")
+    verbose = reporter.verbosity >= Verbosity.VERBOSE
+
     custom_env = os.environ.copy()
     custom_env["DEBUG"] = "1"
 
@@ -247,9 +244,10 @@ def make(top_dir: Path, build_dir: Path, multithreading: int, **kwargs) -> bool:
         cmd += ["-j", str(multithreading)]
     cmd += [f"{build_dir.name}/{COMPILER_NAME}"]
 
-    return_code, error_msg, _ = run_subprocess(cmd=cmd, env=custom_env, **kwargs)
+    with reporter.status("Building with make..."):
+        return_code, error_msg = run_subprocess(cmd=cmd, env=custom_env, verbose=verbose, **kwargs)
     if return_code != 0:
-        print(f"{RED}Error when running make: {error_msg}{RESET}")
+        reporter.error(f"Error when running make: {error_msg}")
         return False
 
     return True
@@ -261,16 +259,16 @@ def cmake(top_dir: Path, build_dir: Path, multithreading: int, **kwargs) -> bool
 
     Return True if successful, False otherwise
     """
-    print(f"{GREEN}Running cmake...{RESET}")
+    verbose = reporter.verbosity >= Verbosity.VERBOSE
 
     # cmake configure + generate
     # -DCMAKE_BUILD_TYPE=Release is equal to -O3
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["cmake", "-S", top_dir, "-B", build_dir, "-DCMAKE_BUILD_TYPE=Release"],
-        **kwargs
-    )
+    cmd = ["cmake", "-S", top_dir, "-B", build_dir, "-DCMAKE_BUILD_TYPE=Release"]
+
+    with reporter.status("Building (configure + generate) with cmake..."):
+        return_code, error_msg = run_subprocess(cmd=cmd, verbose=verbose, **kwargs)
     if return_code != 0:
-        print(f"{RED}Error when running cmake (configure + generate): {error_msg}{RESET}")
+        reporter.error(f"Error when running cmake (configure + generate): {error_msg}")
         return False
 
     # cmake compile
@@ -278,9 +276,10 @@ def cmake(top_dir: Path, build_dir: Path, multithreading: int, **kwargs) -> bool
     if multithreading > 1:
         cmd += ["--parallel", str(multithreading)]
 
-    return_code, error_msg, _ = run_subprocess(cmd=cmd, **kwargs)
+    with reporter.status("Building (compile) with cmake..."):
+        return_code, error_msg = run_subprocess(cmd=cmd, verbose=verbose, **kwargs)
     if return_code != 0:
-        print(f"{RED}Error when running cmake (compile): {error_msg}{RESET}")
+        reporter.error(f"Error when running cmake (compile): {error_msg}")
         return False
 
     return True
@@ -302,7 +301,7 @@ def build(top_dir: Path, use_cmake: bool = False, coverage: bool = False, **kwar
         return cmake(top_dir, build_dir=build_dir, **kwargs)
 
     if use_cmake and coverage:
-        print(f"{RED}Coverage is not supported with CMake. Switching to make.{RESET}")
+        reporter.warning(f"Coverage is not supported with CMake. Switching to make.")
     return make(top_dir, build_dir=build_dir, **kwargs)
 
 def coverage(top_dir: Path, **kwargs) -> bool:
@@ -312,15 +311,17 @@ def coverage(top_dir: Path, **kwargs) -> bool:
 
     Return True if successful, False otherwise
     """
-    print(f"{GREEN}Running make coverage...{RESET}")
     custom_env = os.environ.copy()
     custom_env["DEBUG"] = "1"
-    return_code, error_msg, _ = run_subprocess(
-        cmd=["make", "-C", top_dir, "coverage"], verbose=False, env=custom_env, **kwargs
-    )
+
+    cmd = ["make", "-C", top_dir, "coverage"]
+
+    with reporter.status("Running make coverage..."):
+        return_code, error_msg = run_subprocess(cmd=cmd, verbose=False, env=custom_env, **kwargs)
     if return_code != 0:
-        print(f"{RED}Error when running make coverage: {error_msg}{RESET}")
+        reporter.error(f"Error when running make coverage: {error_msg}")
         return False
+
     return True
 
 def serve_coverage_forever(root: Path, host: str, port: int):
@@ -336,28 +337,11 @@ def serve_coverage_forever(root: Path, host: str, port: int):
             pass
 
     httpd = HTTPServer((host, port), Handler)
-    print(f"{GREEN}Serving coverage on{RESET} http://{host}:{port}/ ... (Ctrl+C to exit)")
     try:
-        httpd.serve_forever()
+        with reporter.status(f"Serving coverage on http://{host}:{port}/ (Ctrl+C to exit)"):
+            httpd.serve_forever()
     except KeyboardInterrupt:
-        print(f"{RED}\nServer has been stopped!{RESET}")
-
-def process_result(
-    result: Result,
-    xml_file: JUnitXMLFile,
-    verbose: bool = False,
-    progress_bar: ProgressBar = None,
-):
-    """
-    Processes results and updates progress bar if necessary.
-    """
-    xml_file.write(result.to_xml())
-
-    if verbose:
-        print(result.to_log())
-
-    elif progress_bar:
-        progress_bar.update_with_value(result.passed())
+        reporter.info("Server has been stopped!", style="red")
 
 def run_test(
     compiler: Callable[[Path, Path, int], subprocess_status],
@@ -391,51 +375,37 @@ def run_test(
     shutil.rmtree(log_path.parent, ignore_errors=True)
     log_path.parent.mkdir(parents=True, exist_ok=True)
 
-    def get_relevant_files(component: str) -> str:
-        return "\n".join(f"\t{log_path}.{component}.{suffix}" for suffix in ["stderr.log", "stdout.log"])
+    sanitizer_files = list(log_path.parent.glob(".*san.log.*"))
 
-    sanitizer_file_list = list(log_path.parent.glob(".*san.log.*"))
-    compiler_log_file_str = "\n".join([
-        get_relevant_files("compiler"),
-        f"\t{log_path}.s",
-        f"\t{log_path}.s.printed",
-        *(f"\t{p}" for p in sanitizer_file_list),
-    ])
-
-    def get_msg(component: str) -> str:
-        msg = f"{component.capitalize()} failed:\n{compiler_log_file_str}"
-        if component != "compiler":
-            msg += f"\n{get_relevant_files(component)}"
-        return msg
-
-    def fail(component: str, return_code: int, timed_out: bool):
-        raise TestFailed(Result(
-            test_case_name=test_name,
+    def fail(component: str, return_code: int):
+        raise TestFailed(
+            component=component,
+            test_name=test_name,
             return_code=return_code,
-            timeout=timed_out,
-            error_log=get_msg(component),
-        ))
+            log_path=log_path,
+            sanitizer_files=sanitizer_files
+        )
 
     def run_component(component: str, cmd: list[str]):
-        return_code, _, timed_out = run_subprocess(
+        return_code, _ = run_subprocess(
             cmd=cmd,
             log_path=f"{log_path}.{component}",
             **kwargs
         )
         if return_code != 0:
-            fail(component, return_code, timed_out)
+            fail(component, return_code)
 
     try:
         # GCC Reference Output
         run_component(
-            component="reference",
+            component=REFERENCE_COMPILER_NAME,
             cmd=[gcc, "-std=c90", "-pedantic", "-ansi", "-O0", gcc_arch, gcc_abi, "-S", to_assemble, "-o", f"{log_path}.gcc.s"]
         )
 
         # Compile
-        return_code, _, timed_out = compiler(to_assemble, log_path, **kwargs)
+        return_code, _ = compiler(to_assemble, log_path, **kwargs)
         if return_code != 0:
-            fail("compiler", return_code, timed_out)
+            fail(COMPILER_NAME, return_code)
 
         # Assemble
         run_component(
@@ -458,14 +428,13 @@ def run_test(
     except TestFailed as e:
         return e.result
 
-    msg = f"Sanitizer warnings: {" ".join(sanitizer_file_list)}" if len(sanitizer_file_list) != 0 else None
-    return Result(test_case_name=test_name, return_code=0, timeout=False, error_log=msg)
+    msg = f"Sanitizer warnings: {" ".join(sanitizer_files)}" if len(sanitizer_files) != 0 else None
+    return Result(test_case_name=test_name, return_code=0, error_log=msg)
 
 def run_tests(
     tests_dir: Path,
     xml_file: JUnitXMLFile,
     multithreading: int,
-    verbose: bool,
     **kwargs
 ) -> tuple[int, int]:
     """
@@ -477,37 +446,58 @@ def run_tests(
     """
     drivers = list(tests_dir.rglob("*_driver.c"))
     drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
-    results = []
 
-    progress_bar = None
-    if not verbose and sys.stdout.isatty():
-        progress_bar = ProgressBar(len(drivers))
-    else:
-        # Force verbose mode when not a terminal
-        verbose = True
+    passed = failed = 0
 
-    if multithreading > 1:
-        with ThreadPoolExecutor(max_workers=multithreading) as executor:
-            futures = [executor.submit(run_test, driver=driver, **kwargs) for driver in drivers]
+    with Progress(
+        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+        BarColumn(bar_width=None),
+        TextColumn(
+            "[green]passed={task.fields[passed]}[/], "
+            "[red]failed={task.fields[failed]}[/], "
+            "{task.fields[rate]:.2f} test/s"
+        ),
+        console=reporter.console,
+        transient=True,
+        disable=not sys.stdout.isatty(),
+    ) as progress, ThreadPoolExecutor(max_workers=multithreading) as executor:
+        task_id = progress.add_task(
+            "tests",
+            total=len(drivers),
+            passed=0,
+            failed=0,
+            rate=0.0,
+        )
 
-            for future in as_completed(futures):
-                result = future.result()
-                results.append(result.passed())
-                process_result(result, xml_file, verbose, progress_bar)
+        futures = [executor.submit(run_test, driver=driver, **kwargs) for driver in drivers]
 
-    else:
-        for driver in drivers:
-            result = run_test(driver=driver, **kwargs)
-            results.append(result.passed())
-            process_result(result, xml_file, verbose, progress_bar)
+        for future in as_completed(futures):
+            result = future.result()
+            xml_file.write_result(result)
 
-    passing = sum(results)
-    total = len(drivers)
+            if result.passed:
+                passed += 1
+            else:
+                failed += 1
 
-    if verbose:
-        print(f"\n>> Test Summary: {GREEN}{passing} Passed, {RED}{total-passing} Failed{RESET}")
+            elapsed = progress.tasks[task_id].elapsed or 0.0
+            rate = (passed + failed) / elapsed if elapsed > 0 else 0.0
 
-    return passing, total
+            progress.update(
+                task_id,
+                advance=1,
+                passed=passed,
+                failed=failed,
+                rate=rate,
+            )
+
+            reporter.debug(f"{result}\n")
+
+    assert len(drivers) == passed + failed, f"Mismatch between total tests and processed results"
+
+    reporter.info(f"[bold]Passed {passed}/{passed + failed} found test cases[/]")
+
+    return (passed, passed + failed)
 
 def student_compiler(
     compiler_path: Path,
@@ -527,12 +517,8 @@ def student_compiler(
     custom_env["UBSAN_OPTIONS"] = f"log_path={log_path}.ubsan.log"
 
     # Compile
-    return run_subprocess(
-        cmd=[compiler_path, "-S", to_assemble, "-o", f"{log_path}.s"],
-        env=custom_env,
-        log_path=f"{log_path}.compiler",
-        **kwargs
-    )
+    cmd = [compiler_path, "-S", to_assemble, "-o", f"{log_path}.s"]
+    return run_subprocess(cmd=cmd, env=custom_env, log_path=f"{log_path}.{COMPILER_NAME}", **kwargs)
 
 def symlink_reference_compiler(to_assemble: Path, log_path: Path, **kwargs) -> subprocess_status:
     """
@@ -613,12 +599,14 @@ def parse_args(tests_dir: Path) -> argparse.Namespace:
     )
     return parser.parse_args()
 
-def main():
+if __name__ == "__main__":
     root_dir = Path(__file__).resolve().parent
     build_dir = root_dir / "build"
     output_dir = build_dir / "output"
 
     args = parse_args(tests_dir=root_dir / "tests")
+
+    reporter.verbosity = Verbosity.NORMAL if args.silent else Verbosity.VERBOSE
 
     # Clean the repo if required
     if not args.no_clean:
@@ -636,8 +624,7 @@ def main():
             top_dir=root_dir,
             use_cmake=args.use_cmake,
             coverage=args.coverage,
-            multithreading=args.multithreading,
-            verbose=not args.silent
+            multithreading=args.multithreading
         )
         if not build_success:
             raise RuntimeError("Error when building")
@@ -648,7 +635,6 @@ def main():
             tests_dir=Path(args.dir),
             xml_file=xml_file,
             multithreading=args.multithreading,
-            verbose=not args.silent,
             compiler=symlink_reference_compiler if args.validate_tests \
                 else partial(student_compiler, build_dir / COMPILER_NAME),
             output_dir=output_dir
@@ -658,20 +644,10 @@ def main():
     if args.validate_tests:
         if passing != total:
             raise RuntimeError(f"{total - passing} tests failed during test validation")
-        return
 
     # Find coverage if required. Note, that the coverage server will be blocking
-    if args.coverage:
+    elif args.coverage:
         coverage_success = coverage(top_dir=root_dir)
         if not coverage_success:
             raise RuntimeError("Error when running make coverage")
-        serve_coverage_forever("0.0.0.0", 8000)
-
-if __name__ == "__main__":
-    try:
-        main()
-    finally:
-        print(RESET, end="")
-        if sys.stdout.isatty():
-            # This solves dodgy terminal behaviour on multithreading
-            os.system("stty echo")
+        serve_coverage_forever(root_dir, "0.0.0.0", 8000)
