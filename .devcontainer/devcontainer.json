@@ -11,13 +11,8 @@
 	"customizations": {
 		"vscode": {
 			"extensions": [
-				"ms-vscode.cpptools-extension-pack",
-				"eamodio.gitlens",
-				"ms-vsliveshare.vsliveshare",
-				"ms-vscode.makefile-tools",
-				"ms-python.python",
+				"ms-vscode.cpptools-extension-pack", // All microsoft official c++ extensions
 				"daohong-emilio.yash",
-				"EditorConfig.EditorConfig",
 				"ms-vscode.live-server"
 			]
 		}
