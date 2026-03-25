@@ -122,6 +122,7 @@ class TestFailed(Exception):
         self._log_path = log_path
 
         details = self._get_relevant_log_files(component)
+        details += [str(p) for p in sanitizer_files]
 
         if component != REFERENCE_COMPILER_NAME:
             details += [f"{self._log_path}.gcc.s"]
