@@ -8,13 +8,14 @@ CXXFLAGS += -fsanitize=address -fsanitize-recover=address # enable address sanit
 CXXFLAGS += -fsanitize=leak # enable leak sanitization
 CXXFLAGS += -fsanitize=undefined # enable undefined behaviour sanitization
 CXXFLAGS += -I include # look for header files in the `include` directory
+JOBS = $(shell nproc)
 ifdef DEBUG
 CXXFLAGS += -g # generate debugging information
 CXXFLAGS += -O0 # perform minimal optimisations
 CXXFLAGS += -rdynamic # to get more helpful traces when debugging
 CXXFLAGS += --coverage # enable code coverage
 CXXFLAGS += -DDEBUG # enable code behind "ifdef DEBUG"
-COVFLAGS = -j `nproc` --no-external --exclude "`pwd`/build/*" --demangle-cpp -d .
+COVFLAGS = -j $(JOBS) --no-external --exclude "`pwd`/build/*" --demangle-cpp -d .
 else
 CXXFLAGS += -O3 # perform optimisations
 endif
@@ -57,7 +58,7 @@ coverage:
 	@mkdir -p coverage
 	@lcov -c $(COVFLAGS) -o coverage/runtime.info
 	@lcov -a build/base.info -a coverage/runtime.info -o coverage/lcov.info
-	@genhtml -j `nproc` --flat --ignore-errors unmapped -o coverage coverage/lcov.info
+	@genhtml -j $(JOBS) --flat --ignore-errors unmapped -o coverage coverage/lcov.info
 	@find . -name "*.gcda" -delete
 endif
 
