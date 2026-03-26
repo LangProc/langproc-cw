@@ -56,9 +56,9 @@ ifdef DEBUG
 coverage:
 	@rm -rf coverage/
 	@mkdir -p coverage
-	@lcov -c $(COVFLAGS) -o coverage/runtime.info
+	lcov -c $(COVFLAGS) -o coverage/runtime.info
 	@lcov -a build/base.info -a coverage/runtime.info -o coverage/lcov.info
-	@genhtml -j $(JOBS) --flat --ignore-errors unmapped -o coverage coverage/lcov.info
+	genhtml -j $(JOBS) --flat --ignore-errors unmapped -o coverage coverage/lcov.info
 	@find . -name "*.gcda" -delete
 endif
 
