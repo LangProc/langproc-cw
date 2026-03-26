@@ -8,7 +8,7 @@ VS Code will also display a warning on lines not covered.
 ![Index.html screenshot](./assets/coverage_example.png)
 
 To know which lines are covered by a single test, first make sure your compiler is built without optimisations (if you used the `--optimise` or `make` without `DEBUG=1`, or if you are unsure, run `make clean && make DEBUG=1`).
-Then run your compiler on a file (`build/c_compiler -S <test_file.c> -o <whatever>`).
+Then run your compiler on a file (`build/c_compiler -S [source-file.c] -o [dest-file.s]`).
 Finally run `make DEBUG=1 coverage` to generate the coverage webpage and update the covered lines in VS Code.
 
 ## Viewing the coverage webpage

@@ -99,9 +99,9 @@ class ProcessOutput:
     """
     An error message with a list of relevant files
     """
-    def __init__(self, short_message: str | None = None, files: list[Path] = []):
+    def __init__(self, short_message: str | None = None, files: list[Path] | None = None):
         self.short_message = short_message
-        self._files = files
+        self._files = [] if files is None else files
 
     def succeded(self) -> bool:
         return self.short_message is None
@@ -181,14 +181,14 @@ def stem_add_suffix(stem: Path, suffix: str) -> Path:
 def run_subprocess(
     cmd: list[str],
     action: str,
-    log_stem: str | None = None,
+    log_stem: Path | None = None,
     verbose: bool = True,
     **kwargs
 ) -> ProcessOutput:
     """
     Wrapper for `subprocess.run` with common arguments and error handling.
 
-    Returns a PorcessOutput
+    Returns a ProcessOutput
     """
     with ExitStack() as stack:
         if not verbose:
@@ -285,9 +285,9 @@ def run_component(
         log_stem=stem_add_suffix(log_stem, component.value.suffix),
         **kwargs
     )
-    if status.failed() and component != Component.REFERENCE_COMPILER:
+    if status.failed() and component is not Component.REFERENCE_COMPILER:
         compiler_assembly = stem_add_suffix(log_stem, "s")
-        if component == Component.COMPILER:
+        if component is Component.COMPILER:
             if compiler_assembly.is_file():
                 status.add_file(compiler_assembly)
         elif compiler_assembly.is_file():
@@ -315,8 +315,8 @@ def run_test(
     **kwargs
 ) -> ProcessOutput:
     """
-    Run an instance of a test case whose driver is given by <driver_file>.
-    The output of all the steps are put in <output_dir>.
+    Run an instance of a test case whose driver is given by `driver_file`.
+    The output of all the steps are put in `output_dir`.
     Additional arguments are passed to `compiler` and `run_subprocess`.
 
     Returns a ProcessOutput
@@ -426,13 +426,13 @@ def run_tests(
             rate=0.0,
         )
 
-        tests = {
-            executor.submit(run_test, driver_file=driver, **kwargs): driver \
+        job_to_driver = {
+            executor.submit(run_test, driver_file=driver, **kwargs): driver
             for driver in drivers
         }
-        for future in as_completed(tests):
-            test_file = tests[future]
-            test_file = relative_path(test_file.with_stem(test_file.stem.removesuffix("_driver")))
+        for job in as_completed(job_to_driver):
+            driver = job_to_driver[job]
+            test_file = relative_path(driver.with_stem(driver.stem.removesuffix("_driver")))
             status = future.result()
             if report is not None:
                 report.write_result(test_file=test_file, result=status)
@@ -466,7 +466,7 @@ def run_tests(
 
 def student_compiler(compiler_path: Path, input_file: Path, log_stem: Path, **kwargs) -> ProcessOutput:
     """
-    Wrapper for `build/c_compiler -S <input_test> -o <log_stem>.s`.
+    Wrapper for `build/c_compiler -S <input_file> -o <log_stem>.s`.
     Additional arguments are passed to `run_subprocess`.
 
     Returns None if successful, a Result otherwise
