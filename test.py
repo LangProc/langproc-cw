@@ -23,18 +23,17 @@ __author__ = "William Huynh, Filip Wojcicki, James Nock, Quentin Corradi"
 import shlex
 import subprocess
 import xml.sax.saxutils as xml
+from os import environ, cpu_count
+from sys import stdout, exit
+from shutil import rmtree
+from pathlib import Path
+from argparse import ArgumentParser, Namespace
 from enum import IntEnum, Enum
 from typing import NamedTuple
 from functools import partial
 from contextlib import nullcontext, ExitStack
-from dataclasses import dataclass
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from os import environ, cpu_count
-from sys import stdout
-from shutil import rmtree
-from pathlib import Path
-from argparse import ArgumentParser, Namespace
 from rich.markup import escape as rich_escape
 from rich.console import Console
 from rich.progress import Progress, BarColumn, TextColumn
@@ -91,7 +90,7 @@ class Reporter:
 
 reporter = Reporter()
 
-def relative_path(path: Path) -> str:
+def get_relative_path(path: Path) -> str:
     cwd = Path().resolve()
     return str(path.relative_to(cwd)) if path.is_relative_to(cwd) else str(path)
 
@@ -100,12 +99,14 @@ class ProcessOutput:
     An error message with a list of relevant files
     """
     def __init__(self, short_message: str | None = None, files: list[Path] | None = None):
-        self.short_message = short_message
-        self._files = [] if files is None else files
+        self._short_message = short_message
+        self._files = files or []
 
+    @property
     def succeded(self) -> bool:
         return self.short_message is None
 
+    @property
     def failed(self) -> bool:
         return self.short_message is not None
 
@@ -115,24 +116,34 @@ class ProcessOutput:
     def add_file(self, file: Path):
         self._files.append(file)
 
-    def get_long_message(self) -> str | None:
+    def add_files(self, files: Iterator[Path]):
+        self._files.extend(files)
+
+    def get_short_message(self) -> str | None:
+        return self._short_message
+
+    def prefix_short_message(self, prefix: str):
+        self._short_message = prefix if self._short_message is None \
+            else f"{prefix} {self._short_message}"
+
+    def get_message_with_file_list(self) -> str | None:
         if self._is_empty():
             return None
 
-        logcat = ["" if self.short_message is None else f"{self.short_message}\n", "See:\n"]
+        logcat = ["" if self._short_message is None else f"{self._short_message}\n", "See:\n"]
         for file in self._files:
             logcat.append("\t")
-            logcat.append(relative_path(file))
+            logcat.append(get_relative_path(file))
             logcat.append("\n")
         return ''.join(logcat)
 
-    def get_full_message(self) -> str | None:
+    def get_message_with_file_content(self) -> str | None:
         if self._is_empty():
             return None
 
-        logcat = ["" if self.short_message is None else f"{self.short_message}\n"]
+        logcat = ["" if self._short_message is None else f"{self._short_message}\n"]
         for file in self._files:
-            logcat.append(relative_path(file))
+            logcat.append(get_relative_path(file))
             logcat.append(":\n")
             logcat.append(file.read_text())
             logcat.append("\n")
@@ -160,11 +171,11 @@ class JUnitXMLFile():
         )
 
     def write_result(self, test_file: Path, result: ProcessOutput):
-        full_message = result.get_full_message()
+        full_message = result.get_message_with_file_content()
         if full_message is None:
             body = ""
         else:
-            short_message = "" if result.short_message is None else result.short_message
+            short_message = result.get_short_message() or ""
             body = (
                 f"<error type={xml.quoteattr('error')} message={xml.quoteattr(short_message)}>\n"
                 f"{xml.escape(full_message)}</error>\n"
@@ -208,8 +219,9 @@ def run_subprocess(
             subprocess.run(cmd, stdout=stdout, stderr=stderr, check=True, **kwargs)
             return ProcessOutput()
         except subprocess.SubprocessError as e:
-            e.cmd = shlex.join(relative_path(x) if isinstance(x, Path) else x for x in e.cmd)
-            # __str__ is required by BaseException and gives a nice message here
+            # __str__ (default formatter used for `{e}`) is required by BaseException
+            # It gives a nice message but the command line is a mess so I'm helping it a bit
+            e.cmd = shlex.join(get_relative_path(x) if isinstance(x, Path) else x for x in e.cmd)
             return ProcessOutput(short_message=f"Error when {action.lower()}: {e}", files=files)
 
 def clean(top_dir: Path, **kwargs) -> bool:
@@ -223,9 +235,9 @@ def clean(top_dir: Path, **kwargs) -> bool:
     cmd = ["make", "-C", top_dir, "clean"]
     with reporter.status(message=action):
         status = run_subprocess(action=action, cmd=cmd, verbose=False, **kwargs)
-    if status.failed():
-        reporter.error(status.short_message)
-    return status.succeded()
+    if status.failed:
+        reporter.error(status.get_short_message())
+    return status.succeded
 
 def build(top_dir: Path, multithreading: int = 1, optimise: bool = False, **kwargs) -> bool:
     """
@@ -247,9 +259,9 @@ def build(top_dir: Path, multithreading: int = 1, optimise: bool = False, **kwar
     ]
     with reporter.status(message=action):
         status = run_subprocess(cmd=cmd, action=action, verbose=verbose, **kwargs)
-    if status.failed():
-        reporter.error(status.short_message)
-    return status.succeded()
+    if status.failed:
+        reporter.error(status.get_short_message())
+    return status.succeded
 
 def coverage(top_dir: Path, **kwargs) -> bool:
     """
@@ -260,12 +272,13 @@ def coverage(top_dir: Path, **kwargs) -> bool:
     """
     action = "Processing coverage data"
     cmd = ["make", "DEBUG=1", "-C", top_dir, "coverage"]
+    verbose = reporter.verbosity >= Verbosity.VERBOSE
 
     with reporter.status(message=action):
-        status = run_subprocess(cmd=cmd, action=action, verbose=False, **kwargs)
-    if status.failed():
-        reporter.error(status.short_message)
-    return status.succeded()
+        status = run_subprocess(cmd=cmd, action=action, verbose=verbose, **kwargs)
+    if status.failed:
+        reporter.error(status.get_short_message())
+    return status.succeded
 
 def run_component(
     component: Component,
@@ -274,34 +287,45 @@ def run_component(
     **kwargs
 ) -> ProcessOutput:
     """
-    Runs one step of testing the compiler against a single test file.
+    Runs one step of testing the compiler against a single test file, then links additional output files.
 
     Returns a ProcessOutput
     """
-    # Cleaner name, NOT A PATH TO AN ACTUAL FILE
     status = run_subprocess(
         cmd=cmd,
         action=component.value.action,
         log_stem=stem_add_suffix(log_stem, component.value.suffix),
         **kwargs
     )
-    if status.failed() and component is not Component.REFERENCE_COMPILER:
+    # All passes after student compiler (so just not reference compiler) should add files to refer to
+    # I tried to link them in the order students should inspect them
+    # If the compiuler succeded and a futher component failed, it is likely caused by the compiler
+    # so we should link the compiler outputs, in particular the produced assembly (treated specially, see below)
+    if status.failed and component is not Component.REFERENCE_COMPILER:
+        # If the compiler output is present add it with the reference to compare to;
+        # if the compiler failed we don't expect it but link it if present,
+        # otherwise it's probably the reason of the failure, so it's worth mentioning first in the error message
         compiler_assembly = stem_add_suffix(log_stem, "s")
         if component is Component.COMPILER:
             if compiler_assembly.is_file():
                 status.add_file(compiler_assembly)
-        elif compiler_assembly.is_file():
-            compiler_stem = stem_add_suffix(log_stem, Component.COMPILER.value.suffix)
-            status.add_file(stem_add_suffix(compiler_stem, "stdout.log"))
-            status.add_file(stem_add_suffix(compiler_stem, "stderr.log"))
-            status.add_file(compiler_assembly)
+            # Don't link it if it failed, don't need to duplicate link std(out/err)
         else:
-            status.short_message = f"[compiler output missing] {status.short_message}"
+            compiler_stem = stem_add_suffix(log_stem, Component.COMPILER.value.suffix)
+            status.add_files([
+                stem_add_suffix(compiler_stem, "stdout.log"),
+                stem_add_suffix(compiler_stem, "stderr.log")
+            ])
+            if compiler_assembly.is_file():
+                status.add_file(compiler_assembly)
+            else:
+                status.prefix_short_message("[compiler output missing]")
 
+        # the .s.printed is not required but likely produced so we optionally link it
         printed_assembly = stem_add_suffix(compiler_assembly, "printed")
         if printed_assembly.is_file():
             status.add_file(printed_assembly)
-        # No point in comparing output if assembly has not been generated
+        # No point in comparing assembly with gcc if the student compiler did not generate it
         if compiler_assembly.is_file():
             status.add_file(stem_add_suffix(log_stem, "gcc.s"))
         for file in log_stem.parent.glob(".*san.log.*"):
@@ -319,11 +343,17 @@ def run_test(
     The output of all the steps are put in `output_dir`.
     Additional arguments are passed to `compiler` and `run_subprocess`.
 
-    Returns a ProcessOutput
+    Returns the ProcessOutput of the failing step,
+        a failing ProcessOutput if every step succeeds but there are sanitizer warnings,
+        or a succeding ProcessOuput
     """
     # Replaces example_driver.c -> example.c
     test_file = driver_file.with_stem(driver_file.stem.removesuffix("_driver"))
-    assert test_file.is_file(), f"{test_file} is not a file"
+    if not test_file.is_file():
+        raise FileNotFoundError(
+            f"Test driver `{get_relative_path(driver_file})` doesn't have"
+            f"an associated test file ({get_relative_path(test_file)})"
+        )
 
     # Construct the stem to use for output files, so the path without the suffix
     # e.g. .../build/output/_example/example/example
@@ -336,41 +366,38 @@ def run_test(
     # GCC is not targetting rv32imfd (base target of the course) because:
     # rv32imfd is compatible with rv32gc and the C extension is a part of extended goals
     isa = "rv32gc"
-    def gcc_cmd(*args) -> list[str]:
-        cmd = ["riscv32-unknown-elf-gcc", f"-march={isa}", "-mabi=ilp32d"]
-        cmd.extend(args)
-        return cmd
+    gcc_cmd = ["riscv32-unknown-elf-gcc", f"-march={isa}", "-mabi=ilp32d"]
 
     # GCC Reference Output
     status = run_component(
         component=Component.REFERENCE_COMPILER,
-        cmd=gcc_cmd("-std=c90", "-pedantic", "-ansi", "-O0", "-S", test_file, "-o", stem_add_suffix(output_stem, "gcc.s")),
+        cmd=gcc_cmd + ["-std=c90", "-pedantic", "-ansi", "-O0", "-S", test_file, "-o", stem_add_suffix(output_stem, "gcc.s")],
         log_stem=output_stem
     )
-    if status.failed():
+    if status.failed:
         return status
 
     # Compile
     status = compiler(test_file, output_stem, **kwargs)
-    if status.failed():
+    if status.failed:
         return status
 
     # Assemble
     status = run_component(
         component=Component.ASSEMBLER,
-        cmd=gcc_cmd("-c", stem_add_suffix(output_stem, "s"), "-o", stem_add_suffix(output_stem, "o")),
+        cmd=gcc_cmd + ["-c", stem_add_suffix(output_stem, "s"), "-o", stem_add_suffix(output_stem, "o")],
         log_stem=output_stem
     )
-    if status.failed():
+    if status.failed:
         return status
 
     # Link
     status = run_component(
         component=Component.LINKER,
-        cmd=gcc_cmd("-static", stem_add_suffix(output_stem, "o"), driver_file, "-o", output_stem),
+        cmd=gcc_cmd + ["-static", stem_add_suffix(output_stem, "o"), driver_file, "-o", output_stem],
         log_stem=output_stem
     )
-    if status.failed():
+    if status.failed:
         return status
 
     # Simulate
@@ -379,16 +406,14 @@ def run_test(
         cmd=["spike", f"--isa={isa}", "pk", output_stem],
         log_stem=output_stem
     )
-    if status.failed():
+    if status.failed:
         return status
 
     sanitizer_files = list(output_stem.parent.glob(".*san.log.*"))
     if len(sanitizer_files) != 0:
-        for f in sanitizer_files:
-            status.add_file(f)
-        status.short_message = "Sanitizer warnings"
+        return ProcessOutput(short_message="Sanitizer warnings.", files=sanitizer_files)
 
-    return status
+    return ProcessOutput()
 
 def run_tests(
     tests_dir: Path,
@@ -432,12 +457,12 @@ def run_tests(
         }
         for job in as_completed(job_to_driver):
             driver = job_to_driver[job]
-            test_file = relative_path(driver.with_stem(driver.stem.removesuffix("_driver")))
-            status = future.result()
+            test_file = get_relative_path(driver.with_stem(driver.stem.removesuffix("_driver")))
+            status = job.result()
             if report is not None:
                 report.write_result(test_file=test_file, result=status)
 
-            if status.succeded():
+            if status.succeded:
                 passed += 1
             else:
                 failed += 1
@@ -453,7 +478,7 @@ def run_tests(
                 rate=rate,
             )
 
-            long_message = status.get_long_message()
+            long_message = status.get_message_with_file_list()
             if long_message is not None:
                 reporter.debug(rich_escape(f"[{test_file}]\n{long_message}"), style="red")
 
@@ -469,7 +494,7 @@ def student_compiler(compiler_path: Path, input_file: Path, log_stem: Path, **kw
     Wrapper for `build/c_compiler -S <input_file> -o <log_stem>.s`.
     Additional arguments are passed to `run_subprocess`.
 
-    Returns None if successful, a Result otherwise
+    Returns a ProcessOutput
     """
     # Modifying environment to combat errors on memory leak
     custom_env = environ.copy()
@@ -504,11 +529,10 @@ def parse_args(tests_dir: Path) -> Namespace:
         help="(Optional) paths to the compiler test folders. Use this to select certain tests. "
         "Leave blank to run all tests."
     )
-    CPUs = cpu_count()
     parser.add_argument(
         "-m", "--multithreading",
         nargs="?",
-        const=8 if CPUs is None else CPUs,
+        const=cpu_count() or 8,
         default=1,
         type=int,
         metavar="N",
