@@ -1,23 +1,16 @@
 # Coverage information
 
-If you want to know which part of your code is executed when running your compiler on a file you can run your compiler on the file, then run `make coverage`.
+If you want to know which part of your code is executed when running all tests, use `test.py` without the `--optimise` flag.
 
 This will generate a webpage `coverage/index.html` with a listing of all the source files and for each source file a listing of the number of times each line has been executed.
+VSCode will also display a warning on lines not covered.
 
 ![Index.html screenshot](./assets/coverage_example.png)
 
-It can also be used automatically on all test files by running: `./test.py --coverage`.
+To know which lines are covered by a single test, first make sure your compiler is built without optimisations (if you used the `--optimise` or `make` without `DEBUG=1`, or if you are unsure, run `make clean && make DEBUG=1`).
+Then run your compiler on a file (`build/c_compiler -S <test_file.c> -o <whatever>`).
+Finally run `make DEBUG=1 coverage` to generate the coverage webpage and update the covered lines in VSCode.
 
 ## Viewing the coverage webpage
 
-You can view the webpage in your browser by navigating to the coverage directory and running a Python HTTP server:
-
-```console
-> user@host:langproc-cw# cd coverage
-> user@host:langproc-cw/coverage# python3 -m http.server
->
-Serving HTTP on 0.0.0.0 port 8000 (http://0.0.0.0:8000/) ...
-```
-
-VS Code should prompt you to open the webpage in your browser.
-You can also manually do so by navigating to [http://0.0.0.0:8000](`http://0.0.0.0:8000`).
+You can view the webpage in your browser by copying the link printed by `test.py` in your browser or the in VSCode integrated browser by first typing `>workbench.action.browser` in the top bar (Ctrl+P).

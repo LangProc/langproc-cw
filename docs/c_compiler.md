@@ -15,31 +15,28 @@ You can test your compiler by running [`./test.py`](../test.py) from the top of 
 
 ```console
 > user@host:langproc-cw# ./test.py
-
-Cleaning project...
-Running make...
+Building compiler...
 
 [...]
 
-types/unsigned.c
-        > Failed to compile testcase:
-         /workspaces/langproc-cw/build/output/types/unsigned/unsigned.compiler.stderr.log
-         /workspaces/langproc-cw/build/output/types/unsigned/unsigned.compiler.stdout.log
-         /workspaces/langproc-cw/build/output/types/unsigned/unsigned.s
-         /workspaces/langproc-cw/build/output/types/unsigned/unsigned.s.printed
+[tests/types/unsigned.c]
+Error when compiling: Command 'build/c_compiler -S tests/types/unsigned.c -o build/output/types/unsigned/unsigned.s' returned non-zero exit status 1.
+See:
+        build/output/types/unsigned/unsigned.c_compiler.stdout.log
+        build/output/types/unsigned/unsigned.c_compiler.stderr.log
 
->> Test Summary: 1 Passed, 85 Failed
+Passed 1/86 found test cases
+Processing coverage data...
+Check detailed coverage by opening
+file:///home/dw/CourseCodeReview/langproc-cw/coverage/index.html
+in a web browser (or in vscode using Ctrl+P >workbench.action.browser.open)
 ```
 
 You can make also run in a *silent* mode with [`./test.py --silent`](../test.py), which displays a live CLI progress bar (note: the progress bar and results will be coloured):
 
 ```console
 > user@host:langproc-cw# ./test.py --silent
-
-Cleaning project...
-Running make...
-Running Tests [#################################################]
-Pass:  1 | Fail: 85 | Remaining:  0
+  0% ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ passed=0, failed=0, 0.00 test/s
 ```
 The provided starting framework is only able to compile a very simple program, as described [here](./basic_compiler.md). By default, only the first [`_example/example.c`](../tests/_example/example.c) test should be passing.
 
@@ -54,7 +51,7 @@ Full usage guide of [`test.py`](../test.py) is found in the file header or after
 Your program should be built by running the following command in the top-level directory of your repo:
 
 ```console
-> user@host:langproc-cw# make build/c_compiler
+> user@host:langproc-cw# make DEBUG=1 build/c_compiler
 ```
 
 The compilation function is invoked using the flag `-S`, with the source file and output file specified on the command line:
@@ -197,7 +194,12 @@ I then use spike to simulate the executable on RISC-V, like so:
 > user@host:langproc-cw# spike --isa=rv32gc pk test_program
 ```
 
-This command should produce the exit code `0`.
+This command should produce the exit code `0`. You can verify it like so:
+
+```console
+> user@host:langproc-cw# echo $?
+0
+```
 
 ## Assembler directives
 [You will need to consider assembler directives in your output](./assembler_directives.md)
