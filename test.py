@@ -43,6 +43,8 @@ from http.server import HTTPServer, SimpleHTTPRequestHandler
 from rich.progress import Progress, BarColumn, TextColumn
 from rich.console import Console
 
+TIME_CMD = ["/usr/bin/time", "-f", "%e"]
+
 class Verbosity(IntEnum):
     QUIET = 0
     NORMAL = 1
@@ -90,7 +92,6 @@ class Result:
     test_case_name: Path
     return_code: int
     error_log: tuple[str, str] | None
-    stats: dict[str, int] | None = None
 
     def get_error_log(self) -> str | None:
         prefix = f"[TIMED OUT] " if self.return_code == TIMEOUT_RETURNCODE else ""
@@ -347,40 +348,54 @@ def serve_coverage_forever(root: Path, host: str, port: int):
     except KeyboardInterrupt:
         reporter.info("Server has been stopped!", style="red")
 
-def get_compiler_stats(log_path: str, elapsed_time: int) -> dict[str, int]:
+
+def measure_compiler_stats(benchmark_dir: Path):
     """
-    Measure compiler's performance using compile time, asm size and static instructions count
+    Measure compiler's compilation time, execution time and ELF size
     """
-    stats = {
-        "compile_time": elapsed_time,
-        "asm_size": Path(f"{log_path}.s").stat().st_size,
-    }
+    reporter.info("[bold]Benchmark results:[/]", style="purple")
 
-    objdump_log = f"{log_path}.objdump"
-    return_code, error_msg = run_subprocess(
-        cmd=["riscv32-unknown-elf-objdump", "-d", f"{log_path}.o"],
-        log_path=objdump_log
-    )
-    if return_code != 0:
-        reporter.error(f"Error when running objdump: {error_msg}")
-        return stats
+    for test_case_dir in benchmark_dir.iterdir():
 
-    instruction_re = re.compile(r"^\s*[0-9a-f]+:\s+(?:[0-9a-f]{4}|[0-9a-f]{8})\s+")
+        test_case_name = test_case_dir.stem
+        test_case_stem = (test_case_dir / test_case_name)
 
-    with Path(f"{objdump_log}.stdout.log").open("r", encoding="utf-8") as f:
-        stats["static_instructions"] = sum(
-            1
-            for line in f
-            if instruction_re.match(line)
+        # Compilation time obtained from the time spent by compiler to compiler the test case
+        compilation_log = test_case_stem.with_name(f"{test_case_stem.name}.c_compiler.stderr.log")
+        try:
+            compilation_time = float(compilation_log.read_text(encoding="utf-8").strip())
+        except FileNotFoundError:
+            compilation_time = -1.0
+
+        # Execution time obtained from the time spent by spike to simulate the (repeated) test case
+        repetitions = 100000
+        simulation_log = test_case_stem.with_name(f"{test_case_stem.name}.simulation.stderr.log")
+        execution_time = float(simulation_log.read_text(encoding="utf-8").strip())
+
+        # Binary size obtained as the sum of .text + .data + .rodata sections of ELF file
+        elf_file = test_case_stem.with_name(f"{test_case_stem.name}.o")
+        cmd = ["riscv32-unknown-elf-size", "-A", str(elf_file)]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        binary_size = 0
+
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and parts[0] in {".text", ".data", ".rodata"}:
+                binary_size += int(parts[1])
+
+        # Report compiler stats to terminal, students can decide how to process them further
+        reporter.info(
+            f"{test_case_name}: "
+            f"compilation time = {compilation_time:.2f} s, "
+            f"execution time = {execution_time / repetitions * 1000000:.1f} us, "
+            f"binary size = {binary_size} B",
+            style="purple"
         )
-
-    return stats
 
 def run_test(
     compiler: Callable[[Path, Path, int], subprocess_status],
     output_dir: Path,
     driver: Path,
-    gather_stats: bool,
     **kwargs
 ) -> Result:
     """
@@ -437,9 +452,7 @@ def run_test(
         )
 
         # Compile
-        start_time = time.perf_counter()
         return_code, _ = compiler(to_assemble, log_path, **kwargs)
-        elapsed_time = time.perf_counter() - start_time
         if return_code != 0:
             fail(COMPILER_NAME, return_code)
 
@@ -458,22 +471,19 @@ def run_test(
         # Simulate
         run_component(
             component="simulation",
-            cmd=["spike", "--isa=rv32gc", "pk", log_path]
+            cmd=TIME_CMD+["spike", "--isa=rv32gc", "pk", log_path]
         )
 
     except TestFailed as e:
         return e.result
 
-    compiler_stats = get_compiler_stats(log_path=log_path, elapsed_time=elapsed_time) if gather_stats else None
-
     msg = f"Sanitizer warnings: {" ".join(sanitizer_files)}" if len(sanitizer_files) != 0 else None
-    return Result(test_case_name=test_name, return_code=0, error_log=msg, stats=compiler_stats)
+    return Result(test_case_name=test_name, return_code=0, error_log=msg)
 
 def run_tests(
-    tests_dir: Path,
+    drivers: list[Path],
     xml_file: JUnitXMLFile,
     multithreading: int,
-    gather_stats: bool,
     **kwargs
 ) -> tuple[int, int]:
     """
@@ -483,11 +493,7 @@ def run_tests(
 
     Returns a tuple of (passing: int, total: int) tests
     """
-    drivers = list(tests_dir.rglob("*_driver.c"))
-    drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
-
     passed = failed = 0
-    compiler_stats = [] if gather_stats else None
 
     with Progress(
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
@@ -510,7 +516,7 @@ def run_tests(
         )
 
         futures = [
-            executor.submit(run_test, driver=driver, gather_stats=gather_stats, **kwargs)
+            executor.submit(run_test, driver=driver, **kwargs)
             for driver in drivers
         ]
 
@@ -520,8 +526,6 @@ def run_tests(
 
             if result.passed:
                 passed += 1
-                if gather_stats:
-                    compiler_stats.append(result.stats)
             else:
                 failed += 1
 
@@ -539,22 +543,6 @@ def run_tests(
             reporter.debug(f"{result}\n")
 
     assert len(drivers) == passed + failed, f"Mismatch between total tests and processed results"
-
-    reporter.info(f"[bold]Passed {passed}/{passed + failed} found test cases[/]")
-
-    if compiler_stats:
-        assert len(compiler_stats) == passed, "Some compiler stats could not be collected"
-
-        avg_compile_time_ms = 1000.0 * mean(s["compile_time"] for s in compiler_stats)
-        avg_asm_size_bytes = mean(s["asm_size"] for s in compiler_stats)
-        avg_static_instructions = mean(s["static_instructions"] for s in compiler_stats)
-
-        reporter.info(
-            f"[bold]Measured averages:[/] "
-            f"compile time = [bold]{avg_compile_time_ms:.3f} ms[/], "
-            f"asm size = [bold]{avg_asm_size_bytes:.1f} B[/], "
-            f"static instructions = [bold]{avg_static_instructions:.1f}[/]"
-        )
 
     return (passed, passed + failed)
 
@@ -576,7 +564,7 @@ def student_compiler(
     custom_env["UBSAN_OPTIONS"] = f"log_path={log_path}.ubsan.log"
 
     # Compile
-    cmd = [compiler_path, "-S", to_assemble, "-o", f"{log_path}.s"]
+    cmd = TIME_CMD + [compiler_path, "-S", to_assemble, "-o", f"{log_path}.s"]
     return run_subprocess(cmd=cmd, env=custom_env, log_path=f"{log_path}.{COMPILER_NAME}", **kwargs)
 
 def symlink_reference_compiler(to_assemble: Path, log_path: Path, **kwargs) -> subprocess_status:
@@ -670,9 +658,20 @@ if __name__ == "__main__":
     build_dir = root_dir / "build"
     output_dir = build_dir / "output"
 
-    args = parse_args(tests_dir=root_dir / "tests")
+    tests_dir_name = "tests"
+    args = parse_args(tests_dir=root_dir / tests_dir_name)
+    tests_dir = Path(args.dir)
+
+    benchmark_dir_name = "benchmark"
+    benchmark_dir = tests_dir / benchmark_dir_name
 
     reporter.verbosity = Verbosity.NORMAL if args.silent else Verbosity.VERBOSE
+
+    # Select compiler to use
+    if args.validate_tests:
+        compiler = symlink_reference_compiler
+    else:
+        compiler = partial(student_compiler, build_dir / COMPILER_NAME)
 
     # Clean the repo if required
     if not args.no_clean:
@@ -696,16 +695,40 @@ if __name__ == "__main__":
             raise RuntimeError("Error when building")
 
     # Run the tests and save the results into JUnit XML file
+    tests_drivers = sorted(
+        (
+            p for p in tests_dir.rglob("*_driver.c")
+            if not p.is_relative_to(benchmark_dir)
+        ), key=lambda p: (p.parent.name, p.name),
+    )
+
     with JUnitXMLFile(build_dir / "junit_results.xml") as xml_file:
         passing, total = run_tests(
-            tests_dir=Path(args.dir),
+            drivers=tests_drivers,
             xml_file=xml_file,
             multithreading=args.multithreading,
-            gather_stats=args.gather_stats,
-            compiler=symlink_reference_compiler if args.validate_tests \
-                else partial(student_compiler, build_dir / COMPILER_NAME),
+            compiler=compiler,
             output_dir=output_dir
         )
+
+        reporter.info(f"[bold]Passed {passing}/{total} found test cases[/]")
+
+    # Run the benchmarks and save the results into JUnit XML file
+    if args.gather_stats:
+        benchmark_drivers = list(benchmark_dir.rglob("*_driver.c"))
+
+        with JUnitXMLFile(build_dir / "benchmark_junit_results.xml") as xml_file:
+            passing, total = run_tests(
+                drivers=benchmark_drivers,
+                xml_file=xml_file,
+                multithreading=args.multithreading,
+                compiler=compiler,
+                output_dir=output_dir
+            )
+            if passing == total:
+                measure_compiler_stats(output_dir / tests_dir_name / benchmark_dir_name)
+            else:
+                reporter.warning(f"Skipping benchmarking due to failures")
 
     # Skip unavailable coverage and exit immediately for test validation
     if args.validate_tests:
