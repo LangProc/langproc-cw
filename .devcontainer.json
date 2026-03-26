@@ -1,0 +1,18 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/docker-existing-dockerfile
+{
+	"name": "Local Dockerfile",
+	"image": "ghcr.io/langproc/langproc-cw/environment:latest",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-vscode.cpptools-extension-pack",
+				"daohong-emilio.yash",
+				"markis.code-coverage"
+			]
+		}
+	},
+	"containerEnv": {
+		"LOCALPWD": "${localWorkspaceFolder}"
+	}
+}

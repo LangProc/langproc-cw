@@ -7,8 +7,24 @@
             "type": "shell",
             "label": "Run make",
             "command": "make",
-            "args": ["DEBUG=1", "build/c_compiler"],
-            "group": "build",
+            "args": [
+                "DEBUG=1",
+                "build/c_compiler"
+            ],
+            "group": "build"
         },
+        {
+            "type": "shell",
+            "label": "Run tests",
+            "command": "./test.py",
+            "args": [
+                "-m",
+                "--silent"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+        }
     ]
 }

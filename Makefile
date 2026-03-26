@@ -15,7 +15,7 @@ CXXFLAGS += -O0 # perform minimal optimisations
 CXXFLAGS += -rdynamic # to get more helpful traces when debugging
 CXXFLAGS += --coverage # enable code coverage
 CXXFLAGS += -DDEBUG # enable code behind "ifdef DEBUG"
-COVFLAGS = -j $(JOBS) --no-external --exclude "`pwd`/build/*" --demangle-cpp -d .
+COVFLAGS = -j $(JOBS) --no-external --exclude "$(PWD)/build/*" --demangle-cpp -d .
 else
 CXXFLAGS += -O3 # perform optimisations
 endif
