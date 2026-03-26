@@ -20,10 +20,10 @@ Many students develop their compiler in VS Code, as this has good support for co
 6) After a delay you will now be in the container environment.
     - The delay will vary based on how fast you can download around 1GB over your Internet connection.
     - For those interested, VS Code reads the container configuration from the [.devcontainer/devcontainer.json](../.devcontainer.json) file.
-7) Test that your tools are correctly set up by running `./test.py --validate_tests` in the VS Code terminal, which is accessible via `Terminal -> New Terminal`. Your output should look something like this:
+7) Test that your tools are correctly set up by running `./test.py --silent --validate_tests` in the VS Code terminal, which is accessible via `Terminal -> New Terminal`. Your output should look something like this:
 
 ```console
-> user@host:langproc-cw# ./test.py --validate_tests
+> root@host:/workspaces/langproc-YYYY-cw-XXX# ./test.py --silent --validate_tests
 Passed 86/86 found test cases
 ```
 
@@ -47,6 +47,6 @@ Passed 86/86 found test cases
 6) You should now be inside the LangProc tools container, where you can run `./test.py --validate_tests` inside the `/code` directory to check that your tools are working correctly. Note that the directory containing this file, as well as any subdirectories, are mounted inside this container under the path `/code`. The output of running the command should look something like this:
 
 ```console
-> user@host:langproc-cw# ./test.py --validate_tests
+> root@host:/workspaces/langproc-YYYY-cw-XXX# ./test.py --silent --validate_tests
 Passed 86/86 found test cases
 ```

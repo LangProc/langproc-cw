@@ -69,7 +69,7 @@ class Reporter:
     def debug(self, message: str, style: str = ""):
         self._emit(message, style, Verbosity.VERBOSE)
 
-    def info(self, message: str, style: str = ""):
+    def info(self, message: str, style: str = "cyan"):
         self._emit(message, style, Verbosity.NORMAL)
 
     def warning(self, message: str, style: str = "yellow"):
@@ -484,9 +484,6 @@ def run_tests(
 
     assert len(drivers) == passed + failed, \
         f"Mismatch in number of tests with status ({passed} passed, {failed} failed, {len(drivers)} found)"
-
-    reporter.info(f"[bold]Passed {passed}/{passed + failed} found test cases[/]")
-
     return passed, passed + failed
 
 def student_compiler(compiler_path: Path, input_file: Path, log_stem: Path, **kwargs) -> ProcessOutput:
@@ -629,18 +626,16 @@ if __name__ == "__main__":
         exit()
 
     # No coverage for optimised builds
-    if args.optimise:
-        exit()
+    if not args.optimise:
+        coverage_success = coverage(top_dir=root_dir)
+        if not coverage_success:
+            raise RuntimeError("Error when running make coverage")
 
-    # Generate coverage data.
-    coverage_success = coverage(top_dir=root_dir)
-    if not coverage_success:
-        raise RuntimeError("Error when running make coverage")
+        external_root = Path(environ["LOCALPWD"]) if "LOCALPWD" in environ else root_dir
+        coverage_index = external_root.joinpath("coverage/index.html")
+        reporter.info(
+            f"Check detailed coverage at [link=file://{coverage_index}]coverage/index.html[/] "
+            "(open in a web browser or in vscode using Ctrl+P >workbench.action.browser.open)\n"
+        )
 
-    external_root = Path(environ["LOCALPWD"]) if "LOCALPWD" in environ else root_dir
-    coverage_index = external_root.joinpath("coverage/index.html")
-    reporter.info(
-        "Check detailed coverage by opening\n"
-        f"[link=file://{coverage_index}]file://{coverage_index}[/]\n"
-        "in a web browser (or in vscode using Ctrl+P >workbench.action.browser.open)"
-    )
+    reporter.info(f"[bold]Passed {passing}/{total} found test cases[/]")

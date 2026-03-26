@@ -14,9 +14,8 @@ Source files can be found in the [./src](../src) directory and header files can 
 You can test your compiler by running [`./test.py`](../test.py) from the top of this repo. The output should look as follows:
 
 ```console
-> user@host:langproc-cw# ./test.py
+> root@host:/workspaces/langproc-YYYY-cw-XXX# ./test.py
 Building compiler...
-
 [...]
 
 [tests/types/unsigned.c]
@@ -25,25 +24,22 @@ See:
         build/output/types/unsigned/unsigned.c_compiler.stdout.log
         build/output/types/unsigned/unsigned.c_compiler.stderr.log
 
-Passed 1/86 found test cases
 Processing coverage data...
-Check detailed coverage by opening
-file:///home/dw/CourseCodeReview/langproc-cw/coverage/index.html
-in a web browser (or in vscode using Ctrl+P >workbench.action.browser.open)
+[...]
+Check detailed coverage at coverage/index.html (open in a web browser or in vscode using Ctrl+P >workbench.action.browser.open)
+
+Passed 1/86 found test cases
 ```
 
-You can make also run in a *silent* mode with [`./test.py --silent`](../test.py), which displays a live CLI progress bar (note: the progress bar and results will be coloured):
+You can make also run in a *silent* mode with [`./test.py --silent`](../test.py). This is the default when using Ctrl+Shift+B in VS Code.
 
-```console
-> user@host:langproc-cw# ./test.py --silent
-  0% ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━ passed=0, failed=0, 0.00 test/s
-```
+
 The provided starting framework is only able to compile a very simple program, as described [here](./basic_compiler.md). By default, only the first [`_example/example.c`](../tests/_example/example.c) test should be passing.
 
 Full usage guide of [`test.py`](../test.py) is found in the file header or after running:
 
 ```console
-> user@host:langproc-cw# ./test.py --help
+> root@host:/workspaces/langproc-YYYY-cw-XXX# ./test.py --help
 ```
 
 ## Program build and execution
@@ -51,13 +47,13 @@ Full usage guide of [`test.py`](../test.py) is found in the file header or after
 Your program should be built by running the following command in the top-level directory of your repo:
 
 ```console
-> user@host:langproc-cw# make DEBUG=1 build/c_compiler
+> root@host:/workspaces/langproc-YYYY-cw-XXX# make DEBUG=1 build/c_compiler
 ```
 
 The compilation function is invoked using the flag `-S`, with the source file and output file specified on the command line:
 
 ```console
-> user@host:langproc-cw# build/c_compiler -S [source-file.c] -o [dest-file.s]
+> root@host:/workspaces/langproc-YYYY-cw-XXX# build/c_compiler -S [source-file.c] -o [dest-file.s]
 ```
 
 You can assume that the command-line (CLI) arguments will always be in this order, and that there will be no spaces in source or destination paths. Note that the provided starting point in this repository already functions as specified above, so these CLI arguments should work out of the box (unless you decide not to use the provided base compiler).
@@ -173,31 +169,31 @@ int main() {
 I run the compiler on the test program, like so:
 
 ```console
-> user@host:langproc-cw# build/c_compiler -S test_program.c -o test_program.s
+> root@host:/workspaces/langproc-YYYY-cw-XXX# build/c_compiler -S test_program.c -o test_program.s
 ```
 
 I then use GCC to assemble the generated assembly program (`test_program.s`), like so:
 
 ```console
-> user@host:langproc-cw# riscv32-unknown-elf-gcc -march=rv32gc -mabi=ilp32d -o test_program.o -c test_program.s
+> root@host:/workspaces/langproc-YYYY-cw-XXX# riscv32-unknown-elf-gcc -march=rv32gc -mabi=ilp32d -o test_program.o -c test_program.s
 ```
 
 I then use GCC to link the generated object file (`test_program.o`) with the driver program (`test_program_driver.c`), to produce an executable (`test_program`), like so:
 
 ```console
-> user@host:langproc-cw# riscv32-unknown-elf-gcc -march=rv32gc -mabi=ilp32d -static -o test_program test_program.o test_program_driver.c
+> root@host:/workspaces/langproc-YYYY-cw-XXX# riscv32-unknown-elf-gcc -march=rv32gc -mabi=ilp32d -static -o test_program test_program.o test_program_driver.c
 ```
 
 I then use spike to simulate the executable on RISC-V, like so:
 
 ```console
-> user@host:langproc-cw# spike --isa=rv32gc pk test_program
+> root@host:/workspaces/langproc-YYYY-cw-XXX# spike --isa=rv32gc pk test_program
 ```
 
 This command should produce the exit code `0`. You can verify it like so:
 
 ```console
-> user@host:langproc-cw# echo $?
+> root@host:/workspaces/langproc-YYYY-cw-XXX# echo $?
 0
 ```
 
