@@ -56,6 +56,7 @@ class Verbosity(IntEnum):
     QUIET = 0
     NORMAL = 1
     VERBOSE = 2
+    DEBUG = 3
 
 class Reporter:
     def __init__(self, verbosity: Verbosity = Verbosity.NORMAL):
@@ -67,7 +68,7 @@ class Reporter:
             self.console.print(message, style=style, highlight=False)
 
     def debug(self, message: str, style: str = ""):
-        self._emit(message, style, Verbosity.VERBOSE)
+        self._emit(message, style, Verbosity.DEBUG)
 
     def info(self, message: str, style: str = "cyan"):
         self._emit(message, style, Verbosity.NORMAL)
@@ -167,16 +168,10 @@ class JUnitXMLFile():
         )
 
     def write_result(self, test_file: Path, result: ProcessOutput):
-        full_message = result.get_message_with_file_content()
-        if full_message is None:
-            body = ""
-        else:
-            short_message = result.get_short_message() or ""
-            body = (
-                f"<error type={xml.quoteattr('error')} message={xml.quoteattr(short_message)}>\n"
-                f"{xml.escape(full_message)}</error>\n"
-            )
-        self._write_testcase(test_file, body)
+        self._write_testcase(test_file, "" if result.succeded else \
+            f"<error type={xml.quoteattr('error')} message={xml.quoteattr(result.get_short_message())}>\n"
+            f"{xml.escape(result.get_message_with_file_content())}</error>\n"
+        )
 
     def __exit__(self, *_):
         self._fd.write("</testsuite>\n")
@@ -229,13 +224,13 @@ def clean(top_dir: Path, **kwargs) -> bool:
     """
     action = "Cleaning project"
     cmd = ["make", "-C", top_dir, "clean"]
-    with reporter.status(message=action):
+    with reporter.status(action):
         status = run_subprocess(action=action, cmd=cmd, verbose=False, **kwargs)
     if status.failed:
         reporter.error(status.get_short_message())
     return status.succeded
 
-def build(top_dir: Path, multithreading: int = 1, optimise: bool = False, **kwargs) -> bool:
+def build(top_dir: Path, multithreading: int, optimise: bool = False, **kwargs) -> bool:
     """
     Wrapper for `make -j <multithreading> (N)DEBUG=1 build/c_compiler`.
     Additional arguments are passed to `run_subprocess`.
@@ -253,7 +248,7 @@ def build(top_dir: Path, multithreading: int = 1, optimise: bool = False, **kwar
         "-C", top_dir,
         f"{BUILD_DIR_NAME}/{Component.COMPILER.value.suffix}"
     ]
-    with reporter.status(message=action):
+    with reporter.status(action):
         status = run_subprocess(cmd=cmd, action=action, verbose=verbose, **kwargs)
     if status.failed:
         reporter.error(status.get_short_message())
@@ -268,9 +263,9 @@ def coverage(top_dir: Path, **kwargs) -> bool:
     """
     action = "Processing coverage data"
     cmd = ["make", "DEBUG=1", "-C", top_dir, "coverage"]
-    verbose = reporter.verbosity >= Verbosity.VERBOSE
+    verbose = reporter.verbosity >= Verbosity.DEBUG
 
-    with reporter.status(message=action):
+    with reporter.status(action):
         status = run_subprocess(cmd=cmd, action=action, verbose=verbose, **kwargs)
     if status.failed:
         reporter.error(status.get_short_message())
@@ -295,7 +290,7 @@ def run_component(
     )
     # All passes after student compiler (so just not reference compiler) should add files to refer to
     # I tried to link them in the order students should inspect them
-    # If the compiuler succeded and a futher component failed, it is likely caused by the compiler
+    # If the compiler succeded and a futher component failed, it is likely caused by the compiler
     # so we should link the compiler outputs, in particular the produced assembly (treated specially, see below)
     if status.failed and component is not Component.REFERENCE_COMPILER:
         # If the compiler output is present add it with the reference to compare to;
@@ -328,6 +323,9 @@ def run_component(
             status.add_file(file)
     return status
 
+def test_from_driver(driver_file: Path) -> Path:
+    return driver_file.with_stem(driver_file.stem.removesuffix("_driver"))
+
 def run_test(
     compiler: Callable[[Path, Path, int], ProcessOutput],
     output_dir: Path,
@@ -344,7 +342,7 @@ def run_test(
         or a succeding ProcessOuput
     """
     # Replaces example_driver.c -> example.c
-    test_file = driver_file.with_stem(driver_file.stem.removesuffix("_driver"))
+    test_file = test_from_driver(driver_file)
     if not test_file.is_file():
         raise FileNotFoundError(
             f"Test driver `{get_relative_path(driver_file)}` doesn't have"
@@ -453,7 +451,7 @@ def run_tests(
         }
         for job in as_completed(job_to_driver):
             driver = job_to_driver[job]
-            test_file = get_relative_path(driver.with_stem(driver.stem.removesuffix("_driver")))
+            test_file = get_relative_path(test_from_driver(driver))
             status = job.result()
             if report is not None:
                 report.write_result(test_file=test_file, result=status)
@@ -474,9 +472,8 @@ def run_tests(
                 rate=rate,
             )
 
-            long_message = status.get_message_with_file_list()
-            if long_message is not None:
-                reporter.debug(rich_escape(f"{test_file}: {long_message}"), style="red")
+            if status.failed:
+                reporter.info(rich_escape(f"{test_file}: {status.get_message_with_file_list()}"), style="red")
 
     assert len(drivers) == passed + failed, \
         f"Mismatch in number of tests with status ({passed} passed, {failed} failed, {len(drivers)} found)"
