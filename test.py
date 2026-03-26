@@ -110,9 +110,6 @@ class ProcessOutput:
     def failed(self) -> bool:
         return self._short_message is not None
 
-    def _is_empty(self) -> bool:
-        return self._short_message is None and len(self._files) == 0
-
     def add_file(self, file: Path):
         self._files.append(file)
 
@@ -127,28 +124,27 @@ class ProcessOutput:
             else f"{prefix} {self._short_message}"
 
     def get_message_with_file_list(self) -> str | None:
-        if self._is_empty():
+        if self.succeded:
             return None
 
-        logcat = ["" if self._short_message is None else f"{self._short_message}\n", "See:\n"]
+        log_parts = [self._short_message, ", see:\n"]
         for file in self._files:
-            logcat.append("\t")
-            logcat.append(get_relative_path(file))
-            logcat.append("\n")
-        return ''.join(logcat)
+            log_parts.append("\t")
+            log_parts.append(get_relative_path(file))
+            log_parts.append("\n")
+        return ''.join(log_parts)
 
     def get_message_with_file_content(self) -> str | None:
-        if self._is_empty():
+        if self.succeded:
             return None
 
-        logcat = ["" if self._short_message is None else f"{self._short_message}\n"]
+        log_parts = [self._short_message, ".\n"]
         for file in self._files:
-            logcat.append(get_relative_path(file))
-            logcat.append(":\n")
-            logcat.append(file.read_text())
-            logcat.append("\n")
-
-        return ''.join(logcat)
+            log_parts.append(get_relative_path(file))
+            log_parts.append(":\n")
+            log_parts.append(file.read_text())
+            log_parts.append("\n")
+        return ''.join(log_parts)
 
 class JUnitXMLFile():
     def __init__(self, path: Path):
@@ -210,7 +206,7 @@ def run_subprocess(
             files = [stem_add_suffix(log_stem, "stdout.log"), stem_add_suffix(log_stem, "stderr.log")]
             stdout = stack.enter_context(files[0].open(mode="w"))
             stderr = stack.enter_context(files[1].open(mode="w"))
-        else: # None means that stdout and stderr are handled by parent, i.e., they go to console by default
+        else: # Verbose and no log: print to terminal
             files = []
             stdout = None
             stderr = None
@@ -219,10 +215,10 @@ def run_subprocess(
             subprocess.run(cmd, stdout=stdout, stderr=stderr, check=True, **kwargs)
             return ProcessOutput()
         except subprocess.SubprocessError as e:
-            # __str__ (default formatter used for `{e}`) is required by BaseException
-            # It gives a nice message but the command line is a mess so I'm helping it a bit
-            e.cmd = shlex.join(get_relative_path(x) if isinstance(x, Path) else x for x in e.cmd)
-            return ProcessOutput(short_message=f"Error when {action.lower()}: {e}", files=files)
+            # Cleans command line by shortening paths and removing ccache (compiler output caching)
+            cmdlist = e.cmd if e.cmd[0] != "cache" else e.cmd[1:]
+            cmd = shlex.join(get_relative_path(x) if isinstance(x, Path) else x for x in cmdlist)
+            return ProcessOutput(short_message=f"Error when {action.lower()}.\nCommand `{cmd}` failed", files=files)
 
 def clean(top_dir: Path, **kwargs) -> bool:
     """
@@ -366,7 +362,7 @@ def run_test(
     # GCC is not targetting rv32imfd (base target of the course) because:
     # rv32imfd is compatible with rv32gc and the C extension is a part of extended goals
     isa = "rv32gc"
-    gcc_cmd = ["riscv32-unknown-elf-gcc", f"-march={isa}", "-mabi=ilp32d"]
+    gcc_cmd = ["ccache", "riscv32-unknown-elf-gcc", f"-march={isa}", "-mabi=ilp32d"]
 
     # GCC Reference Output
     status = run_component(
@@ -480,7 +476,7 @@ def run_tests(
 
             long_message = status.get_message_with_file_list()
             if long_message is not None:
-                reporter.debug(rich_escape(f"[{test_file}]\n{long_message}"), style="red")
+                reporter.debug(rich_escape(f"{test_file}: {long_message}"), style="red")
 
     assert len(drivers) == passed + failed, \
         f"Mismatch in number of tests with status ({passed} passed, {failed} failed, {len(drivers)} found)"

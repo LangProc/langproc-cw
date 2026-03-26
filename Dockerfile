@@ -2,38 +2,29 @@ FROM ubuntu:24.04
 
 # Install dependencies
 RUN apt-get update && apt-get install -y --fix-missing \
+    build-essential \
     git \
-    lsb-release \
+    flex \
+    bison \
+    ccache \
     python3 \
     python3-pip \
     python3-rich \
-    autoconf \
-    bc \
-    bison \
-    dos2unix \
     gdb \
-    gcc \
-    make \
-    flex \
-    build-essential \
-    ca-certificates \
-    curl \
-    device-tree-compiler \
-    lcov \
+    time \
     nano \
-    valgrind \
-    clang \
-    ccache \
-    cmake \
-    clangd-18 \
-    bear; \
-# Set clangd as the default language server
-    update-alternatives --install /usr/bin/clangd clangd /usr/bin/clangd-18 100
+    lcov \
+    locales \
+    dos2unix \
+    lsb-release \
+    ca-certificates \
+    device-tree-compiler;
 
 ARG ARTIFACT_TAG=v2.1.0
 
 WORKDIR /tmp
-RUN set -eux; \
+RUN localedef -i en_GB -f UTF-8 en_GB.UTF-8
+    set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
       amd64) xarch="linux-x64" ;; \

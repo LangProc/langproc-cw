@@ -33,7 +33,7 @@ default: build/c_compiler
 build/c_compiler: $(OBJECTS)
 	@find . -name "*.gcda" -delete
 	@mkdir -p build
-	g++ $(CXXFLAGS) -o $@ $^
+	ccache g++ $(CXXFLAGS) -o $@ $^
 ifdef DEBUG
 	lcov -c -i $(COVFLAGS) -o build/base.info
 endif
@@ -42,7 +42,7 @@ endif
 
 build/%.o: src/%.cpp Makefile
 	@mkdir -p $(@D)
-	g++ $(CXXFLAGS) -MMD -MP -c $< -o $@
+	ccache g++ $(CXXFLAGS) -MMD -MP -c $< -o $@
 
 build/parser.tab.cpp build/parser.tab.hpp &: src/parser.y
 	@mkdir -p build
