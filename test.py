@@ -104,14 +104,14 @@ class ProcessOutput:
 
     @property
     def succeded(self) -> bool:
-        return self.short_message is None
+        return self._short_message is None
 
     @property
     def failed(self) -> bool:
-        return self.short_message is not None
+        return self._short_message is not None
 
     def _is_empty(self) -> bool:
-        return self.short_message is None and len(self._files) == 0
+        return self._short_message is None and len(self._files) == 0
 
     def add_file(self, file: Path):
         self._files.append(file)
@@ -351,7 +351,7 @@ def run_test(
     test_file = driver_file.with_stem(driver_file.stem.removesuffix("_driver"))
     if not test_file.is_file():
         raise FileNotFoundError(
-            f"Test driver `{get_relative_path(driver_file})` doesn't have"
+            f"Test driver `{get_relative_path(driver_file)}` doesn't have"
             f"an associated test file ({get_relative_path(test_file)})"
         )
 
