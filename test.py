@@ -613,8 +613,10 @@ if __name__ == "__main__":
     if not coverage_success:
         raise RuntimeError("Error when running make coverage")
 
+    external_root = Path(environ["LOCALPWD"]) if "LOCALPWD" in environ else root_dir
+    coverage_index = external_root.joinpath("coverage/index.html")
     reporter.info(
         "Check detailed coverage by opening\n"
-        f"[link=file://{environ['LOCALPWD']}/coverage/index.html]file://{environ['LOCALPWD']}/coverage/index.html[/]\n"
+        f"[link=file://{coverage_index}]file://{coverage_index}[/]\n"
         "in a web browser (or in vscode using Ctrl+P >workbench.action.browser.open)"
     )
