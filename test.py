@@ -637,11 +637,11 @@ def parse_args(tests_dir: Path) -> argparse.Namespace:
         "and you may run into issues."
     )
     parser.add_argument(
-        "--gather_stats",
+        "--benchmark",
         action="store_true",
         default=False,
-        help="Gather compiler related statistics like compile time, asm file size, "
-        "static instructions count, dynamic instructions count."
+        help="Benchmark compiler and gather related statistics like compilation "
+        "time, execution time, and ELF size."
     )
     parser.add_argument(
         "--validate_tests",
@@ -714,7 +714,7 @@ if __name__ == "__main__":
         reporter.info(f"[bold]Passed {passing}/{total} found test cases[/]")
 
     # Run the benchmarks and save the results into JUnit XML file
-    if args.gather_stats:
+    if args.benchmark:
         benchmark_drivers = list(benchmark_dir.rglob("*_driver.c"))
 
         with JUnitXMLFile(build_dir / "benchmark_junit_results.xml") as xml_file:
