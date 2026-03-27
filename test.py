@@ -529,7 +529,7 @@ def symlink_reference_compiler(to_assemble: Path, log_path: Path, **kwargs) -> s
     Never fails.
     """
     Path(f"{log_path}.s").symlink_to(f"{log_path}.gcc.s")
-    return 0, "", False
+    return 0, ""
 
 def parse_args(tests_dir: Path) -> argparse.Namespace:
     """
