@@ -25,6 +25,7 @@ import subprocess
 import xml.sax.saxutils as xml
 from os import environ, cpu_count
 from sys import stdout, exit
+from signal import Signals, valid_signals, strsignal
 from shutil import rmtree
 from pathlib import Path
 from argparse import ArgumentParser, Namespace
@@ -42,21 +43,39 @@ BUILD_DIR_NAME = "build"
 OUTPUT_DIR_NAME = "output"
 
 class TestStep(NamedTuple):
-    suffix: str
+    name: str
     action: str
 
 class Component(Enum):
-    REFERENCE_COMPILER = TestStep(suffix="gcc_reference", action="Generating reference assembly")
-    COMPILER = TestStep(suffix="c_compiler", action="Compiling")
-    ASSEMBLER = TestStep(suffix="assembler", action="Assembling")
-    LINKER = TestStep(suffix="linker", action="Linking")
-    SIMULATION = TestStep(suffix="simulation", action="Simulating")
+    REFERENCE = TestStep(name="gcc_reference", action="Generating reference assembly")
+    COMPILER = TestStep(name="c_compiler", action="Compiling")
+    ASSEMBLER = TestStep(name="assembler", action="Assembling")
+    LINKER = TestStep(name="linker", action="Linking")
+    SIMULATION = TestStep(name="simulation", action="Simulating")
 
 class Verbosity(IntEnum):
     QUIET = 0
     NORMAL = 1
     VERBOSE = 2
     DEBUG = 3
+
+class BuildStep(NamedTuple):
+    name: str
+    action: str
+    verbosity: Verbosity
+
+class MakeRule(Enum):
+    CLEAN = BuildStep(name="clean", action="Cleaning project", verbosity=Verbosity.DEBUG)
+    COMPILER = BuildStep(
+        name=f"{BUILD_DIR_NAME}/{Component.COMPILER.value.name}",
+        action="Building compiler",
+        verbosity=Verbosity.NORMAL
+    )
+    COVERAGE = BuildStep(
+        name="coverage",
+        action="Processing coverage data",
+        verbosity=Verbosity.DEBUG
+    )
 
 class Reporter:
     def __init__(self, verbosity: Verbosity = Verbosity.NORMAL):
@@ -79,9 +98,9 @@ class Reporter:
     def error(self, message: str, style: str = "red"):
         self._emit(message, style, Verbosity.QUIET)
 
-    def status(self, message: str, style: str = "cyan"):
+    def status(self, message: str, style: str = "cyan", verbosity: Verbosity = Verbosity.VERBOSE):
         message = f"{message}..."
-        if self.verbosity < Verbosity.VERBOSE:
+        if verbosity < self.verbosity:
             styled_message = message if style == "" else f"[{style}]{message}[/]"
             return self.console.status(styled_message, spinner="dots")
 
@@ -91,43 +110,66 @@ class Reporter:
 
 reporter = Reporter()
 
+def error_kind_from_code(code: int) -> str:
+    """Describes an exit code."""
+    if code < 0 and -code in valid_singals():
+        return f"Process ended by {strsignal(-code).lower() or 'unknown signal'} {Signals(-code)}"
+    if code == 124:
+        return "Timeout"
+    if code != 0:
+        return "Error"
+    return "Success"
+
+def build_step(
+    step: BuildStep,
+    root_dir: Path,
+    jobs: int = 1,
+    optimise: bool = False,
+    **kwargs
+) -> bool:
+    """
+    Wrapper for `make <step.name>`.
+
+    Returns True if successful, False otherwise.
+    """
+    quiet = step.verbosity > reporter.verbosity
+    cmd = [
+        "make",
+        f"-j{jobs}",
+        "-s" if quiet else "-Oline",
+        "-C", root_dir / BUILD_DIR_NAME,
+        f"{'N' if optimise else ''}DEBUG=1",
+        step.name
+    ]
+    stdout, stderr = (subprocess.DEVNULL, subprocess.DEVNULL) if quiet else (None, None)
+
+    with reporter.status(step.action, verbosity=step.verbosity):
+        code = subprocess.run(cmd, stdout=stdout, stderr=stderr, check=True, **kwargs).returncode
+
+    if code == 0:
+        return True
+
+    # Clean version of the command for students to quickly retry the failing step
+    cmd = shlex.join(["make", "-C", BUILD_DIR_NAME] + cmd[-2:])
+    reporter.error(f"{error_kind_from_code(code)} when {step.action.lower()} with `{cmd}`.")
+
+    return False
+
 def get_relative_path(path: Path) -> str:
+    """Converts an absolute path to a relative path for printing."""
     cwd = Path().resolve()
     return str(path.relative_to(cwd)) if path.is_relative_to(cwd) else str(path)
 
-class ProcessOutput:
-    """
-    An error message with a list of relevant files
-    """
-    def __init__(self, short_message: str | None = None, files: list[Path] | None = None):
+class TestError:
+    """An error message with a list of relevant files."""
+    def __init__(self, short_message: str, files: list[Path]):
         self._short_message = short_message
-        self._files = files or []
+        self._files = files
 
-    @property
-    def succeded(self) -> bool:
-        return self._short_message is None
-
-    @property
-    def failed(self) -> bool:
-        return self._short_message is not None
-
-    def add_file(self, file: Path):
-        self._files.append(file)
-
-    def add_files(self, files: Iterator[Path]):
-        self._files.extend(files)
-
-    def get_short_message(self) -> str | None:
+    def get_short_message(self) -> str:
         return self._short_message
 
-    def prefix_short_message(self, prefix: str):
-        self._short_message = prefix if self._short_message is None \
-            else f"{prefix} {self._short_message}"
-
-    def get_message_with_file_list(self) -> str | None:
-        if self.succeded:
-            return None
-
+    def get_message_with_file_list(self) -> str:
         log_parts = [self._short_message, ", see:\n"]
         for file in self._files:
             log_parts.append("\t")
@@ -135,10 +177,7 @@ class ProcessOutput:
             log_parts.append("\n")
         return ''.join(log_parts)
 
-    def get_message_with_file_content(self) -> str | None:
-        if self.succeded:
-            return None
-
+    def get_message_with_file_content(self) -> str:
         log_parts = [self._short_message, ".\n"]
         for file in self._files:
             log_parts.append(get_relative_path(file))
@@ -147,183 +186,73 @@ class ProcessOutput:
             log_parts.append("\n")
         return ''.join(log_parts)
 
-class JUnitXMLFile():
-    def __init__(self, path: Path):
-        self._path = path
-        self._fd = None
-
-    def __enter__(self):
-        self._fd = open(self._path, "w")
-        self._fd.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
-        self._fd.write(f"<testsuite name={xml.quoteattr('Compiler benchmark')}>\n")
-        return self
-
-    def _write(self, msg: str):
-        self._fd.write(msg)
-
-    def _write_testcase(self, test_file: Path, body: str = ""):
-        self._write(
-            f"<testcase name={xml.quoteattr(str(test_file))}>\n"
-            f"{body}</testcase>\n"
-        )
-
-    def write_result(self, test_file: Path, result: ProcessOutput):
-        self._write_testcase(test_file, "" if result.succeded else \
-            f"<error type={xml.quoteattr('error')} message={xml.quoteattr(result.get_short_message())}>\n"
-            f"{xml.escape(result.get_message_with_file_content())}</error>\n"
-        )
-
-    def __exit__(self, *_):
-        self._fd.write("</testsuite>\n")
-        self._fd.close()
-
 def stem_add_suffix(stem: Path, suffix: str) -> Path:
+    """Adds a dot then `suffix` to a Path."""
     return stem.with_name(f"{stem.name}.{suffix}")
-
-def run_subprocess(
-    cmd: list[str],
-    action: str,
-    log_stem: Path | None = None,
-    verbose: bool = True,
-    **kwargs
-) -> ProcessOutput:
-    """
-    Wrapper for `subprocess.run` with common arguments and error handling.
-
-    Returns a ProcessOutput
-    """
-    with ExitStack() as stack:
-        if not verbose:
-            files = []
-            stdout = subprocess.DEVNULL
-            stderr = subprocess.DEVNULL
-        elif log_stem is not None:
-            files = [stem_add_suffix(log_stem, "stdout.log"), stem_add_suffix(log_stem, "stderr.log")]
-            stdout = stack.enter_context(files[0].open(mode="w"))
-            stderr = stack.enter_context(files[1].open(mode="w"))
-        else: # Verbose and no log: print to terminal
-            files = []
-            stdout = None
-            stderr = None
-
-        try:
-            subprocess.run(cmd, stdout=stdout, stderr=stderr, check=True, **kwargs)
-            return ProcessOutput()
-        except subprocess.SubprocessError as e:
-            # Cleans command line by shortening paths and removing ccache (compiler output caching)
-            cmdlist = e.cmd if e.cmd[0] != "cache" else e.cmd[1:]
-            cmd = shlex.join(get_relative_path(x) if isinstance(x, Path) else x for x in cmdlist)
-            return ProcessOutput(short_message=f"Error when {action.lower()}.\nCommand `{cmd}` failed", files=files)
-
-def clean(top_dir: Path, **kwargs) -> bool:
-    """
-    Wrapper for `make clean`.
-    Additional arguments are passed to `run_subprocess`.
-
-    Returns True if successful, False otherwise
-    """
-    action = "Cleaning project"
-    cmd = ["make", "-C", top_dir, "clean"]
-    with reporter.status(action):
-        status = run_subprocess(action=action, cmd=cmd, verbose=False, **kwargs)
-    if status.failed:
-        reporter.error(status.get_short_message())
-    return status.succeded
-
-def build(top_dir: Path, multithreading: int, optimise: bool = False, **kwargs) -> bool:
-    """
-    Wrapper for `make -j <multithreading> (N)DEBUG=1 build/c_compiler`.
-    Additional arguments are passed to `run_subprocess`.
-
-    Returns True if successful, False otherwise
-    """
-    action = "Building compiler"
-    Path(top_dir / BUILD_DIR_NAME).mkdir(parents=True, exist_ok=True)
-    verbose = reporter.verbosity >= Verbosity.VERBOSE
-
-    cmd = [
-        "make",
-        f"{'N' if optimise else ''}DEBUG=1",
-        "-j", str(multithreading),
-        "-C", top_dir,
-        f"{BUILD_DIR_NAME}/{Component.COMPILER.value.suffix}"
-    ]
-    with reporter.status(action):
-        status = run_subprocess(cmd=cmd, action=action, verbose=verbose, **kwargs)
-    if status.failed:
-        reporter.error(status.get_short_message())
-    return status.succeded
-
-def coverage(top_dir: Path, **kwargs) -> bool:
-    """
-    Wrapper for `make coverage`.
-    Additional arguments are passed to `run_subprocess`.
-
-    Returns True if successful, False otherwise
-    """
-    action = "Processing coverage data"
-    cmd = ["make", "DEBUG=1", "-C", top_dir, "coverage"]
-    verbose = reporter.verbosity >= Verbosity.DEBUG
-
-    with reporter.status(action):
-        status = run_subprocess(cmd=cmd, action=action, verbose=verbose, **kwargs)
-    if status.failed:
-        reporter.error(status.get_short_message())
-    return status.succeded
 
 def run_component(
     component: Component,
-    cmd: list[str],
+    cmd: list[str | Path],
     log_stem: Path,
     **kwargs
-) -> ProcessOutput:
+) -> TestError | None:
     """
     Runs one step of testing the compiler against a single test file, then links additional output files.
 
-    Returns a ProcessOutput
+    Returns None if successful, a TestError otherwise.
     """
-    status = run_subprocess(
-        cmd=cmd,
-        action=component.value.action,
-        log_stem=stem_add_suffix(log_stem, component.value.suffix),
-        **kwargs
-    )
+    new_log_stem = stem_add_suffix(log_stem, component.value.name)
+    files = [stem_add_suffix(new_log_stem, "stdout.log"), stem_add_suffix(new_log_stem, "stderr.log")]
+    with files[0].open(mode="w") as stdout, files[1].open(mode="w") as stderr:
+        code = subprocess.run(cmd, stdout=stdout, stderr=stderr, check=True, **kwargs).returncode
+
+    if code == 0:
+        return None
+
+    error_kind = error_kind_from_code(code)
     # All passes after student compiler (so just not reference compiler) should add files to refer to
     # I tried to link them in the order students should inspect them
     # If the compiler succeded and a futher component failed, it is likely caused by the compiler
     # so we should link the compiler outputs, in particular the produced assembly (treated specially, see below)
-    if status.failed and component is not Component.REFERENCE_COMPILER:
+    if component is not Component.REFERENCE:
         # If the compiler output is present add it with the reference to compare to;
         # if the compiler failed we don't expect it but link it if present,
         # otherwise it's probably the reason of the failure, so it's worth mentioning first in the error message
         compiler_assembly = stem_add_suffix(log_stem, "s")
         if component is Component.COMPILER:
             if compiler_assembly.is_file():
-                status.add_file(compiler_assembly)
+                files.append(compiler_assembly)
             # Don't link it if it failed, don't need to duplicate link std(out/err)
         else:
-            compiler_stem = stem_add_suffix(log_stem, Component.COMPILER.value.suffix)
-            status.add_files([
+            compiler_stem = stem_add_suffix(log_stem, Component.COMPILER.value.name)
+            files.extend([
                 stem_add_suffix(compiler_stem, "stdout.log"),
                 stem_add_suffix(compiler_stem, "stderr.log")
             ])
             if compiler_assembly.is_file():
-                status.add_file(compiler_assembly)
+                files.append(compiler_assembly)
             else:
-                status.prefix_short_message("[compiler output missing]")
+                error_kind = "Compiler output missing"
 
         # the .s.printed is not required but likely produced so we optionally link it
         printed_assembly = stem_add_suffix(compiler_assembly, "printed")
         if printed_assembly.is_file():
-            status.add_file(printed_assembly)
+            files.append(printed_assembly)
         # No point in comparing assembly with gcc if the student compiler did not generate it
         if compiler_assembly.is_file():
-            status.add_file(stem_add_suffix(log_stem, "gcc.s"))
-        for file in log_stem.parent.glob(".*san.log.*"):
-            status.add_file(file)
-    return status
+            files.append(stem_add_suffix(log_stem, "gcc.s"))
+        files.extend(log_stem.parent.glob(".*san.log.*"))
+
+    # Clean version of the command for students to quickly retry the failing step:
+    # shortening paths and removing ccache (compiler output caching)
+    cmdstr = shlex.join(
+        (get_relative_path(x) if isinstance(x, Path) else x)
+        for x in cmd[(0 if cmd[0] != "ccache" else 1):]
+    )
+    return TestError(short_message=f"{error_kind} when {action.lower()} with `{cmdstr}`", files=files)
 
 def test_from_driver(driver_file: Path) -> Path:
+    """Removes the _driver part of driver file names (example_driver.c -> example.c)."""
     return driver_file.with_stem(driver_file.stem.removesuffix("_driver"))
 
 def run_test(
@@ -337,11 +266,9 @@ def run_test(
     The output of all the steps are put in `output_dir`.
     Additional arguments are passed to `compiler` and `run_subprocess`.
 
-    Returns the ProcessOutput of the failing step,
-        a failing ProcessOutput if every step succeeds but there are sanitizer warnings,
-        or a succeding ProcessOuput
+    Returns None if successfull, otherwise the TestError of the failing step,
+        or a failing TestError if every step succeeds but there are sanitizer warnings.
     """
-    # Replaces example_driver.c -> example.c
     test_file = test_from_driver(driver_file)
     if not test_file.is_file():
         raise FileNotFoundError(
@@ -363,64 +290,96 @@ def run_test(
     gcc_cmd = ["ccache", "riscv32-unknown-elf-gcc", f"-march={isa}", "-mabi=ilp32d"]
 
     # GCC Reference Output
-    status = run_component(
-        component=Component.REFERENCE_COMPILER,
-        cmd=gcc_cmd + ["-std=c90", "-pedantic", "-ansi", "-O0", "-S", test_file, "-o", stem_add_suffix(output_stem, "gcc.s")],
+    error = run_component(
+        component=Component.REFERENCE,
+        cmd=gcc_cmd \
+            + ["-std=c90", "-pedantic", "-ansi", "-O0"] \
+            + ["-S", test_file, "-o", stem_add_suffix(output_stem, "gcc.s")],
         log_stem=output_stem
     )
-    if status.failed:
-        return status
+    if error is not None:
+        return error
 
     # Compile
-    status = compiler(test_file, output_stem, **kwargs)
-    if status.failed:
-        return status
+    error = compiler(test_file, output_stem, **kwargs)
+    if error is not None:
+        return error
 
     # Assemble
-    status = run_component(
-        component=Component.ASSEMBLER,
+    error = run_component(
+        componenet=Component.ASSEMBLER,
         cmd=gcc_cmd + ["-c", stem_add_suffix(output_stem, "s"), "-o", stem_add_suffix(output_stem, "o")],
         log_stem=output_stem
     )
-    if status.failed:
-        return status
+    if error is not None:
+        return error
 
     # Link
-    status = run_component(
+    error = run_component(
         component=Component.LINKER,
         cmd=gcc_cmd + ["-static", stem_add_suffix(output_stem, "o"), driver_file, "-o", output_stem],
         log_stem=output_stem
     )
-    if status.failed:
-        return status
+    if error is not None:
+        return error
 
     # Simulate
-    status = run_component(
+    error = run_component(
         component=Component.SIMULATION,
         cmd=["spike", f"--isa={isa}", "pk", output_stem],
         log_stem=output_stem
     )
-    if status.failed:
-        return status
+    if error is not None:
+        return error
 
     sanitizer_files = list(output_stem.parent.glob(".*san.log.*"))
     if len(sanitizer_files) != 0:
-        return ProcessOutput(short_message="Sanitizer warnings.", files=sanitizer_files)
+        return TestError(short_message="Sanitizer warnings", files=sanitizer_files)
 
-    return ProcessOutput()
+    return None
+
+class JUnitXMLFile():
+    def __init__(self, path: Path):
+        self._path = path
+        self._fd = None
+
+    def __enter__(self):
+        self._fd = open(self._path, "w")
+        self._fd.write("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n")
+        self._fd.write(f"<testsuite name={xml.quoteattr('Compiler benchmark')}>\n")
+        return self
+
+    def _write(self, msg: str):
+        self._fd.write(msg)
+
+    def _write_testcase(self, test_file: Path, body: str = ""):
+        self._write(
+            f"<testcase name={xml.quoteattr(str(test_file))}>\n"
+            f"{body}</testcase>\n"
+        )
+
+    def write_result(self, test_file: Path, error: TestError | None = None):
+        self._write_testcase(test_file, "" if error is None else \
+            f"<error type={xml.quoteattr('error')} message={xml.quoteattr(error.get_short_message())}>\n"
+            f"{xml.escape(error.get_message_with_file_content())}</error>\n"
+        )
+
+    def __exit__(self, *_):
+        self._fd.write("</testsuite>\n")
+        self._fd.close()
 
 def run_tests(
     tests_dir: Path,
     report: JUnitXMLFile | None,
-    multithreading: int,
+    jobs: int,
     **kwargs
 ) -> tuple[int, int]:
     """
-    Runs tests is <tests_dir> against compiler provided by <compiler> and puts output inside <output_dir>.
+    Runs tests in `tests_dir` against the compiler provided by `compiler` and puts outputs inside `output_dir`.
     Arguments `compiler` and `output_dir` are mandatory and are passed to `run_test`.
     Additional arguments are passed to `compiler` and `run_subprocess`.
 
-    Returns a tuple of (passing: int, total: int) tests
+    Returns a tuple of (passing: int, total: int) tests.
     """
     drivers = sorted(tests_dir.rglob("*_driver.c"), key=lambda p: p.parts[-2:])
     passed = failed = 0
@@ -436,7 +395,7 @@ def run_tests(
         console=reporter.console,
         transient=True,
         disable=not stdout.isatty(),
-    ) as progress, ThreadPoolExecutor(max_workers=multithreading) as executor:
+    ) as progress, ThreadPoolExecutor(max_workers=jobs) as executor:
         task_id = progress.add_task(
             "tests",
             total=len(drivers),
@@ -450,66 +409,64 @@ def run_tests(
             for driver in drivers
         }
         for job in as_completed(job_to_driver):
+            error = job.result()
             driver = job_to_driver[job]
             test_file = get_relative_path(test_from_driver(driver))
-            status = job.result()
-            if report is not None:
-                report.write_result(test_file=test_file, result=status)
 
-            if status.succeded:
+            if error is None:
                 passed += 1
             else:
                 failed += 1
+                reporter.info(
+                    rich_escape(f"{test_file}: {status.get_message_with_file_list()}"),
+                    style="red"
+                )
 
             elapsed = progress.tasks[task_id].elapsed or 0.0
-            rate = (passed + failed) / elapsed if elapsed > 0 else 0.0
-
             progress.update(
                 task_id,
                 advance=1,
                 passed=passed,
                 failed=failed,
-                rate=rate,
+                rate=(passed + failed) / elapsed if elapsed > 0 else 0.0,
             )
 
-            if status.failed:
-                reporter.info(rich_escape(f"{test_file}: {status.get_message_with_file_list()}"), style="red")
+            if report is not None:
+                report.write_result(test_file=test_file, error=error)
 
     assert len(drivers) == passed + failed, \
         f"Mismatch in number of tests with status ({passed} passed, {failed} failed, {len(drivers)} found)"
     return passed, passed + failed
 
-def student_compiler(compiler_path: Path, input_file: Path, log_stem: Path, **kwargs) -> ProcessOutput:
+def student_compiler(compiler_path: Path, input_file: Path, log_stem: Path, **kwargs) -> TestError | None:
     """
     Wrapper for `build/c_compiler -S <input_file> -o <log_stem>.s`.
     Additional arguments are passed to `run_subprocess`.
 
-    Returns a ProcessOutput
+    Returns None if successful, a TestError otherwise.
     """
-    # Modifying environment to combat errors on memory leak
-    custom_env = environ.copy()
-    custom_env["ASAN_OPTIONS"] = f"log_path={log_stem}.asan.log"
-    custom_env["UBSAN_OPTIONS"] = f"log_path={log_stem}.ubsan.log"
+    # Modifying environment to store sanitizer errors
+    env = environ.copy()
+    env["ASAN_OPTIONS"] = f"log_path={log_stem}.asan.log"
+    env["UBSAN_OPTIONS"] = f"log_path={log_stem}.ubsan.log"
 
     # Compile
     cmd = [compiler_path, "-S", input_file, "-o", stem_add_suffix(log_stem, "s")]
-    return run_component(component=Component.COMPILER, cmd=cmd, env=custom_env, log_stem=log_stem, **kwargs)
+    return run_component(component=Component.COMPILER, cmd=cmd, log_stem=log_stem, env=env, **kwargs)
 
-def symlink_reference_compiler(_input_file: Path, log_stem: Path, **kwargs) -> ProcessOutput:
+def symlink_reference_compiler(_input_file: Path, log_stem: Path, **kwargs) -> TestError | None:
     """
     Symlinks the result of riscv-gcc as its own result.
     It isn't really a compiler but can be passed as a compiler function to use the result of
     riscv-gcc as the output of the compiler, thus testing the ability of riscv-gcc to pass tests.
 
-    Never fails.
+    Returns None; never fails.
     """
     stem_add_suffix(log_stem, "s").symlink_to(stem_add_suffix(log_stem, "gcc.s"))
-    return ProcessOutput()
+    return None
 
 def parse_args(tests_dir: Path) -> Namespace:
-    """
-    Wrapper for argument parsing.
-    """
+    """Wrapper for argument parsing."""
     parser = ArgumentParser()
     parser.add_argument(
         "dir",
@@ -520,7 +477,7 @@ def parse_args(tests_dir: Path) -> Namespace:
         "Leave blank to run all tests."
     )
     parser.add_argument(
-        "-m", "--multithreading",
+        "-j", "--jobs",
         nargs="?",
         const=cpu_count() or 8,
         default=1,
@@ -581,9 +538,9 @@ if __name__ == "__main__":
 
     # Clean the repo if required
     if args.clean:
-        clean_success = clean(top_dir=root_dir)
-        if not clean_success:
-            raise RuntimeError("Error when running make clean")
+        success = build_step(step=MakeRule.CLEAN.value, root_dir=root_dir)
+        if not success:
+            exit("Error when cleaning")
 
     # Prepare the output folder
     rmtree(output_dir, ignore_errors=True)
@@ -591,13 +548,14 @@ if __name__ == "__main__":
 
     # There is no need for building the student compiler when testing with riscv-gcc
     if not args.validate_tests:
-        build_success = build(
-            top_dir=root_dir,
-            multithreading=args.multithreading,
+        success = build_step(
+            step=MakeRule.COMPILER.value,
+            root_dir=root_dir,
+            jobs=args.jobs,
             optimise=args.optimise
         )
-        if not build_success:
-            raise RuntimeError("Error when building")
+        if not success:
+            exit("Error when building")
 
     # Run the tests and save the results into JUnit XML file
     with ExitStack() as stack:
@@ -606,7 +564,7 @@ if __name__ == "__main__":
         passing, total = run_tests(
             tests_dir=args.dir,
             report=report,
-            multithreading=args.multithreading,
+            jobs=args.jobs,
             compiler=symlink_reference_compiler if args.validate_tests \
                 else partial(student_compiler, build_dir / Component.COMPILER.value.suffix),
             output_dir=output_dir
@@ -620,15 +578,15 @@ if __name__ == "__main__":
 
     # No coverage for optimised builds
     if not args.optimise:
-        coverage_success = coverage(top_dir=root_dir)
-        if not coverage_success:
-            raise RuntimeError("Error when running make coverage")
+        success = build_step(step=MakeRule.COVERAGE.value, root_dir=root_dir)
+        if not success:
+            exit("Error when processing coverage data")
 
         external_root = Path(environ["LOCALPWD"]) if "LOCALPWD" in environ else root_dir
-        coverage_index = external_root.joinpath("coverage/index.html")
+        coverage_index = rich_escape(str(external_root.joinpath("coverage/index.html")))
         reporter.info(
-            f"Check detailed coverage at [link=file://{coverage_index}]coverage/index.html[/] "
-            "(open in a web browser or in vscode using Ctrl+P >workbench.action.browser.open)\n"
+            "Check detailed coverage at coverage/index.html (see docs/coverage.md) "
+			f"or in a web browser at file://{coverage_index}\n"
         )
 
     reporter.info(f"[bold]Passed {passing}/{total} found test cases[/]")

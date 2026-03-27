@@ -11,8 +11,9 @@
 			// Make sure you use the official VS Code binary (for instance the one in arch repos isn't)
 			"extensions": [
 				"ms-vscode.cpptools-extension-pack", // all miscrosoft official c++ extensions
-				"daohong-emilio.yash", // Lex + Yacc
-				"markis.code-coverage" // Code coverage warnings
+				"daohong-emilio.yash", // Lex + Yacc extension
+				"ms-vscode.live-server", // Hosts a http server to view coverage
+				"markis.code-coverage" // Code coverage warnings in editor
 			]
 		}
 	},

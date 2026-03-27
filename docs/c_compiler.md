@@ -18,28 +18,39 @@ You can test your compiler by running [`./test.py`](../test.py) from the top of 
 Building compiler...
 [...]
 
-[tests/types/unsigned.c]
-Error when compiling: Command 'build/c_compiler -S tests/types/unsigned.c -o build/output/types/unsigned/unsigned.s' returned non-zero exit status 1.
-See:
+tests/types/unsigned.c: Error when compiling with `build/c_compiler -S tests/types/unsigned.c -o build/output/types/unsigned/unsigned.s`, see
         build/output/types/unsigned/unsigned.c_compiler.stdout.log
         build/output/types/unsigned/unsigned.c_compiler.stderr.log
 
 Processing coverage data...
-[...]
 Check detailed coverage at coverage/index.html (open in a web browser or in vscode using Ctrl+P >workbench.action.browser.open)
 
 Passed 1/86 found test cases
 ```
 
-You can make also run in a *silent* mode with [`./test.py --silent`](../test.py). This is the default when using Ctrl+Shift+B in VS Code.
+You can also run in *silent* mode with [`./test.py --silent`](../test.py). This is the default when using Ctrl+Shift+B in VS Code.
 
 
 The provided starting framework is only able to compile a very simple program, as described [here](./basic_compiler.md). By default, only the first [`_example/example.c`](../tests/_example/example.c) test should be passing.
 
-Full usage guide of [`test.py`](../test.py) is found in the file header or after running:
+Full usage guide of [`test.py`](../test.py) is found in the file header or after running `./test.py --help`. When writing this doc the output is:
 
 ```console
 > root@host:/workspaces/langproc-YYYY-cw-XXX# ./test.py --help
+usage: test.py [-h] [-j [N]] [-s] [--version] [--clean] [--optimise] [--generate_report] [--validate_tests] [dir]
+
+positional arguments:
+  dir                (Optional) paths to the compiler test folders. Use this to select certain tests. Leave blank to run all tests.
+
+options:
+  -h, --help         show this help message and exit
+  -j, --jobs [N]     Build compiler and run tests using multiple threads. Use -m to use the default thread count, or -m N to use exactly N threads.
+  -s, --silent       Disable verbose output into the terminal. Note that all logs will be stored automatically into log files regardless of this option.
+  --version          show program's version number and exit
+  --clean            Clean the repository before testing. This will make it slower but it can solve some compilation issues when source files are deleted.
+  --optimise         Optimise the compiler for speed, at the cost building time and debugging.
+  --generate_report  Generate a JUnit report to use as a test summary for CI/CD.
+  --validate_tests   Use GCC to validate tests instead of testing the custom compiler. This is used for CI/CD pipeline, not for normal student usage. YOUR COMPILER WILL NOT BE USED NOR BUILT WITH THIS OPTION.
 ```
 
 ## Program build and execution
@@ -47,7 +58,7 @@ Full usage guide of [`test.py`](../test.py) is found in the file header or after
 Your program should be built by running the following command in the top-level directory of your repo:
 
 ```console
-> root@host:/workspaces/langproc-YYYY-cw-XXX# make DEBUG=1 build/c_compiler
+> root@host:/workspaces/langproc-YYYY-cw-XXX# make build/c_compiler
 ```
 
 The compilation function is invoked using the flag `-S`, with the source file and output file specified on the command line:
