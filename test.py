@@ -26,8 +26,11 @@ __author__ = "William Huynh, Filip Wojcicki, James Nock, Quentin Corradi"
 import os
 import sys
 import argparse
+import time
+import re
 import shutil
 import subprocess
+from statistics import mean
 from enum import IntEnum
 from contextlib import nullcontext, ExitStack
 from dataclasses import dataclass
@@ -39,6 +42,8 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from http.server import HTTPServer, SimpleHTTPRequestHandler
 from rich.progress import Progress, BarColumn, TextColumn
 from rich.console import Console
+
+TIME_CMD = ["/usr/bin/time", "-f", "%e"]
 
 class Verbosity(IntEnum):
     QUIET = 0
@@ -188,7 +193,7 @@ def run_subprocess(
     """
     Wrapper for `subprocess.run` with common arguments and error handling.
 
-    Returns a tuple of (return_code: int, error_message: str, timed_out: bool)
+    Returns a tuple of (return_code: int, error_message: str)
     """
     with ExitStack() as stack:
         # None means that stdout and stderr are handled by parent, i.e., they go to console by default
@@ -343,6 +348,50 @@ def serve_coverage_forever(root: Path, host: str, port: int):
     except KeyboardInterrupt:
         reporter.info("Server has been stopped!", style="red")
 
+
+def measure_compiler_stats(benchmark_dir: Path):
+    """
+    Measure compiler's compilation time, execution time and ELF size
+    """
+    reporter.info("[bold]Benchmark results:[/]", style="purple")
+
+    for test_case_dir in benchmark_dir.iterdir():
+
+        test_case_name = test_case_dir.stem
+        test_case_stem = (test_case_dir / test_case_name)
+
+        # Compilation time obtained from the time spent by compiler to compiler the test case
+        compilation_log = test_case_stem.with_name(f"{test_case_stem.name}.c_compiler.stderr.log")
+        try:
+            compilation_time = float(compilation_log.read_text(encoding="utf-8").strip())
+        except FileNotFoundError:
+            compilation_time = -1.0
+
+        # Execution time obtained from the time spent by spike to simulate the (repeated) test case
+        repetitions = 100000
+        simulation_log = test_case_stem.with_name(f"{test_case_stem.name}.simulation.stderr.log")
+        execution_time = float(simulation_log.read_text(encoding="utf-8").strip())
+
+        # Binary size obtained as the sum of .text + .data + .rodata sections of ELF file
+        elf_file = test_case_stem.with_name(f"{test_case_stem.name}.o")
+        cmd = ["riscv32-unknown-elf-size", "-A", str(elf_file)]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        binary_size = 0
+
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and parts[0] in {".text", ".data", ".rodata"}:
+                binary_size += int(parts[1])
+
+        # Report compiler stats to terminal, students can decide how to process them further
+        reporter.info(
+            f"{test_case_name}: "
+            f"compilation time = {compilation_time:.2f} s, "
+            f"execution time = {execution_time / repetitions * 1000000:.1f} us, "
+            f"binary size = {binary_size} B",
+            style="purple"
+        )
+
 def run_test(
     compiler: Callable[[Path, Path, int], subprocess_status],
     output_dir: Path,
@@ -422,7 +471,7 @@ def run_test(
         # Simulate
         run_component(
             component="simulation",
-            cmd=["spike", "--isa=rv32gc", "pk", log_path]
+            cmd=TIME_CMD+["spike", "--isa=rv32gc", "pk", log_path]
         )
 
     except TestFailed as e:
@@ -432,7 +481,7 @@ def run_test(
     return Result(test_case_name=test_name, return_code=0, error_log=msg)
 
 def run_tests(
-    tests_dir: Path,
+    drivers: list[Path],
     xml_file: JUnitXMLFile,
     multithreading: int,
     **kwargs
@@ -444,9 +493,6 @@ def run_tests(
 
     Returns a tuple of (passing: int, total: int) tests
     """
-    drivers = list(tests_dir.rglob("*_driver.c"))
-    drivers = sorted(drivers, key=lambda p: (p.parent.name, p.name))
-
     passed = failed = 0
 
     with Progress(
@@ -469,7 +515,10 @@ def run_tests(
             rate=0.0,
         )
 
-        futures = [executor.submit(run_test, driver=driver, **kwargs) for driver in drivers]
+        futures = [
+            executor.submit(run_test, driver=driver, **kwargs)
+            for driver in drivers
+        ]
 
         for future in as_completed(futures):
             result = future.result()
@@ -495,8 +544,6 @@ def run_tests(
 
     assert len(drivers) == passed + failed, f"Mismatch between total tests and processed results"
 
-    reporter.info(f"[bold]Passed {passed}/{passed + failed} found test cases[/]")
-
     return (passed, passed + failed)
 
 def student_compiler(
@@ -517,7 +564,7 @@ def student_compiler(
     custom_env["UBSAN_OPTIONS"] = f"log_path={log_path}.ubsan.log"
 
     # Compile
-    cmd = [compiler_path, "-S", to_assemble, "-o", f"{log_path}.s"]
+    cmd = TIME_CMD + [compiler_path, "-S", to_assemble, "-o", f"{log_path}.s"]
     return run_subprocess(cmd=cmd, env=custom_env, log_path=f"{log_path}.{COMPILER_NAME}", **kwargs)
 
 def symlink_reference_compiler(to_assemble: Path, log_path: Path, **kwargs) -> subprocess_status:
@@ -590,6 +637,13 @@ def parse_args(tests_dir: Path) -> argparse.Namespace:
         "and you may run into issues."
     )
     parser.add_argument(
+        "--benchmark",
+        action="store_true",
+        default=False,
+        help="Benchmark compiler and gather related statistics like compilation "
+        "time, execution time, and ELF size."
+    )
+    parser.add_argument(
         "--validate_tests",
         action="store_true",
         default=False,
@@ -604,9 +658,20 @@ if __name__ == "__main__":
     build_dir = root_dir / "build"
     output_dir = build_dir / "output"
 
-    args = parse_args(tests_dir=root_dir / "tests")
+    tests_dir_name = "tests"
+    args = parse_args(tests_dir=root_dir / tests_dir_name)
+    tests_dir = Path(args.dir)
+
+    benchmark_dir_name = "benchmark"
+    benchmark_dir = tests_dir / benchmark_dir_name
 
     reporter.verbosity = Verbosity.NORMAL if args.silent else Verbosity.VERBOSE
+
+    # Select compiler to use
+    if args.validate_tests:
+        compiler = symlink_reference_compiler
+    else:
+        compiler = partial(student_compiler, build_dir / COMPILER_NAME)
 
     # Clean the repo if required
     if not args.no_clean:
@@ -630,15 +695,40 @@ if __name__ == "__main__":
             raise RuntimeError("Error when building")
 
     # Run the tests and save the results into JUnit XML file
+    tests_drivers = sorted(
+        (
+            p for p in tests_dir.rglob("*_driver.c")
+            if not p.is_relative_to(benchmark_dir)
+        ), key=lambda p: (p.parent.name, p.name),
+    )
+
     with JUnitXMLFile(build_dir / "junit_results.xml") as xml_file:
         passing, total = run_tests(
-            tests_dir=Path(args.dir),
+            drivers=tests_drivers,
             xml_file=xml_file,
             multithreading=args.multithreading,
-            compiler=symlink_reference_compiler if args.validate_tests \
-                else partial(student_compiler, build_dir / COMPILER_NAME),
+            compiler=compiler,
             output_dir=output_dir
         )
+
+        reporter.info(f"[bold]Passed {passing}/{total} found test cases[/]")
+
+    # Run the benchmarks and save the results into JUnit XML file
+    if args.benchmark:
+        benchmark_drivers = list(benchmark_dir.rglob("*_driver.c"))
+
+        with JUnitXMLFile(build_dir / "benchmark_junit_results.xml") as xml_file:
+            passing, total = run_tests(
+                drivers=benchmark_drivers,
+                xml_file=xml_file,
+                multithreading=args.multithreading,
+                compiler=compiler,
+                output_dir=output_dir
+            )
+            if passing == total:
+                measure_compiler_stats(output_dir / tests_dir_name / benchmark_dir_name)
+            else:
+                reporter.warning(f"Skipping benchmarking due to failures")
 
     # Skip unavailable coverage and exit immediately for test validation
     if args.validate_tests:

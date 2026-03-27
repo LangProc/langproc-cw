@@ -26,7 +26,9 @@ RUN apt-get update && apt-get install -y --fix-missing \
     ccache \
     cmake \
     clangd-18 \
-    bear; \
+    bear \
+    time
+
 # Set clangd as the default language server
     update-alternatives --install /usr/bin/clangd clangd /usr/bin/clangd-18 100
 
