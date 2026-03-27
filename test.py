@@ -4,7 +4,7 @@
 A wrapper script to run all the compiler tests. This script will call the
 Makefile, run the tests and store the outputs in build/output.
 
-Usage: ./test.py [-h] [-m] [-s] [--version] [--clean] [--optimise] [--generate_report] [--validate_tests] [dir]
+Usage: ./test.py [-h] [-j] [-s] [--version] [--clean] [--optimise] [--generate_report] [--validate_tests] [dir]
 
 Example usage for all tests: ./test.py
 
@@ -19,14 +19,13 @@ For more information, run ./test.py --help
 __version__ = "1.0.0"
 __author__ = "William Huynh, Filip Wojcicki, James Nock, Quentin Corradi"
 
-
 import shlex
 import subprocess
 import xml.sax.saxutils as xml
 from os import environ, cpu_count
 from sys import stdout, exit
 from signal import Signals, valid_signals, strsignal
-from shutil import rmtree
+from shutil import rmtree, move
 from pathlib import Path
 from argparse import ArgumentParser, Namespace
 from enum import IntEnum, Enum
@@ -137,20 +136,20 @@ def build_step(
         "make",
         f"-j{jobs}",
         "-s" if quiet else "-Oline",
-        "-C", root_dir / BUILD_DIR_NAME,
+        "-C", root_dir,
         f"{'N' if optimise else ''}DEBUG=1",
         step.name
     ]
     stdout, stderr = (subprocess.DEVNULL, subprocess.DEVNULL) if quiet else (None, None)
 
     with reporter.status(step.action, verbosity=step.verbosity):
-        code = subprocess.run(cmd, stdout=stdout, stderr=stderr, check=True, **kwargs).returncode
+        code = subprocess.run(cmd, stdout=stdout, stderr=stderr, **kwargs).returncode
 
     if code == 0:
         return True
 
     # Clean version of the command for students to quickly retry the failing step
-    cmd = shlex.join(["make", "-C", BUILD_DIR_NAME] + cmd[-2:])
+    cmd = shlex.join(["make"] + cmd[-2:])
     reporter.error(f"{error_kind_from_code(code)} when {step.action.lower()} with `{cmd}`.")
 
     return False
@@ -204,7 +203,7 @@ def run_component(
     new_log_stem = stem_add_suffix(log_stem, component.value.name)
     files = [stem_add_suffix(new_log_stem, "stdout.log"), stem_add_suffix(new_log_stem, "stderr.log")]
     with files[0].open(mode="w") as stdout, files[1].open(mode="w") as stderr:
-        code = subprocess.run(cmd, stdout=stdout, stderr=stderr, check=True, **kwargs).returncode
+        code = subprocess.run(cmd, stdout=stdout, stderr=stderr, **kwargs).returncode
 
     if code == 0:
         return None
@@ -213,11 +212,12 @@ def run_component(
     # All passes after student compiler (so just not reference compiler) should add files to refer to
     # I tried to link them in the order students should inspect them
     # If the compiler succeded and a futher component failed, it is likely caused by the compiler
-    # so we should link the compiler outputs, in particular the produced assembly (treated specially, see below)
+    # so we should link the compiler outputs, in particular the produced assembly (see below)
     if component is not Component.REFERENCE:
         # If the compiler output is present add it with the reference to compare to;
         # if the compiler failed we don't expect it but link it if present,
-        # otherwise it's probably the reason of the failure, so it's worth mentioning first in the error message
+        # otherwise it's probably the reason of the failure,
+        # so it's worth mentioning first in the error message
         compiler_assembly = stem_add_suffix(log_stem, "s")
         if component is Component.COMPILER:
             if compiler_assembly.is_file():
@@ -249,18 +249,21 @@ def run_component(
         (get_relative_path(x) if isinstance(x, Path) else x)
         for x in cmd[(0 if cmd[0] != "ccache" else 1):]
     )
-    return TestError(short_message=f"{error_kind} when {action.lower()} with `{cmdstr}`", files=files)
+    return TestError(
+        short_message=f"{error_kind} when {component.value.action.lower()} with `{cmdstr}`",
+        files=files
+    )
 
 def test_from_driver(driver_file: Path) -> Path:
     """Removes the _driver part of driver file names (example_driver.c -> example.c)."""
     return driver_file.with_stem(driver_file.stem.removesuffix("_driver"))
 
 def run_test(
-    compiler: Callable[[Path, Path, int], ProcessOutput],
+    compiler: Callable[[Path, Path, int], TestError | None],
     output_dir: Path,
     driver_file: Path,
     **kwargs
-) -> ProcessOutput:
+) -> TestError | None:
     """
     Run an instance of a test case whose driver is given by `driver_file`.
     The output of all the steps are put in `output_dir`.
@@ -307,7 +310,7 @@ def run_test(
 
     # Assemble
     error = run_component(
-        componenet=Component.ASSEMBLER,
+        component=Component.ASSEMBLER,
         cmd=gcc_cmd + ["-c", stem_add_suffix(output_stem, "s"), "-o", stem_add_suffix(output_stem, "o")],
         log_stem=output_stem
     )
@@ -418,7 +421,7 @@ def run_tests(
             else:
                 failed += 1
                 reporter.info(
-                    rich_escape(f"{test_file}: {status.get_message_with_file_list()}"),
+                    rich_escape(f"{test_file}: {error.get_message_with_file_list()}"),
                     style="red"
                 )
 
@@ -456,12 +459,16 @@ def student_compiler(compiler_path: Path, input_file: Path, log_stem: Path, **kw
 
 def symlink_reference_compiler(_input_file: Path, log_stem: Path, **kwargs) -> TestError | None:
     """
-    Symlinks the result of riscv-gcc as its own result.
+    Symlinks the result of riscv-gcc as its own result and move its logs as our own.
     It isn't really a compiler but can be passed as a compiler function to use the result of
     riscv-gcc as the output of the compiler, thus testing the ability of riscv-gcc to pass tests.
 
     Returns None; never fails.
     """
+    reference_stem = stem_add_suffix(log_stem, Component.REFERENCE.value.name)
+    compiler_stem = stem_add_suffix(log_stem, Component.COMPILER.value.name)
+    for suffix in ["stdout.log", "stderr.log"]:
+        move(stem_add_suffix(reference_stem, suffix), stem_add_suffix(compiler_stem, suffix))
     stem_add_suffix(log_stem, "s").symlink_to(stem_add_suffix(log_stem, "gcc.s"))
     return None
 
@@ -566,14 +573,15 @@ if __name__ == "__main__":
             report=report,
             jobs=args.jobs,
             compiler=symlink_reference_compiler if args.validate_tests \
-                else partial(student_compiler, build_dir / Component.COMPILER.value.suffix),
+                else partial(student_compiler, build_dir / Component.COMPILER.value.name),
             output_dir=output_dir
         )
 
     # Skip unavailable coverage and exit immediately for test validation
     if args.validate_tests:
         if passing != total:
-            raise RuntimeError(f"{total - passing} tests failed during test validation")
+            exit(f"{total - passing} tests failed during test validation")
+        reporter.info(f"All {total} tests are valid!")
         exit()
 
     # No coverage for optimised builds
@@ -583,10 +591,10 @@ if __name__ == "__main__":
             exit("Error when processing coverage data")
 
         external_root = Path(environ["LOCALPWD"]) if "LOCALPWD" in environ else root_dir
-        coverage_index = rich_escape(str(external_root.joinpath("coverage/index.html")))
+        coverage_index = external_root.joinpath("coverage/index.html")
         reporter.info(
-            "Check detailed coverage at coverage/index.html (see docs/coverage.md) "
-			f"or in a web browser at file://{coverage_index}\n"
+            "Check detailed coverage in coverage/index.html "
+			f"(http://127.0.0.1:3000 in VS Code, or in a web browser at {rich_escape(coverage_index.as_uri())})\n"
         )
 
     reporter.info(f"[bold]Passed {passing}/{total} found test cases[/]")

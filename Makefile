@@ -16,13 +16,13 @@ CXXFLAGS += -g # generate debugging information
 CXXFLAGS += -O0 # perform minimal optimisations
 CXXFLAGS += -rdynamic # to get more helpful traces when debugging
 CXXFLAGS += --coverage # enable code coverage
-# Get value of -j (no matter how it is provided, including --jobs=X) https://stackoverflow.com/a/76517886
-JOBS = $(patsubst -j%,%,$(filter -j%,$(MAKEFLAGS)))
-COVFLAGS := -j $(JOBS) # parallel
+# Get value of -j (no matter how it is provided, including --jobs=X)
+JOBSFLAG = $(patsubst -j%,-j %,$(filter -j%,$(MAKEFLAGS)))
+COVFLAGS = $(JOBSFLAG) # parallel
 # Exclude external files like stdlib, exclude lexer and parser generated files
 COVFLAGS += --no-external --exclude "$(CURDIR)/build/*"
-COVGLAGS += --demangle-cpp # print nice C++ function names
-COVGLAGS += -d . # coverage data for current program (not kernel which is default...)
+COVFLAGS += --demangle-cpp # print nice C++ function names
+COVFLAGS += -d . # coverage data for current program (not kernel which is default...)
 endif
 
 SOURCES := $(wildcard src/*.cpp) # all .cpp files are to be considered source files
@@ -68,7 +68,7 @@ coverage:
 # Merge with static data
 	@lcov -a build/base.info -a coverage/runtime.info -o coverage/lcov.info
 # Generate webpage without folders (include, src) because students put code in headers + ignore mising data
-	genhtml -j $(JOBS) --flat --ignore-errors unmapped -o coverage coverage/lcov.info
+	genhtml $(JOBSFLAG) --flat --ignore-errors unmapped -o coverage coverage/lcov.info
 # Remove runtime coverage data to get fresh coverage from future runs without recompiling
 	@find . -name "*.gcda" -delete
 	@rm coverage/runtime.info

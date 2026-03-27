@@ -18,7 +18,7 @@
             "label": "Run tests",
             "command": "./test.py",
             "args": [
-                "-m",
+                "-j",
                 "--silent"
             ],
             "group": {
