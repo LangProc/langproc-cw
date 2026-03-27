@@ -14,39 +14,43 @@ Source files can be found in the [./src](../src) directory and header files can 
 You can test your compiler by running [`./test.py`](../test.py) from the top of this repo. The output should look as follows:
 
 ```console
-> user@host:langproc-cw# ./test.py
-
-Cleaning project...
-Running make...
-
+> root@host:/workspaces/langproc-YYYY-cw-XXX# ./test.py
+Building compiler...
 [...]
 
-types/unsigned.c
-        > Failed to compile testcase:
-         /workspaces/langproc-cw/build/output/types/unsigned/unsigned.compiler.stderr.log
-         /workspaces/langproc-cw/build/output/types/unsigned/unsigned.compiler.stdout.log
-         /workspaces/langproc-cw/build/output/types/unsigned/unsigned.s
-         /workspaces/langproc-cw/build/output/types/unsigned/unsigned.s.printed
+tests/types/unsigned.c: Error when compiling with `build/c_compiler -S tests/types/unsigned.c -o build/output/types/unsigned/unsigned.s`, see
+        build/output/types/unsigned/unsigned.c_compiler.stdout.log
+        build/output/types/unsigned/unsigned.c_compiler.stderr.log
 
->> Test Summary: 1 Passed, 85 Failed
+Processing coverage data...
+Check detailed coverage at coverage/index.html (open in a web browser or in vscode using Ctrl+P >workbench.action.browser.open)
+
+Passed 1/86 found test cases
 ```
 
-You can make also run in a *silent* mode with [`./test.py --silent`](../test.py), which displays a live CLI progress bar (note: the progress bar and results will be coloured):
+You can also run in *silent* mode with [`./test.py --silent`](../test.py). This is the default when using Ctrl+Shift+B in VS Code.
 
-```console
-> user@host:langproc-cw# ./test.py --silent
 
-Cleaning project...
-Running make...
-Running Tests [#################################################]
-Pass:  1 | Fail: 85 | Remaining:  0
-```
 The provided starting framework is only able to compile a very simple program, as described [here](./basic_compiler.md). By default, only the first [`_example/example.c`](../tests/_example/example.c) test should be passing.
 
-Full usage guide of [`test.py`](../test.py) is found in the file header or after running:
+Full usage guide of [`test.py`](../test.py) is found in the file header or after running `./test.py --help`. When writing this doc the output is:
 
 ```console
-> user@host:langproc-cw# ./test.py --help
+> root@host:/workspaces/langproc-YYYY-cw-XXX# ./test.py --help
+usage: test.py [-h] [-j [N]] [-s] [--version] [--clean] [--optimise] [--generate_report] [--validate_tests] [dir]
+
+positional arguments:
+  dir                (Optional) paths to the compiler test folders. Use this to select certain tests. Leave blank to run all tests.
+
+options:
+  -h, --help         show this help message and exit
+  -j, --jobs [N]     Build compiler and run tests using multiple threads. Use -m to use the default thread count, or -m N to use exactly N threads.
+  -s, --silent       Disable verbose output into the terminal. Note that all logs will be stored automatically into log files regardless of this option.
+  --version          show program's version number and exit
+  --clean            Clean the repository before testing. This will make it slower but it can solve some compilation issues when source files are deleted.
+  --optimise         Optimise the compiler for speed, at the cost building time and debugging.
+  --generate_report  Generate a JUnit report to use as a test summary for CI/CD.
+  --validate_tests   Use GCC to validate tests instead of testing the custom compiler. This is used for CI/CD pipeline, not for normal student usage. YOUR COMPILER WILL NOT BE USED NOR BUILT WITH THIS OPTION.
 ```
 
 ## Program build and execution
@@ -54,13 +58,13 @@ Full usage guide of [`test.py`](../test.py) is found in the file header or after
 Your program should be built by running the following command in the top-level directory of your repo:
 
 ```console
-> user@host:langproc-cw# make build/c_compiler
+> root@host:/workspaces/langproc-YYYY-cw-XXX# make build/c_compiler
 ```
 
 The compilation function is invoked using the flag `-S`, with the source file and output file specified on the command line:
 
 ```console
-> user@host:langproc-cw# build/c_compiler -S [source-file.c] -o [dest-file.s]
+> root@host:/workspaces/langproc-YYYY-cw-XXX# build/c_compiler -S [source-file.c] -o [dest-file.s]
 ```
 
 You can assume that the command-line (CLI) arguments will always be in this order, and that there will be no spaces in source or destination paths. Note that the provided starting point in this repository already functions as specified above, so these CLI arguments should work out of the box (unless you decide not to use the provided base compiler).
@@ -176,28 +180,33 @@ int main() {
 I run the compiler on the test program, like so:
 
 ```console
-> user@host:langproc-cw# build/c_compiler -S test_program.c -o test_program.s
+> root@host:/workspaces/langproc-YYYY-cw-XXX# build/c_compiler -S test_program.c -o test_program.s
 ```
 
 I then use GCC to assemble the generated assembly program (`test_program.s`), like so:
 
 ```console
-> user@host:langproc-cw# riscv32-unknown-elf-gcc -march=rv32gc -mabi=ilp32d -o test_program.o -c test_program.s
+> root@host:/workspaces/langproc-YYYY-cw-XXX# riscv32-unknown-elf-gcc -march=rv32gc -mabi=ilp32d -o test_program.o -c test_program.s
 ```
 
 I then use GCC to link the generated object file (`test_program.o`) with the driver program (`test_program_driver.c`), to produce an executable (`test_program`), like so:
 
 ```console
-> user@host:langproc-cw# riscv32-unknown-elf-gcc -march=rv32gc -mabi=ilp32d -static -o test_program test_program.o test_program_driver.c
+> root@host:/workspaces/langproc-YYYY-cw-XXX# riscv32-unknown-elf-gcc -march=rv32gc -mabi=ilp32d -static -o test_program test_program.o test_program_driver.c
 ```
 
 I then use spike to simulate the executable on RISC-V, like so:
 
 ```console
-> user@host:langproc-cw# spike --isa=rv32gc pk test_program
+> root@host:/workspaces/langproc-YYYY-cw-XXX# spike --isa=rv32gc pk test_program
 ```
 
-This command should produce the exit code `0`.
+This command should produce the exit code `0`. You can verify it like so:
+
+```console
+> root@host:/workspaces/langproc-YYYY-cw-XXX# echo $?
+0
+```
 
 ## Assembler directives
 [You will need to consider assembler directives in your output](./assembler_directives.md)

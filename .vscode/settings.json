@@ -1,4 +1,3 @@
 {
-    "editor.formatOnSave": true,
-    "editor.defaultFormatter": "llvm-vs-code-extensions.vscode-clangd",
+    "files.trimTrailingWhitespace": true
 }

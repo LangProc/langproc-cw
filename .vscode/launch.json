@@ -1,4 +1,5 @@
 {
+    // This is the action launched when pressing F5, refers to task "Run make" in tasks.json
     "version": "0.2.0",
     "configurations": [
         {
@@ -8,20 +9,14 @@
             "program": "${workspaceFolder}/build/c_compiler",
             "args": [
                 "-S",
-                "compiler_tests/_example/example.c",
+                "tests/_example/example.c",
                 "-o",
                 "build/debug.s",
             ],
             "cwd": "${workspaceFolder}",
-            "environment": [
-                {
-                    "name": "ASAN_OPTIONS",
-                    "value": "exitcode=0,detect_leaks=0"
-                }
-            ],
             "externalConsole": false,
             "MIMode": "gdb",
-            "preLaunchTask": "Run make",
+            "preLaunchTask": "Run make", // <--- HERE
             "setupCommands": [
                 {
                     "description": "Enable GDB pretty-printing",
@@ -34,6 +29,6 @@
                     "ignoreFailures": true
                 }
             ]
-        }
+        },
     ]
 }
