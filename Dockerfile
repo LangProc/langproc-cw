@@ -2,28 +2,30 @@ FROM ubuntu:24.04
 
 # Install dependencies
 RUN apt-get update && apt-get install -y --fix-missing \
-    build-essential \
-    git \
-    flex \
-    bison \
-    ccache \
-    python3 \
-    python3-pip \
-    python3-rich \
-    gdb \
-    time \
-    nano \
-    lcov \
+    curl \
     locales \
     dos2unix \
     lsb-release \
     ca-certificates \
-    device-tree-compiler;
+    git \
+    nano \
+    flex \
+    bison \
+    build-essential \
+    ccache \
+    python3 \
+    python3-pip \
+    python3-rich \
+    device-tree-compiler \
+    rr \
+    gdb \
+    time \
+    lcov;
 
 ARG ARTIFACT_TAG=v2.1.0
 
 WORKDIR /tmp
-RUN localedef -i en_GB -f UTF-8 en_GB.UTF-8
+RUN localedef -i en_GB -f UTF-8 en_GB.UTF-8; \
     set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \

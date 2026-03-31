@@ -4,7 +4,8 @@
 	"name": "Local Dockerfile",
 	// Use the imaged pushed to ghcr to save time; it should match the Dockerfile,
 	// otherwise use the "Build docker image" action (.github/workflows/build-environment.yml)
-	"image": "ghcr.io/langproc/langproc-cw/environment:latest",
+	// "image": "ghcr.io/langproc/langproc-cw/environment:latest",
+	"dockerFile": "Dockerfile",
 	"customizations": {
 		"vscode": {
 			// Installs these extensions when opening in a container (using the DevContainers extension)
