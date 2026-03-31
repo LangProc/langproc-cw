@@ -3,7 +3,7 @@ Environment
 
 An Ubuntu 24.04 Dockerfile has been provided which defines all of the tools you need to get started, just like in the labs.
 
-You are advised to do your final testing before submission in this environment, otherwise you are likely to hit incompatibility problems, which may mean your program won't build in my test environment.
+You are advised to do your final testing before submission in this environment, otherwise you are likely to hit incompatibility problems, which may mean your program won't build in the test environment.
 
 Many students develop their compiler in VS Code, as this has good support for collaborative programming and working inside Docker containers.
 Instructions for getting set up in VS Code are provided below.
@@ -18,12 +18,12 @@ More generic instructions for those using other editors are also provided, furth
 4) Open the Command Palette in VS Code:
     - Windows: `Ctrl + Shift + P`
     - Mac OS: `Cmd + Shift + P`
-    - Alternatively, you can access this from the menu bar `View -> Command Palette`.
+    - Alternatively, you can access this from the menu bar `View → Command Palette`.
 5) Enter `>Dev Containers: Reopen in Container` into the Command Palette.
 6) After a delay you will now be in the container environment.
     - The delay will vary based on how fast you can download around 1GB over your Internet connection.
     - For those interested, VS Code reads the container configuration from the [.devcontainer/devcontainer.json](../.devcontainer.json) file.
-7) Test that your tools are correctly set up by running `./test.py --silent --validate_tests` in the VS Code terminal, which is accessible via `Terminal -> New Terminal`.
+7) Test that your tools are correctly set up by running `./test.py --silent --validate_tests` in the VS Code terminal, which is accessible via `Terminal → New Terminal`.
    Your output should look something like this:
 
 ```console
@@ -32,7 +32,7 @@ Passed 86/86 found test cases
 ```
 
 8) You might also install VS Code extensions for better text highlighting and easier debugging if they were not installed automatically.
-9) With VS Code you can run `test.py` quickly by pressing Ctrl+Shift+B, and start debugging by pressing F5 to start the integrated VS Code debugger.
+9) With VS Code you can run `./test.py` quickly by pressing `Ctrl+Shift+B`, and start debugging by pressing F5 to start the integrated VS Code debugger.
    By default, this attempts to compile [tests/_example/example.c](../tests/_example/example.c), as specified in [.vscode/launch.json](../.vscode/launch.json).
 
 ### Another Editor + Docker

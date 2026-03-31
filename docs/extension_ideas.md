@@ -112,7 +112,7 @@ It is a good idea to put your custom optimisations behind a flag, e.g. `-O1`, so
 
 ### Peephole optimisations
 
-[Peephole optimisations](https://en.wikipedia.org/wiki/Peephole_optimization) happen after codegen, before emitting assembly.
+[Peephole optimisations](https://en.wikipedia.org/wiki/Peephole_optimization) happen after code generation, before emitting assembly.
 They do not depend on any IR analysis, so they are a good option if you are not planning on implementing any custom IR.
 The goal is to check across small windows of instruction to find patterns to simplify with equivalent logic.
 
@@ -226,8 +226,8 @@ A good progression:
 
 1. **Naive**: spill everything to stack (baseline)
 2. **Local allocation**: reuse a small set of registers within a basic block
-3. **Linear scan** allocation (often simpler than graph coloring)
-4. **Graph coloring** allocation (classic “hard but rewarding”)
+3. **Linear scan** allocation (often simpler than graph colouring)
+4. **Graph colouring** allocation (classic “hard but rewarding”)
 
 Key enabling analysis:
 
@@ -380,7 +380,7 @@ A compiler that reports errors well is dramatically nicer to use and debug.
   * e.g., undeclared identifier, type mismatch, calling something that isn’t a function, invalid lvalue, wrong number of arguments
 
 ### Source locations (line/column)
-  
+
 If you track positions in the lexer and propagate them into AST nodes, you can print:
 
 * file, line, column
@@ -419,6 +419,6 @@ A few high-value warnings:
 * suspicious comparisons (e.g., always true/false due to constants)
 * implicit narrowing conversions (once you implement casts/promotions)
 * array out of bound access
-* suspicious casts (`void*`, pointer size change, function pointer casts, pointer level change [`int**` → `int*`], pointer/array casts, complex data type casts betwen `union`/`struct`/`enum`, `int` → `enum`, `float` →`int`).
-* suspicious mix of operations (pointer and arithmetics, pointer as array index, indexing non array pointer, dereferencing function pointer, calling data pointer).
+* suspicious casts (`void*`, pointer size change, function pointer casts, pointer level change [`int**` → `int*`], pointer/array casts, complex data type casts between `union`/`struct`/`enum`, `int` → `enum`, `float` →`int`).
+* suspicious mix of operations (pointer and arithmetic, pointer as array index, indexing non array pointer, dereferencing function pointer, calling data pointer).
 

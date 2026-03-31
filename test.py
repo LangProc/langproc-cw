@@ -580,7 +580,7 @@ if __name__ == "__main__":
     # Skip unavailable coverage and exit immediately for test validation
     if args.validate_tests:
         if passing != total:
-            exit(f"{total - passing} tests failed during test validation")
+            exit(f"Number of tests failed during test validation: {total - passing}")
         reporter.info(f"All {total} tests are valid!")
         exit()
 
