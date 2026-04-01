@@ -10,4 +10,4 @@ These can be simplified to:
     - Using this convention prevents the need to use `this->` when accessing class data members since it is obvious from the trailing underscore
 - Function names should be PascalCase
 - Variable names should be snake_case
-- Parameter name should be snake_case
+- Parameter names should be snake_case

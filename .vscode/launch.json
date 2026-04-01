@@ -1,38 +1,42 @@
 {
+    // This is the action launched when pressing F5, refers to task "Record failure" in tasks.json
     "version": "0.2.0",
     "configurations": [
-        {
+        { // NOT WORKING! TODO WHEN MIDAS WILL BE WORKING
             "name": "Debug c_compiler",
             "type": "cppdbg",
             "request": "launch",
             "program": "${workspaceFolder}/build/c_compiler",
-            "args": [
-                "-S",
-                "compiler_tests/_example/example.c",
-                "-o",
-                "build/debug.s",
-            ],
-            "cwd": "${workspaceFolder}",
-            "environment": [
-                {
-                    "name": "ASAN_OPTIONS",
-                    "value": "exitcode=0,detect_leaks=0"
-                }
-            ],
-            "externalConsole": false,
-            "MIMode": "gdb",
-            "preLaunchTask": "Run make",
+            "preLaunchTask": "Record failure", // <--- HERE
+            "stopAtEntry": true,
             "setupCommands": [
+                {
+                    "description": "Setup to resolve symbols",
+                    "text": "set sysroot ${workspaceFolder}",
+                    "ignoreFailures": false
+                },
+                {
+                    "text": "set debuginfod enabled off",
+                    "ignoreFailures": false
+                },
+                {
+                    "text": "set auto-load safe-path ${workspaceFolder}",
+                    "ignoreFailures": false
+                },
                 {
                     "description": "Enable GDB pretty-printing",
                     "text": "-enable-pretty-printing",
-                    "ignoreFailures": true
+                    "ignoreFailures": false
                 },
                 {
                     "description": "Show Intel style disassembly in GDB",
                     "text": "-gdb-set disassembly-flavor intel",
-                    "ignoreFailures": true
+                    "ignoreFailures": false
                 }
+            ],
+            "ignoreStandardLibrary": true,
+            "rrOptions": [
+                "-n" // Cannot set kernel.perf_event_paranoid to 1 in a container
             ]
         }
     ]
