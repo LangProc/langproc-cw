@@ -3,12 +3,67 @@
     // for the documentation about the tasks.json format
     "version": "2.0.0",
     "tasks": [
-        {
-            "type": "shell",
+        { // Building task before recoding failure for rr
             "label": "Run make",
+            "type": "process",
             "command": "make",
-            "args": [],
-            "problemMatcher": [],
+            "args": [
+                "DEBUG=1",
+                "build/c_compiler"
+            ],
+            "group": "build"
+        },
+        {
+            "label": "Remove previous traces",
+            "type": "process",
+            "command": "rm",
+            "args": [
+                "-rf",
+                "build/traces"
+            ],
+            "problemMatcher": []
+        },
+        { // Record failure for rr (might be unnecessary), called in launch.json (see the file for more)
+            "label": "Record failure",
+            "dependsOn": ["Run make", "Remove previous traces"],
+            "type": "process",
+            "command": "rr",
+            "args": [
+                "record",
+                "-n",
+                "--asan",
+                "-o",
+                "build/traces",
+                "build/c_compiler",
+                "--args",
+                "-S",
+                "${input:testfile}",
+                "-o",
+                "build/debug.s"
+            ]
+        },
+        { // Testing task run with Ctrl+Shift+B
+            "label": "Run tests",
+            "type": "process",
+            "command": "./test.py",
+            "args": [
+                "-j",
+                "--verbosity",
+                "1"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true // <--- this associates the shortcut
+            },
+            "problemMatcher": []
+        }
+    ],
+    "inputs": [
+        {
+            "id": "testfile",
+            "type": "promptString",
+            "description": "Test to use as compiler input for debugging",
+            "default": "${relativeFile}"
         }
     ]
 }

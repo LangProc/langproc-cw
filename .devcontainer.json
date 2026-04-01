@@ -1,0 +1,21 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/docker-existing-dockerfile
+{
+	"name": "Local Dockerfile",
+	// Use the imaged pushed to ghcr to save time; it should match the Dockerfile,
+	// otherwise use the "Build docker image" action (.github/workflows/build-environment.yml)
+	// "image": "ghcr.io/langproc/langproc-cw/environment:latest",
+	"dockerFile": "Dockerfile",
+	"customizations": {
+		"vscode": {
+			// Installs these extensions when opening in a container (using the DevContainers extension)
+			// Make sure you use the official VS Code binary (for instance the one in arch repos isn't)
+			"extensions": [
+				"ms-vscode.cpptools-extension-pack",
+				"daohong-emilio.yash",
+				"markis.code-coverage",
+				"ms-vscode.live-server"
+			]
+		}
+	}
+}

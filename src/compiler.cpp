@@ -18,20 +18,38 @@ void PrettyPrint(const NodePtr& root, const std::string& compile_output_path);
 // file.
 void Compile(const NodePtr& root, const std::string& compile_output_path);
 
-#ifdef DEBUG
-// This hooks the SIGSEGV (segmentation fault) signal to dump coverage info
+#ifndef NDEBUG
 extern "C" void __gcov_dump();
-void (*prev_handler)(int) = 0;
-void sigsegv_handler(int signo) {
+
+void (*prev_segv_handler)(int) = 0;
+void (*prev_int_handler)(int) = 0;
+void (*prev_term_handler)(int) = 0;
+
+// This hooks the SIGSEGV (segmentation fault), SIGINT (Ctrl+C), and SIGTERM (timeout) signals
+// Otherwise coverage info is not dumped
+void sig_handler(int signo) {
   __gcov_dump();
-  prev_handler(signo);
+  switch (signo) {
+  case SIGSEGV:
+    prev_segv_handler(signo);
+    break;
+  case SIGINT:
+    prev_int_handler(signo);
+    break;
+  case SIGTERM:
+    prev_term_handler(signo);
+    break;
+  }
 }
+
 #endif
 
 int main(int argc, char** argv) {
-#ifdef DEBUG
-  // Hook SIGSEGV to dump coverage info
-  prev_handler = signal(SIGSEGV, sigsegv_handler);
+#ifndef NDEBUG
+  // Hook signals to dump coverage info
+  prev_segv_handler = signal(SIGSEGV, sig_handler);
+  prev_int_handler = signal(SIGINT, sig_handler);
+  prev_term_handler = signal(SIGTERM, sig_handler);
 #endif
 
   // Parse CLI arguments to fetch the source file to compile and the path to
