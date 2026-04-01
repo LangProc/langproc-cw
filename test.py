@@ -4,7 +4,7 @@
 A wrapper script to run all the compiler tests. This script will call the
 Makefile, run the tests and store the outputs in build/output.
 
-Usage: ./test.py [-h] [-v] [-j] [-s] [--clean] [--optimise] [--report] [--validate_tests] [dir]
+Usage: ./test.py [-h] [-v] [-j [N]] [--verbosity {0,1,2,3}] [--clean] [--optimise] [--report] [--validate_tests] [dir]
 
 Example usage for all tests: ./test.py
 
@@ -162,15 +162,13 @@ class TestError:
     def get_message_with_file_list(self) -> str:
         return "".join(chain(
             [self._short_message, ", see:\n"],
-            "\t{get_relative_path(file)}\n" for file in self._files
+            (f"\t{get_relative_path_str(file)}\n" for file in self._files)
         ))
 
     def get_message_with_file_content(self) -> str:
         return "".join(chain(
             [self._short_message, ".\n"],
-            f"\t{get_relative_path_str(file)}:\n"
-            f"{file.read_text()}:\n"
-            for f in files
+            (f"\t{get_relative_path_str(file)}:\n{file.read_text()}:\n" for f in files)
         ))
 
 def stem_add_suffix(stem: Path, suffix: str) -> Path:
@@ -476,6 +474,11 @@ def parse_args(tests_dir: Path) -> Namespace:
             "Leave blank to run all tests."
     )
     parser.add_argument(
+        "-v", "--version",
+        action="version",
+        version=f"BetterTesting {__version__}"
+    )
+    parser.add_argument(
         "-j", "--jobs",
         nargs="?",
         const=cpu_count() or 8,
@@ -486,16 +489,12 @@ def parse_args(tests_dir: Path) -> Namespace:
             "Use -m to use the default thread count, or -m N to use exactly N threads. "
     )
     parser.add_argument(
-        "-s", "--silent",
-        action="store_true",
-        default=False,
+        "--verbosity",
+        type=lambda arg: Verbosity(int(arg)),
+        choices=Verbosity,
+        default=Verbosity.NORMAL,
         help="Disable verbose output into the terminal. Note that all logs will "
             "be stored automatically into log files regardless of this option."
-    )
-    parser.add_argument(
-        "-v", "--version",
-        action="version",
-        version=f"BetterTesting {__version__}"
     )
     parser.add_argument(
         "--clean",
@@ -531,8 +530,7 @@ if __name__ == "__main__":
     output_dir = build_dir / OUTPUT_DIR_NAME
 
     args = parse_args(tests_dir=root_dir / "tests")
-
-    reporter.verbosity = Verbosity.NORMAL if args.silent else Verbosity.VERBOSE
+    reporter.verbosity = args.verbosity
 
     # Clean the repo if required
     if args.clean:
@@ -581,7 +579,12 @@ if __name__ == "__main__":
 
     # No coverage for optimised builds
     if not args.optimise:
-        if not run_make_rule(rule="coverage", action="Processing coverage data", root_dir=root_dir):
+        if not run_make_rule(
+            rule="coverage",
+            action="Processing coverage data",
+            verbosity=Verbosity.VERBOSE,
+            root_dir=root_dir
+        ):
             exit("Error when processing coverage data")
 
     reporter.error(f"[bold]Passed {passing_tests}/{total_tests} found test cases[/]", style="cyan")

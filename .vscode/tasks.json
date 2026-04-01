@@ -48,7 +48,8 @@
             "command": "./test.py",
             "args": [
                 "-j",
-                "--silent"
+                "--verbosity",
+                "1"
             ],
             "group": {
                 "kind": "build",
