@@ -30,11 +30,10 @@ from shutil import rmtree, move
 from pathlib import Path
 from argparse import ArgumentParser, Namespace
 from enum import IntEnum, Enum
-from typing import NamedTuple
 from itertools import chain
 from functools import partial
 from contextlib import nullcontext, ExitStack
-from collections.abc import Callable, Iterator
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from rich.markup import escape as rich_escape
 from rich.console import Console
