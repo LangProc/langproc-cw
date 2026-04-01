@@ -180,7 +180,7 @@ class TestError:
     def get_message_with_file_content(self) -> str:
         return "".join(chain(
             [self._short_message, ".\n"],
-            (f"\t{get_relative_path_str(file)}:\n{file.read_text()}:\n" for f in files)
+            (f"\t{get_relative_path_str(file)}:\n{file.read_text()}:\n" for file in self._files)
         ))
 
 def append_suffix_to_stem(stem: Path, suffix: str) -> Path:
