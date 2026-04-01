@@ -211,7 +211,7 @@ def run_test_step(
     error_msg = get_return_code_msg(return_code)
     # All passes after student compiler should add files to refer to
     # I tried to link them in the order students should inspect them
-    # If the compiler succeded and a futher step failed, it is likely caused by the compiler
+    # If the compiler succeeded and a further step failed, it is likely caused by the compiler
     # so we should link the compiler outputs, in particular the produced assembly (see below)
     if step is not TestStep.REFERENCE:
         # If the compiler output is present add it with the reference to compare to;
@@ -320,7 +320,7 @@ def run_test(
     if (error := run_test_step(
         step=TestStep.LINKER,
         cmd=gcc_cmd + [
-            "-static", # Finally not pretending -static takes a value (it doesnt't)
+            "-static", # Finally not pretending -static takes a value (it doesn't)
             append_suffix_to_stem(output_stem, "o"), driver_file,
             "-o", output_stem
         ],
