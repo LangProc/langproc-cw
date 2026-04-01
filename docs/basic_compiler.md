@@ -1,5 +1,4 @@
-Basic compiler
-==============
+# Basic compiler
 
 You are provided with a basic compiler that can lex, parse, and generate code only for the following program:
 ```

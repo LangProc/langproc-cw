@@ -1,5 +1,4 @@
-Time/Project management
-=======================
+# Time/Project management
 
 This deliverable is designed to encourage groups to practise good time and project management practices.
 
@@ -21,8 +20,7 @@ The expectation is that you will update the project plan on at least a weekly ba
 You do not need to update the information at a very fine granularity -- updating the information should take only a minute, and does not need to be done for every commit.
 
 
-Assessment
-----------
+## Assessment
 
 The main goal of this component is to get you to do some time and project management, so you need to build up evidence that you did it.
 You don't need to do the project management particularly *well* -- the main thing is that you *do* it!

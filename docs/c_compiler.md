@@ -41,13 +41,11 @@ tests/types/unsigned.c: Error when compiling with `build/c_compiler -S tests/typ
         build/output/types/unsigned/unsigned.c_compiler.stderr.log
 
 Processing coverage data...
-Check detailed coverage at coverage/index.html (open in a web browser or in vscode using Ctrl+P >workbench.action.browser.open)
-
 Passed 1/86 found test cases
 ```
 
-You can also run in *silent* mode with [`./test.py --silent`](../test.py).
-This is the default when using `Ctrl+Shift+B` in VS Code.
+You can also run with different levels of output detail with [`./test.py --verbosity N`](../test.py).
+2 is the default but 1 is used for the shortcut `Ctrl+Shift+B` in VS Code.
 
 
 The provided starting framework is only able to compile a very simple program, as described [here](./basic_compiler.md).
@@ -58,20 +56,21 @@ At the time this doc was written, the output was:
 
 ```console
 > root@host:/workspaces/langproc-YYYY-cw-XXX# ./test.py --help
-usage: test.py [-h] [-j [N]] [-s] [--version] [--clean] [--optimise] [--generate_report] [--validate_tests] [dir]
+usage: test.py [-h] [-v] [-j [N]] [--verbosity {0,1,2,3}] [--clean] [--optimise] [--report] [--validate_tests] [dir]
 
 positional arguments:
-  dir                (Optional) paths to the compiler test folders. Use this to select certain tests. Leave blank to run all tests.
+  dir                   (Optional) paths to the compiler test folders. Use this to select certain tests. Leave blank to run all tests.
 
 options:
-  -h, --help         show this help message and exit
-  -j, --jobs [N]     Build compiler and run tests using multiple threads. Use -m to use the default thread count, or -m N to use exactly N threads.
-  -s, --silent       Disable verbose output into the terminal. Note that all logs will be stored automatically into log files regardless of this option.
-  --version          show program's version number and exit
-  --clean            Clean the repository before testing. This will make it slower but it can solve some compilation issues when source files are deleted.
-  --optimise         Optimise the compiler for speed, at the cost building time and debugging.
-  --generate_report  Generate a JUnit report to use as a test summary for CI/CD.
-  --validate_tests   Use GCC to validate tests instead of testing the custom compiler. This is used for CI/CD pipeline, not for normal student usage. YOUR COMPILER WILL NOT BE USED NOR BUILT WITH THIS OPTION.
+  -h, --help            show this help message and exit
+  -v, --version         show program's version number and exit
+  -j [N], --jobs [N]    Build compiler and run tests using multiple threads. Use -m to use the default thread count, or -m N to use exactly N threads.
+  --verbosity {0,1,2,3}
+                        Disable verbose output into the terminal. Note that all logs will be stored automatically into log files regardless of this option.
+  --clean               Clean the repository before testing. This will make it slower but it can solve some compilation issues when source files are deleted.
+  --optimise            Optimise the compiler for speed, at the cost building time and debugging.
+  --report              Generate a JUnit report to use as a test summary for CI/CD.
+  --validate_tests      Use GCC to validate tests instead of testing the compiler. Use it to validate tests you add (see docs/coverage.md for useful tests).
 ```
 
 ## Input
@@ -89,9 +88,29 @@ You will not need to deal with any of these.
 
 The test inputs is a set of `.c` files of increasing complexity and variety, without any errors (e.g. syntax and semantic), so your code does not need to handle these gracefully.
 
+## Getting started
+
+We strongly recommend that you start working on your compilers coursework straight after finishing the lab exercises, to have the time to implement a good number of features.
+To get started, you are strongly recommend to get familiar with the code in the repository already and how it handles a simple program like `tests/_example/example.c`:
+
+```
+int f() {
+    return 5;
+}
+```
+
+Think about what kind of information is captured here, and what sort of classes are used.
+You might even find drawing the AST by hand help you better understand what is really happening behind the scenes.
+Make sure to benefit from the provided skeleton code and use the online resources that are linked.
+
+Don't worry if you find it difficult to get started or feel a little overwhelmed at first, this is perfectly normal - it often takes over a week to even get basic programs to compile.
+Once you have a good base, you will find it much easier (and hopefully enjoyable) to add a lot more features - although you will face more challenges when you get to more advanced features.
+If you get stuck, you can always post on [Ed](https://edstem.org/us/dashboard) or ask the TAs during the lab sessions!
+I strongly recommend you spend as much time as you can working on it, as the more you try the more you will learn and get out of this project (and in our unbiased opinion it is the most fun coursework you will do during your degree), but don't sacrifice all of your other modules to try and chase the 100% score.
+
 ## Features
 
-Uou are advised to implement basic features first, which include:
+You are advised to implement basic features first, which include:
 
 * functions with no arguments
 * local variables of `int` type
@@ -213,7 +232,7 @@ GCC will be also used to link `test.o` with the driver `test_driver.c` into exec
 > root@host:/workspaces/langproc-YYYY-cw-XXX# spike --isa=rv32gc pk test
 ```
 
-The last command should produce an exit code `0`, which can be verified like:
+The last command should produce an exit code `0`, which can be verified immediately after running the command like so:
 
 ```console
 > root@host:/workspaces/langproc-YYYY-cw-XXX# echo $?

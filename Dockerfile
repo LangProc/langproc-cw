@@ -50,6 +50,7 @@ RUN localedef -i en_GB -f UTF-8 en_GB.UTF-8; \
     /opt/riscv/bin/riscv32-unknown-elf-gcc --version
 
 ENV RISCV="/opt/riscv" \
-    PATH="/opt/riscv/bin:${PATH}"
+    PATH="/opt/riscv/bin:${PATH}" \
+    LANG="en_GB.UTF-8"
 
 ENTRYPOINT [ "/bin/bash" ]

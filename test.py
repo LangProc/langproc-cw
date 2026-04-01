@@ -467,7 +467,7 @@ def symlink_reference_compiler(_input_file: Path, output_stem: Path, **kwargs) -
     Returns None; never fails.
     """
     reference_stem = append_suffix_to_stem(output_stem, TestStep.REFERENCE.value)
-    compiler_stem = STem_add_suffix(output_stem, TestStep.COMPILER.value)
+    compiler_stem = append_suffix_to_stem(output_stem, TestStep.COMPILER.value)
     for suffix in ["stdout.log", "stderr.log"]:
         move(
             append_suffix_to_stem(reference_stem, suffix),
@@ -587,7 +587,7 @@ if __name__ == "__main__":
     if args.validate_tests:
         if passing_tests != total_tests:
             exit(f"Number of tests failed during test validation: {total_tests - passing_tests}")
-        reporter.info(f"All {total} tests are valid!")
+        reporter.info(f"All {total_tests} tests are valid!")
         exit()
 
     # No coverage for optimised builds
