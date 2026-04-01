@@ -82,6 +82,32 @@ reporter = Reporter()
 BUILD_DIR_NAME = "build"
 OUTPUT_DIR_NAME = "output"
 
+class TestStep(Enum):
+    REFERENCE = "gcc_reference", "Generating reference assembly"
+    COMPILER = "c_compiler", "Compiling"
+    ASSEMBLER = "assembler", "Assembling"
+    LINKER = "linker", "Linking"
+    SIMULATION = "simulation", "Simulating"
+
+    def __new__(cls, value: str, action: str):
+        obj = object.__new__(cls)
+        obj._value_ = value
+        obj.action = action
+        return obj
+
+
+class MakeRule(Enum):
+    CLEAN = "clean", "Cleaning project"
+    COMPILER = f"{BUILD_DIR_NAME}/{TestStep.COMPILER.value}", "Building compiler"
+    COVERAGE = "coverage", "Processing coverage data"
+
+    def __new__(cls, value: str, action: str):
+        obj = object.__new__(cls)
+        obj._value_ = value
+        obj.action = action
+        return obj
+
+
 def get_return_code_msg(return_code: int) -> str:
     """Describes a return code."""
     if return_code < 0 and -return_code in valid_signals():
@@ -94,8 +120,7 @@ def get_return_code_msg(return_code: int) -> str:
     return "Success"
 
 def run_make_rule(
-    rule: str,
-    action: str,
+    rule: MakeRule,
     root_dir: Path,
     verbosity: Verbosity = Verbosity.NORMAL,
     jobs: int = 1,
@@ -114,11 +139,11 @@ def run_make_rule(
         "-s" if quiet else "-Oline",
         "-C", root_dir,
         f"{'N' if optimise else ''}DEBUG=1",
-        rule
+        rule.value
     ]
     stdout, stderr = (subprocess.DEVNULL, subprocess.DEVNULL) if quiet else (None, None)
 
-    with reporter.status(action, verbosity=verbosity):
+    with reporter.status(rule.action, verbosity=verbosity):
         return_code = subprocess.run(cmd, stdout=stdout, stderr=stderr, **kwargs).returncode
 
     if return_code == 0:
@@ -127,23 +152,10 @@ def run_make_rule(
     # Clean version of the command for students to quickly retry the failing rule
     failed_cmd_str = shlex.join(["make"] + cmd[-2:])
     reporter.error(
-        f"{get_return_code_msg(return_code)} when {action.lower()} with `{failed_cmd_str}`."
+        f"{get_return_code_msg(return_code)} when {rule.action.lower()} with `{failed_cmd_str}`."
     )
 
     return False
-
-class TestStep(Enum):
-    REFERENCE = "gcc_reference", "Generating reference assembly"
-    COMPILER = "c_compiler", "Compiling"
-    ASSEMBLER = "assembler", "Assembling"
-    LINKER = "linker", "Linking"
-    SIMULATION = "simulation", "Simulating"
-
-    def __new__(cls, value: str, action: str):
-        obj = object.__new__(cls)
-        obj._value_ = value
-        obj.action = action
-        return obj
 
 def get_relative_path_str(path: Path) -> str:
     """Converts an absolute path to a relative path for printing."""
@@ -171,7 +183,7 @@ class TestError:
             (f"\t{get_relative_path_str(file)}:\n{file.read_text()}:\n" for f in files)
         ))
 
-def stem_add_suffix(stem: Path, suffix: str) -> Path:
+def append_suffix_to_stem(stem: Path, suffix: str) -> Path:
     return stem.with_name(f"{stem.name}.{suffix}")
 
 def run_test_step(
@@ -187,9 +199,9 @@ def run_test_step(
     Returns None if successful, a TestError otherwise.
     """
     def get_logs_from_stem(stem: Path) -> list[Path]:
-        return [stem_add_suffix(stem, f"{s}.log") for s in ["stdout", "stderr"]]
+        return [append_suffix_to_stem(stem, f"{s}.log") for s in ["stdout", "stderr"]]
 
-    files = get_logs_from_stem(stem_add_suffix(log_stem, step.value))
+    files = get_logs_from_stem(append_suffix_to_stem(log_stem, step.value))
     with files[0].open(mode="w") as stdout, files[1].open(mode="w") as stderr:
         return_code = subprocess.run(cmd, stdout=stdout, stderr=stderr, **kwargs).returncode
 
@@ -206,25 +218,25 @@ def run_test_step(
         # if the compiler failed we don't expect it but link it if present,
         # otherwise it's probably the reason of the failure,
         # so it's worth mentioning first in the error message
-        asm_file = stem_add_suffix(log_stem, "s")
+        asm_file = append_suffix_to_stem(log_stem, "s")
         if step is TestStep.COMPILER:
             if asm_file.is_file():
                 files.append(asm_file)
             # Don't link it if it failed, don't need to duplicate link std(out/err)
         else:
-            files.extend(get_logs_from_stem(stem_add_suffix(log_stem, TestStep.COMPILER.value)))
+            files.extend(get_logs_from_stem(append_suffix_to_stem(log_stem, TestStep.COMPILER.value)))
             if asm_file.is_file():
                 files.append(asm_file)
             else:
                 error_msg = "Compiler output missing"
 
         # the .s.printed is not required but likely produced so we optionally link it
-        printed_file = stem_add_suffix(asm_file, "printed")
+        printed_file = append_suffix_to_stem(asm_file, "printed")
         if printed_file.is_file():
             files.append(printed_file)
         # No point in comparing assembly with gcc if the student compiler did not generate it
         if asm_file.is_file():
-            files.append(stem_add_suffix(log_stem, "gcc.s"))
+            files.append(append_suffix_to_stem(log_stem, "gcc.s"))
         # In any case add sanitizer files because we really want students to write good code
         files.extend(log_stem.parent.glob(".*san.log.*"))
 
@@ -283,7 +295,7 @@ def run_test(
         cmd=gcc_cmd + [
             "-std=c90", "-pedantic", "-ansi", "-O0",
             "-S", test_file, # We went with this flag order, but gcc's -S doesn't take a value
-            "-o", stem_add_suffix(output_stem, "gcc.s")
+            "-o", append_suffix_to_stem(output_stem, "gcc.s")
         ],
         log_stem=output_stem
     )) is not None:
@@ -297,8 +309,8 @@ def run_test(
     if (error := run_test_step(
         step=TestStep.ASSEMBLER,
         cmd=gcc_cmd + [
-            "-c", stem_add_suffix(output_stem, "s"), # -c doesn't take a value
-            "-o", stem_add_suffix(output_stem, "o")
+            "-c", append_suffix_to_stem(output_stem, "s"), # -c doesn't take a value
+            "-o", append_suffix_to_stem(output_stem, "o")
         ],
         log_stem=output_stem
     )) is not None:
@@ -309,7 +321,7 @@ def run_test(
         step=TestStep.LINKER,
         cmd=gcc_cmd + [
             "-static", # Finally not pretending -static takes a value (it doesnt't)
-            stem_add_suffix(output_stem, "o"), driver_file,
+            append_suffix_to_stem(output_stem, "o"), driver_file,
             "-o", output_stem
         ],
         log_stem=output_stem
@@ -440,7 +452,7 @@ def student_compiler(
     # Compile
     return run_test_step(
         step=TestStep.COMPILER,
-        cmd=[compiler_path, "-S", input_file, "-o", stem_add_suffix(output_stem, "s")],
+        cmd=[compiler_path, "-S", input_file, "-o", append_suffix_to_stem(output_stem, "s")],
         log_stem=output_stem,
         env=env,
         **kwargs
@@ -454,11 +466,14 @@ def symlink_reference_compiler(_input_file: Path, output_stem: Path, **kwargs) -
 
     Returns None; never fails.
     """
-    reference_stem = stem_add_suffix(output_stem, TestStep.REFERENCE.value)
-    compiler_stem = stem_add_suffix(output_stem, TestStep.COMPILER.value)
+    reference_stem = append_suffix_to_stem(output_stem, TestStep.REFERENCE.value)
+    compiler_stem = STem_add_suffix(output_stem, TestStep.COMPILER.value)
     for suffix in ["stdout.log", "stderr.log"]:
-        move(stem_add_suffix(reference_stem, suffix), stem_add_suffix(compiler_stem, suffix))
-    stem_add_suffix(output_stem, "s").symlink_to(stem_add_suffix(output_stem, "gcc.s"))
+        move(
+            append_suffix_to_stem(reference_stem, suffix),
+            append_suffix_to_stem(compiler_stem, suffix)
+        )
+    append_suffix_to_stem(output_stem, "s").symlink_to(append_suffix_to_stem(output_stem, "gcc.s"))
     return None
 
 def parse_args(tests_dir: Path) -> Namespace:
@@ -535,11 +550,10 @@ if __name__ == "__main__":
     # Clean the repo if required
     if args.clean:
         if not run_make_rule(
-            rule="clean",
-            action="Cleaning project",
+            rule=MakeRule.CLEAN,
             verbosity=Verbosity.DEBUG,
             root_dir=root_dir
-    ):
+        ):
             exit("Error when cleaning")
 
     # Prepare the output folder
@@ -549,8 +563,7 @@ if __name__ == "__main__":
     # There is no need for building the student compiler when testing with riscv-gcc
     if not args.validate_tests:
         if not run_make_rule(
-            rule=f"{BUILD_DIR_NAME}/{TestStep.COMPILER.value}",
-            action="Building compiler",
+            rule=MakeRule.COMPILER,
             root_dir=root_dir,
             jobs=args.jobs,
             optimise=args.optimise
@@ -580,8 +593,7 @@ if __name__ == "__main__":
     # No coverage for optimised builds
     if not args.optimise:
         if not run_make_rule(
-            rule="coverage",
-            action="Processing coverage data",
+            rule=MakeRule.COVERAGE,
             verbosity=Verbosity.VERBOSE,
             root_dir=root_dir
         ):
