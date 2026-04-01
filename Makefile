@@ -1,6 +1,6 @@
 # Based on https://stackoverflow.com/a/52036564 which is well worth reading!
 
-CXXFLAGS := -std=c++20 # use the 2020 version of the C++ standard
+CXXFLAGS := -std=c++23 # use the 2023 version of the C++ standard
 CXXFLAGS += -Wall # enable most warnings
 CXXFLAGS += -Wextra # enable extra warnings
 CXXFLAGS += -Werror # treat all warnings as errors
@@ -16,6 +16,7 @@ CXXFLAGS += -g # generate debugging information
 CXXFLAGS += -O0 # perform minimal optimisations
 CXXFLAGS += -rdynamic # to get more helpful traces when debugging
 CXXFLAGS += --coverage # enable code coverage
+LDFLAGS := -lstdc++_libbacktrace # Helpful backtrace on exception
 # Get value of -j (no matter how it is provided, including --jobs=X)
 JOBSFLAG = $(patsubst -j%,-j %,$(filter -j%,$(MAKEFLAGS)))
 COVFLAGS = $(JOBSFLAG) # parallel
@@ -39,7 +40,7 @@ build/c_compiler: $(OBJECTS)
 # Remove leftover runtime coverage data left from previous runs
 	@find . -name "*.gcda" -delete
 	@mkdir -p build
-	ccache g++ $(CXXFLAGS) -o $@ $^
+	ccache g++ $(CXXFLAGS) -o $@ $^ $(LDFLAGS)
 ifndef NDEBUG
 # Initialise counters + use static data provided by compiler
 	lcov -c -i $(COVFLAGS) -o build/base.info

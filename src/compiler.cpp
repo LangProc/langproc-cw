@@ -1,9 +1,23 @@
 #include <fstream>
 #include <iostream>
-#include <csignal>
 
 #include "ast.hpp"
 #include "cli.hpp"
+
+#ifndef NDEBUG
+#include <csignal> // signal
+#include <cstring> // strsignal, not part of the C/C++ standard though
+#include <cstdlib> // exit, EXIT_FAILURE
+#include <stacktrace>
+
+// Print a stack trace and call exit (otherwise coverage info is not dumped)
+void sig_handler(int signo) {
+  // Most of what we do here is not considered safe in signal handlers but whatever
+  std::cerr << strsignal(signo) << ", see backtrace (ignore first two entries):\n";
+  std::cerr << std::stacktrace::current() << std::endl; // flush otherwise we might not see it
+  std::exit(EXIT_FAILURE);
+}
+#endif
 
 using ast::NodePtr;
 
@@ -18,38 +32,15 @@ void PrettyPrint(const NodePtr& root, const std::string& compile_output_path);
 // file.
 void Compile(const NodePtr& root, const std::string& compile_output_path);
 
-#ifndef NDEBUG
-extern "C" void __gcov_dump();
-
-void (*prev_segv_handler)(int) = 0;
-void (*prev_int_handler)(int) = 0;
-void (*prev_term_handler)(int) = 0;
-
-// This hooks the SIGSEGV (segmentation fault), SIGINT (Ctrl+C), and SIGTERM (timeout) signals
-// Otherwise coverage info is not dumped
-void sig_handler(int signo) {
-  __gcov_dump();
-  switch (signo) {
-  case SIGSEGV:
-    prev_segv_handler(signo);
-    break;
-  case SIGINT:
-    prev_int_handler(signo);
-    break;
-  case SIGTERM:
-    prev_term_handler(signo);
-    break;
-  }
-}
-
-#endif
-
 int main(int argc, char** argv) {
 #ifndef NDEBUG
-  // Hook signals to dump coverage info
-  prev_segv_handler = signal(SIGSEGV, sig_handler);
-  prev_int_handler = signal(SIGINT, sig_handler);
-  prev_term_handler = signal(SIGTERM, sig_handler);
+  // Hook signals to dump stack trace and coverage info
+  // sigaction is recommended but not part of stdlib so I'm not using it
+  std::signal(SIGSEGV, sig_handler); // segmentation fault
+  std::signal(SIGINT, sig_handler); // Ctrl-C
+  std::signal(SIGTERM, sig_handler); // Timeout
+  std::signal(SIGFPE, sig_handler); // Illegal floating point operation
+  std::signal(SIGILL, sig_handler); // Illegal instruction
 #endif
 
   // Parse CLI arguments to fetch the source file to compile and the path to
