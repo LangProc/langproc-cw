@@ -106,7 +106,7 @@ Make sure to benefit from the provided skeleton code and use the online resource
 Don't worry if you find it difficult to get started or feel a little overwhelmed at first, this is perfectly normal - it often takes over a week to even get basic programs to compile.
 Once you have a good base, you will find it much easier (and hopefully enjoyable) to add a lot more features - although you will face more challenges when you get to more advanced features.
 If you get stuck, you can always post on [Ed](https://edstem.org/us/dashboard) or ask the TAs during the lab sessions!
-I strongly recommend you spend as much time as you can working on it, as the more you try the more you will learn and get out of this project (and in our unbiased opinion it is the most fun coursework you will do during your degree), but don't sacrifice all of your other modules to try and chase the 100% score.
+You are advised to try your best - the more you try the more you will learn and get out of this project (and in our unbiased opinion it is the most fun coursework you will do during your degree). However, don't sacrifice all of your other modules to try and chase the 100% score!
 
 ## Features
 
@@ -255,9 +255,6 @@ The last command should produce an exit code `0`, which can be verified immediat
 
 ## Assembler directives
 [What even is `.data`, `.text`, or `.word`? You will need to consider assembler directives in your output](./assembler_directives.md)
-
-## Getting started
-[How to get started? (previous students' perspectives)](./starting_guide.md)
 
 ## Adding meaningful tests
 [Do you want to add a test that is actually demonstrating you compiler features like no provided test does?](./coverage.md)
