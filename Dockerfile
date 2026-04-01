@@ -2,38 +2,31 @@ FROM ubuntu:24.04
 
 # Install dependencies
 RUN apt-get update && apt-get install -y --fix-missing \
-    git \
+    curl \
+    locales \
+    dos2unix \
     lsb-release \
+    ca-certificates \
+    git \
+    nano \
+    flex \
+    bison \
+    build-essential \
+    ccache \
     python3 \
     python3-pip \
     python3-rich \
-    autoconf \
-    bc \
-    bison \
-    dos2unix \
-    gdb \
-    gcc \
-    make \
-    flex \
-    build-essential \
-    ca-certificates \
-    curl \
     device-tree-compiler \
-    lcov \
-    nano \
-    valgrind \
-    clang \
-    ccache \
-    cmake \
-    clangd-18 \
-    bear; \
-# Set clangd as the default language server
-    update-alternatives --install /usr/bin/clangd clangd /usr/bin/clangd-18 100
+    rr \
+    gdb \
+    time \
+    lcov;
 
 ARG ARTIFACT_TAG=v2.1.0
 
 WORKDIR /tmp
-RUN set -eux; \
+RUN localedef -i en_GB -f UTF-8 en_GB.UTF-8; \
+    set -eux; \
     arch="$(dpkg --print-architecture)"; \
     case "$arch" in \
       amd64) xarch="linux-x64" ;; \
@@ -57,6 +50,7 @@ RUN set -eux; \
     /opt/riscv/bin/riscv32-unknown-elf-gcc --version
 
 ENV RISCV="/opt/riscv" \
-    PATH="/opt/riscv/bin:${PATH}"
+    PATH="/opt/riscv/bin:${PATH}" \
+    LANG="en_GB.UTF-8"
 
 ENTRYPOINT [ "/bin/bash" ]
