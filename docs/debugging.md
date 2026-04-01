@@ -80,4 +80,6 @@ If you didn't find the bug yet, note down these values as they will help during 
 
 ## Debuggers
 
-TODO
+TODO:
+- setup RR within VS Code
+- explain RR and spike (I think there is a gdb-server compatible mode which might be used with rr)

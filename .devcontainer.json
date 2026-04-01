@@ -14,14 +14,8 @@
 				"ms-vscode.cpptools-extension-pack",
 				"daohong-emilio.yash",
 				"markis.code-coverage",
-				"ms-vscode.live-server",
-				"gabrielgrinberg.auto-run-command"
+				"ms-vscode.live-server"
 			]
 		}
-	},
-	"containerEnv": {
-		// I setup an environment variable called LOCALPWD storing the repo path from outside the container
-		// It is used to link the coverage/index.html but use it as you wish
-		"LOCALPWD": "${localWorkspaceFolder}"
 	}
 }

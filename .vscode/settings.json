@@ -2,12 +2,5 @@
     "files.trimTrailingWhitespace": true,
     "livePreview.autoRefreshPreview": "On Changes to Saved Files",
     "livePreview.defaultPreviewPath": "coverage/index.html",
-    "livePreview.serverRoot": "coverage",
-    "auto-run-command.rules": [
-        {
-            "condition": "always",
-            "command": "livePreview.start",
-            "message": "Starting web server"
-        }
-    ],
+    "livePreview.serverRoot": "coverage"
 }

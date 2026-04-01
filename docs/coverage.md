@@ -3,8 +3,8 @@
 If you want to know which part of your code is executed (a.k.a. covered) when compiling all tests, run `./test.py` without the `--optimise` flag. Make sure to pass `--clean` flag if you have built with optimisations before.
 
 This will generate a webpage `coverage/index.html` which shows the number of times each line has been executed for each source file `.c`.
-You can view the webpage in VS Code by right clicking on `coverage/index.html` then using `Show Preview`, or view it in a web browser by using a link printed by `test.py`.
-VS Code will also display a warning on lines not executed.
+You can view the webpage in VS Code by right clicking on `coverage/index.html` then using `Show Preview`, or view it in a web browser outside by opening it from your repo outside of the container.
+VS Code will also display a sguiggly line on lines not executed.
 
 ![Index.html screenshot](./assets/coverage_example.png)
 

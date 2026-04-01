@@ -4,7 +4,7 @@
 A wrapper script to run all the compiler tests. This script will call the
 Makefile, run the tests and store the outputs in build/output.
 
-Usage: ./test.py [-h] [-j] [-s] [--version] [--clean] [--optimise] [--generate_report] [--validate_tests] [dir]
+Usage: ./test.py [-h] [-v] [-j] [-s] [--clean] [--optimise] [--report] [--validate_tests] [dir]
 
 Example usage for all tests: ./test.py
 
@@ -22,6 +22,7 @@ __author__ = "William Huynh, Filip Wojcicki, James Nock, Quentin Corradi"
 import shlex
 import subprocess
 import xml.sax.saxutils as xml
+# switch to process_cpu_count next ubuntu update (python 3.14)
 from os import environ, cpu_count
 from sys import stdout, exit
 from signal import Signals, valid_signals, strsignal
@@ -30,6 +31,7 @@ from pathlib import Path
 from argparse import ArgumentParser, Namespace
 from enum import IntEnum, Enum
 from typing import NamedTuple
+from itertools import chain
 from functools import partial
 from contextlib import nullcontext, ExitStack
 from collections.abc import Callable, Iterator
@@ -38,47 +40,11 @@ from rich.markup import escape as rich_escape
 from rich.console import Console
 from rich.progress import Progress, BarColumn, TextColumn
 
-BUILD_DIR_NAME = "build"
-OUTPUT_DIR_NAME = "output"
-
-class TestStep(NamedTuple):
-    name: str
-    action: str
-
-class TestComponent(Enum):
-    REFERENCE = TestStep(name="gcc_reference", action="Generating reference assembly")
-    COMPILER = TestStep(name="c_compiler", action="Compiling")
-    ASSEMBLER = TestStep(name="assembler", action="Assembling")
-    LINKER = TestStep(name="linker", action="Linking")
-    SIMULATION = TestStep(name="simulation", action="Simulating")
-
 class Verbosity(IntEnum):
     QUIET = 0
     NORMAL = 1
     VERBOSE = 2
     DEBUG = 3
-
-class BuildStep(NamedTuple):
-    name: str
-    action: str
-    verbosity: Verbosity
-
-class MakeRule(Enum):
-    CLEAN = BuildStep(
-        name="clean",
-        action="Cleaning project",
-        verbosity=Verbosity.DEBUG
-    )
-    COMPILER = BuildStep(
-        name=f"{BUILD_DIR_NAME}/{TestComponent.COMPILER.value.name}",
-        action="Building compiler",
-        verbosity=Verbosity.NORMAL
-    )
-    COVERAGE = BuildStep(
-        name="coverage",
-        action="Processing coverage data",
-        verbosity=Verbosity.DEBUG
-    )
 
 class Reporter:
     def __init__(self, verbosity: Verbosity = Verbosity.NORMAL):
@@ -113,50 +79,71 @@ class Reporter:
 
 reporter = Reporter()
 
-def get_return_code_msg(code: int) -> str:
-    """Describes an exit code."""
-    if code < 0 and -code in valid_signals():
-        return f"Process ended by {strsignal(-code).lower() or 'unknown signal'} {Signals(-code)}"
-    if code == 124:
+BUILD_DIR_NAME = "build"
+OUTPUT_DIR_NAME = "output"
+
+def get_return_code_msg(return_code: int) -> str:
+    """Describes a return code."""
+    if return_code < 0 and -return_code in valid_signals():
+        signal_name = strsignal(-return_code).lower() or 'unknown signal'
+        return f"Process ended by {signal_name} {Signals(-return_code)}"
+    if return_code == 124:
         return "Timeout"
-    if code != 0:
+    if return_code != 0:
         return "Error"
     return "Success"
 
 def run_make_rule(
-    rule: MakeRule,
+    rule: str,
+    action: str,
     root_dir: Path,
+    verbosity: Verbosity = Verbosity.NORMAL,
     jobs: int = 1,
     optimise: bool = False,
     **kwargs
 ) -> bool:
     """
-    Wrapper for `make <rule.value.name>`.
+    Wrapper for `make <rule>`.
 
     Returns True if successful, False otherwise.
     """
-    quiet = rule.value.verbosity > reporter.verbosity
+    quiet = verbosity > reporter.verbosity
     cmd = [
         "make",
         f"-j{jobs}",
         "-s" if quiet else "-Oline",
         "-C", root_dir,
         f"{'N' if optimise else ''}DEBUG=1",
-        rule.value.name
+        rule
     ]
     stdout, stderr = (subprocess.DEVNULL, subprocess.DEVNULL) if quiet else (None, None)
 
-    with reporter.status(rule.value.action, verbosity=rule.value.verbosity):
-        code = subprocess.run(cmd, stdout=stdout, stderr=stderr, **kwargs).returncode
+    with reporter.status(action, verbosity=verbosity):
+        return_code = subprocess.run(cmd, stdout=stdout, stderr=stderr, **kwargs).returncode
 
-    if code == 0:
+    if return_code == 0:
         return True
 
     # Clean version of the command for students to quickly retry the failing rule
-    cmd = shlex.join(["make"] + cmd[-2:])
-    reporter.error(f"{get_return_code_msg(code)} when {rule.value.action.lower()} with `{cmd}`.")
+    failed_cmd_str = shlex.join(["make"] + cmd[-2:])
+    reporter.error(
+        f"{get_return_code_msg(return_code)} when {action.lower()} with `{failed_cmd_str}`."
+    )
 
     return False
+
+class TestStep(Enum):
+    REFERENCE = "gcc_reference", "Generating reference assembly"
+    COMPILER = "c_compiler", "Compiling"
+    ASSEMBLER = "assembler", "Assembling"
+    LINKER = "linker", "Linking"
+    SIMULATION = "simulation", "Simulating"
+
+    def __new__(cls, value: str, action: str):
+        obj = object.__new__(cls)
+        obj._value_ = value
+        obj.action = action
+        return obj
 
 def get_relative_path_str(path: Path) -> str:
     """Converts an absolute path to a relative path for printing."""
@@ -173,63 +160,61 @@ class TestError:
         return self._short_message
 
     def get_message_with_file_list(self) -> str:
-        log_parts = [self._short_message, ", see:\n"]
-        for file in self._files:
-            log_parts.append("\t")
-            log_parts.append(get_relative_path_str(file))
-            log_parts.append("\n")
-        return "".join(log_parts)
+        return "".join(chain(
+            [self._short_message, ", see:\n"],
+            "\t{get_relative_path(file)}\n" for file in self._files
+        ))
 
     def get_message_with_file_content(self) -> str:
-        log_parts = [self._short_message, ".\n"]
-        for file in self._files:
-            log_parts.append(get_relative_path_str(file))
-            log_parts.append(":\n")
-            log_parts.append(file.read_text())
-            log_parts.append("\n")
-        return "".join(log_parts)
+        return "".join(chain(
+            [self._short_message, ".\n"],
+            f"\t{get_relative_path_str(file)}:\n"
+            f"{file.read_text()}:\n"
+            for f in files
+        ))
 
 def stem_add_suffix(stem: Path, suffix: str) -> Path:
     return stem.with_name(f"{stem.name}.{suffix}")
 
-def run_component(
-    component: TestComponent,
+def run_test_step(
+    step: TestStep,
     cmd: list[str | Path],
     log_stem: Path,
     **kwargs
 ) -> TestError | None:
     """
-    Runs one step of testing the compiler against a single test file, then links additional output files.
+    Runs one compiler testing step.
+    On error links additional relevant output files.
 
     Returns None if successful, a TestError otherwise.
     """
     def get_logs_from_stem(stem: Path) -> list[Path]:
         return [stem_add_suffix(stem, f"{s}.log") for s in ["stdout", "stderr"]]
 
-    files = get_logs_from_stem(stem_add_suffix(log_stem, component.value.name))
+    files = get_logs_from_stem(stem_add_suffix(log_stem, step.value))
     with files[0].open(mode="w") as stdout, files[1].open(mode="w") as stderr:
-        code = subprocess.run(cmd, stdout=stdout, stderr=stderr, **kwargs).returncode
+        return_code = subprocess.run(cmd, stdout=stdout, stderr=stderr, **kwargs).returncode
 
-    if code == 0:
+    if return_code == 0:
         return None
 
-    error_msg = get_return_code_msg(code)
-    # All passes after student compiler (so just not reference compiler) should add files to refer to
+    error_msg = get_return_code_msg(return_code)
+    # All passes after student compiler should add files to refer to
     # I tried to link them in the order students should inspect them
-    # If the compiler succeded and a futher component failed, it is likely caused by the compiler
+    # If the compiler succeded and a futher step failed, it is likely caused by the compiler
     # so we should link the compiler outputs, in particular the produced assembly (see below)
-    if component is not TestComponent.REFERENCE:
+    if step is not TestStep.REFERENCE:
         # If the compiler output is present add it with the reference to compare to;
         # if the compiler failed we don't expect it but link it if present,
         # otherwise it's probably the reason of the failure,
         # so it's worth mentioning first in the error message
         asm_file = stem_add_suffix(log_stem, "s")
-        if component is TestComponent.COMPILER:
+        if step is TestStep.COMPILER:
             if asm_file.is_file():
                 files.append(asm_file)
             # Don't link it if it failed, don't need to duplicate link std(out/err)
         else:
-            files.extend(get_logs_from_stem(stem_add_suffix(log_stem, TestComponent.COMPILER.value.name)))
+            files.extend(get_logs_from_stem(stem_add_suffix(log_stem, TestStep.COMPILER.value)))
             if asm_file.is_file():
                 files.append(asm_file)
             else:
@@ -252,7 +237,7 @@ def run_component(
         for x in cmd[(0 if cmd[0] != "ccache" else 1):]
     )
     return TestError(
-        short_message=f"{error_msg} when {component.value.action.lower()} with `{failed_cmd_str}`",
+        short_message=f"{error_msg} when {step.action.lower()} with `{failed_cmd_str}`",
         files=files
     )
 
@@ -269,10 +254,10 @@ def run_test(
     """
     Run an instance of a test case whose driver is given by `driver_file`.
     The output of all the steps are put in `output_dir`.
-    Additional arguments are passed to `compiler` and `run_component`.
+    Additional arguments are passed to `compiler` and `run_test_step`.
 
-    Returns None if successfull, otherwise the TestError of the failing step,
-        or a failing TestError if every step succeeds but there are sanitizer warnings.
+    Returns None if successful, otherwise the TestError of the failing step,
+        or a TestError if every step succeeds but there are sanitizer warnings.
     """
     test_file = test_from_driver(driver_file)
     if not test_file.is_file():
@@ -295,8 +280,8 @@ def run_test(
     gcc_cmd = ["ccache", "riscv32-unknown-elf-gcc", f"-march={isa}", "-mabi=ilp32d"]
 
     # GCC Reference Output
-    if (error := run_component(
-        component=TestComponent.REFERENCE,
+    if (error := run_test_step(
+        step=TestStep.REFERENCE,
         cmd=gcc_cmd + [
             "-std=c90", "-pedantic", "-ansi", "-O0",
             "-S", test_file, # We went with this flag order, but gcc's -S doesn't take a value
@@ -311,8 +296,8 @@ def run_test(
         return error
 
     # Assemble
-    if (error := run_component(
-        component=TestComponent.ASSEMBLER,
+    if (error := run_test_step(
+        step=TestStep.ASSEMBLER,
         cmd=gcc_cmd + [
             "-c", stem_add_suffix(output_stem, "s"), # -c doesn't take a value
             "-o", stem_add_suffix(output_stem, "o")
@@ -322,8 +307,8 @@ def run_test(
         return error
 
     # Link
-    if (error := run_component(
-        component=TestComponent.LINKER,
+    if (error := run_test_step(
+        step=TestStep.LINKER,
         cmd=gcc_cmd + [
             "-static", # Finally not pretending -static takes a value (it doesnt't)
             stem_add_suffix(output_stem, "o"), driver_file,
@@ -334,14 +319,14 @@ def run_test(
         return error
 
     # Simulate
-    if (error := run_component(
-        component=TestComponent.SIMULATION,
+    if (error := run_test_step(
+        step=TestStep.SIMULATION,
         cmd=["spike", f"--isa={isa}", "pk", output_stem],
         log_stem=output_stem
     )) is not None:
         return error
 
-    if len(sanitizer_files := list(output_stem.parent.glob(".*san.log.*"))) != 0:
+    if sanitizer_files := list(output_stem.parent.glob(".*san.log.*")):
         return TestError(short_message="Sanitizer warnings", files=sanitizer_files)
 
     return None
@@ -368,7 +353,8 @@ class JUnitXMLFile():
 
     def write_result(self, test_file: Path, error: TestError | None = None):
         self._write_testcase(test_file, "" if error is None else \
-            f"<error type={xml.quoteattr('error')} message={xml.quoteattr(error.get_short_message())}>\n"
+            f"<error type={xml.quoteattr('error')} "
+            f"message={xml.quoteattr(error.get_short_message())}>\n"
             f"{xml.escape(error.get_message_with_file_content())}</error>\n"
         )
 
@@ -376,16 +362,12 @@ class JUnitXMLFile():
         self._fd.write("</testsuite>\n")
         self._fd.close()
 
-def run_tests(
-    tests_dir: Path,
-    report: JUnitXMLFile | None,
-    jobs: int,
-    **kwargs
-) -> tuple[int, int]:
+def run_tests(tests_dir: Path, report: JUnitXMLFile | None, jobs: int, **kwargs) -> tuple[int, int]:
     """
-    Runs tests in `tests_dir` against the compiler provided by `compiler` and puts outputs inside `output_dir`.
+    Runs tests in `tests_dir` against the compiler provided by `compiler`.
+    Puts outputs inside `output_dir`.
     Arguments `compiler` and `output_dir` are mandatory and are passed to `run_test`.
-    Additional arguments are passed to `compiler` and `run_component`.
+    Additional arguments are passed to `compiler` and `run_test_step`.
 
     Returns a tuple of (passing, total) tests.
     """
@@ -404,13 +386,7 @@ def run_tests(
         transient=True,
         disable=not stdout.isatty(),
     ) as progress, ThreadPoolExecutor(max_workers=jobs) as executor:
-        task_id = progress.add_task(
-            "tests",
-            total=len(drivers),
-            passed=0,
-            failed=0,
-            rate=0.0,
-        )
+        task_id = progress.add_task("tests", total=len(drivers), passed=0, failed=0, rate=0.0)
 
         job_to_driver = {
             executor.submit(run_test, driver_file=driver, **kwargs): driver
@@ -442,13 +418,19 @@ def run_tests(
                 report.write_result(test_file=test_file, error=error)
 
     assert len(drivers) == passed + failed, \
-        f"Mismatch in number of tests with status ({passed} passed, {failed} failed, {len(drivers)} found)"
+        "Mismatch in number of tests with status " \
+        f"({passed} passed, {failed} failed, {len(drivers)} found)"
     return passed, passed + failed
 
-def student_compiler(compiler_path: Path, input_file: Path, output_stem: Path, **kwargs) -> TestError | None:
+def student_compiler(
+    compiler_path: Path,
+    input_file: Path,
+    output_stem: Path,
+    **kwargs
+) -> TestError | None:
     """
     Wrapper for `build/c_compiler -S <input_file> -o <log_stem>.s`.
-    Additional arguments are passed to `run_component`.
+    Additional arguments are passed to `run_test_step`.
 
     Returns None if successful, a TestError otherwise.
     """
@@ -458,8 +440,13 @@ def student_compiler(compiler_path: Path, input_file: Path, output_stem: Path, *
     env["UBSAN_OPTIONS"] = f"log_path={output_stem}.ubsan.log"
 
     # Compile
-    cmd = [compiler_path, "-S", input_file, "-o", stem_add_suffix(output_stem, "s")]
-    return run_component(component=TestComponent.COMPILER, cmd=cmd, log_stem=output_stem, env=env, **kwargs)
+    return run_test_step(
+        step=TestStep.COMPILER,
+        cmd=[compiler_path, "-S", input_file, "-o", stem_add_suffix(output_stem, "s")],
+        log_stem=output_stem,
+        env=env,
+        **kwargs
+    )
 
 def symlink_reference_compiler(_input_file: Path, output_stem: Path, **kwargs) -> TestError | None:
     """
@@ -469,8 +456,8 @@ def symlink_reference_compiler(_input_file: Path, output_stem: Path, **kwargs) -
 
     Returns None; never fails.
     """
-    reference_stem = stem_add_suffix(output_stem, TestComponent.REFERENCE.value.name)
-    compiler_stem = stem_add_suffix(output_stem, TestComponent.COMPILER.value.name)
+    reference_stem = stem_add_suffix(output_stem, TestStep.REFERENCE.value)
+    compiler_stem = stem_add_suffix(output_stem, TestStep.COMPILER.value)
     for suffix in ["stdout.log", "stderr.log"]:
         move(stem_add_suffix(reference_stem, suffix), stem_add_suffix(compiler_stem, suffix))
     stem_add_suffix(output_stem, "s").symlink_to(stem_add_suffix(output_stem, "gcc.s"))
@@ -484,8 +471,9 @@ def parse_args(tests_dir: Path) -> Namespace:
         nargs="?",
         default=tests_dir,
         type=Path,
-        help="(Optional) paths to the compiler test folders. Use this to select certain tests. "
-        "Leave blank to run all tests."
+        help="(Optional) paths to the compiler test folders. "
+            "Use this to select certain tests. "
+            "Leave blank to run all tests."
     )
     parser.add_argument(
         "-j", "--jobs",
@@ -495,17 +483,17 @@ def parse_args(tests_dir: Path) -> Namespace:
         type=int,
         metavar="N",
         help="Build compiler and run tests using multiple threads. "
-        "Use -m to use the default thread count, or -m N to use exactly N threads. "
+            "Use -m to use the default thread count, or -m N to use exactly N threads. "
     )
     parser.add_argument(
         "-s", "--silent",
         action="store_true",
         default=False,
         help="Disable verbose output into the terminal. Note that all logs will "
-        "be stored automatically into log files regardless of this option."
+            "be stored automatically into log files regardless of this option."
     )
     parser.add_argument(
-        "--version",
+        "-v", "--version",
         action="version",
         version=f"BetterTesting {__version__}"
     )
@@ -514,7 +502,7 @@ def parse_args(tests_dir: Path) -> Namespace:
         action="store_true",
         default=False,
         help="Clean the repository before testing. This will make it slower "
-        "but it can solve some compilation issues when source files are deleted."
+            "but it can solve some compilation issues when source files are deleted."
     )
     parser.add_argument(
         "--optimise",
@@ -523,7 +511,7 @@ def parse_args(tests_dir: Path) -> Namespace:
         help="Optimise the compiler for speed, at the cost building time and debugging."
     )
     parser.add_argument(
-        "--generate_report",
+        "--report",
         action="store_true",
         default=False,
         help="Generate a JUnit report to use as a test summary for CI/CD."
@@ -532,9 +520,8 @@ def parse_args(tests_dir: Path) -> Namespace:
         "--validate_tests",
         action="store_true",
         default=False,
-        help="Use GCC to validate tests instead of testing the custom compiler. "
-        "This is used for CI/CD pipeline, not for normal student usage. "
-        "YOUR COMPILER WILL NOT BE USED NOR BUILT WITH THIS OPTION."
+        help="Use GCC to validate tests instead of testing the compiler. "
+            "Use it to validate tests you add (see docs/coverage.md for useful tests)."
     )
     return parser.parse_args()
 
@@ -549,7 +536,12 @@ if __name__ == "__main__":
 
     # Clean the repo if required
     if args.clean:
-        if not run_make_rule(rule=MakeRule.CLEAN, root_dir=root_dir):
+        if not run_make_rule(
+            rule="clean",
+            action="Cleaning project",
+            verbosity=Verbosity.DEBUG,
+            root_dir=root_dir
+    ):
             exit("Error when cleaning")
 
     # Prepare the output folder
@@ -559,7 +551,8 @@ if __name__ == "__main__":
     # There is no need for building the student compiler when testing with riscv-gcc
     if not args.validate_tests:
         if not run_make_rule(
-            rule=MakeRule.COMPILER,
+            rule=f"{BUILD_DIR_NAME}/{TestStep.COMPILER.value}",
+            action="Building compiler",
             root_dir=root_dir,
             jobs=args.jobs,
             optimise=args.optimise
@@ -569,13 +562,13 @@ if __name__ == "__main__":
     # Run the tests and save the results into JUnit XML file
     with ExitStack() as stack:
         report = stack.enter_context(JUnitXMLFile(build_dir / "junit_results.xml")) \
-            if args.generate_report else None
+            if args.report else None
         passing_tests, total_tests = run_tests(
             tests_dir=args.dir,
             report=report,
             jobs=args.jobs,
-            compiler=symlink_reference_compiler if args.validate_tests \
-                else partial(student_compiler, build_dir / TestComponent.COMPILER.value.name),
+            compiler=symlink_reference_compiler if args.validate_tests
+                else partial(student_compiler, build_dir / TestStep.COMPILER.value),
             output_dir=output_dir
         )
 
@@ -588,14 +581,7 @@ if __name__ == "__main__":
 
     # No coverage for optimised builds
     if not args.optimise:
-        if not run_make_rule(rule=MakeRule.COVERAGE, root_dir=root_dir):
+        if not run_make_rule(rule="coverage", action="Processing coverage data", root_dir=root_dir):
             exit("Error when processing coverage data")
-
-        external_root = Path(environ["LOCALPWD"]) if "LOCALPWD" in environ else root_dir
-        coverage_index = external_root.joinpath("coverage/index.html")
-        reporter.info(
-            "Check detailed coverage in coverage/index.html "
-			f"(http://127.0.0.1:3000 in VS Code, or in a web browser at {rich_escape(coverage_index.as_uri())})\n"
-        )
 
     reporter.error(f"[bold]Passed {passing_tests}/{total_tests} found test cases[/]", style="cyan")
