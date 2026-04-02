@@ -53,7 +53,7 @@ class Reporter:
         self.verbosity = verbosity
 
     def _emit(self, message: str, style: str, min_verbosity: Verbosity):
-        if self.verbosity >= min_verbosity:
+        if min_verbosity <= self.verbosity:
             self.console.print(message, style=style, highlight=False)
 
     def debug(self, message: str, style: str = ""):
@@ -74,8 +74,8 @@ class Reporter:
             styled_message = message if style == "" else f"[{style}]{message}[/]"
             return self.console.status(styled_message, spinner="dots")
 
-        # For high verbosity (when other logs are printed as well), fall back to info(...)
-        self.info(message, style=style)
+        # For higher verbosity (when other logs are printed as well), fall back to _emit(...)
+        self._emit(message, style, verbosity)
         return nullcontext()
 
 reporter = Reporter()
@@ -122,6 +122,29 @@ def get_return_code_msg(return_code: int) -> str:
         return "Error"
     return "Success"
 
+def append_suffix_to_stem(stem: Path, suffix: str) -> Path:
+    return stem.with_name(f"{stem.name}.{suffix}")
+
+def get_logs_from_stem(stem: Path) -> list[Path]:
+    return [append_suffix_to_stem(stem, f"{s}.log") for s in ["stdout", "stderr"]]
+
+def run_subprocess(
+    cmd: list[str | Path],
+    log_files: tuple[Path, Path] | None,
+    **kwargs
+) -> int:
+
+    with ExitStack() as stack:
+        if log_files is not None:
+            # stdout and stderr go to files
+            stdout = stack.enter_context(log_files[0].open(mode="w"))
+            stderr = stack.enter_context(log_files[1].open(mode="w"))
+        else:
+            # stdout and stderr go to terminal
+            stdout = stderr = None
+
+        return subprocess.run(cmd, stdout=stdout, stderr=stderr, **kwargs).returncode
+
 def run_make_rule(
     rule: MakeRule,
     root_dir: Path,
@@ -144,10 +167,14 @@ def run_make_rule(
         f"{'N' if optimise else ''}DEBUG=1",
         rule.value
     ]
-    stdout, stderr = (subprocess.DEVNULL, subprocess.DEVNULL) if quiet else (None, None)
 
     with reporter.status(rule.action, verbosity=verbosity):
-        return_code = subprocess.run(cmd, stdout=stdout, stderr=stderr, **kwargs).returncode
+        return_code = run_subprocess(
+            cmd,
+            log_files=get_logs_from_stem(root_dir / f"make_{rule.value.replace('/', '_')}") \
+                if quiet else None,
+            **kwargs
+        )
 
     if return_code == 0:
         return True
@@ -186,9 +213,6 @@ class TestError:
             (f"\t{get_relative_path_str(file)}:\n{file.read_text()}:\n" for file in self._files)
         ))
 
-def append_suffix_to_stem(stem: Path, suffix: str) -> Path:
-    return stem.with_name(f"{stem.name}.{suffix}")
-
 def run_test_step(
     step: TestStep,
     cmd: list[str | Path],
@@ -201,12 +225,9 @@ def run_test_step(
 
     Returns None if successful, a TestError otherwise.
     """
-    def get_logs_from_stem(stem: Path) -> list[Path]:
-        return [append_suffix_to_stem(stem, f"{s}.log") for s in ["stdout", "stderr"]]
 
     files = get_logs_from_stem(append_suffix_to_stem(log_stem, step.value))
-    with files[0].open(mode="w") as stdout, files[1].open(mode="w") as stderr:
-        return_code = subprocess.run(cmd, stdout=stdout, stderr=stderr, **kwargs).returncode
+    return_code = run_subprocess(cmd, log_files=files, **kwargs)
 
     if return_code == 0:
         return None
@@ -300,7 +321,8 @@ def run_test(
             "-S", test_file, # We went with this flag order, but gcc's -S doesn't take a value
             "-o", append_suffix_to_stem(output_stem, "gcc.s")
         ],
-        log_stem=output_stem
+        log_stem=output_stem,
+        **kwargs
     )) is not None:
         return error
 
@@ -315,7 +337,8 @@ def run_test(
             "-c", append_suffix_to_stem(output_stem, "s"), # -c doesn't take a value
             "-o", append_suffix_to_stem(output_stem, "o")
         ],
-        log_stem=output_stem
+        log_stem=output_stem,
+        **kwargs
     )) is not None:
         return error
 
@@ -327,7 +350,8 @@ def run_test(
             append_suffix_to_stem(output_stem, "o"), driver_file,
             "-o", output_stem
         ],
-        log_stem=output_stem
+        log_stem=output_stem,
+        **kwargs
     )) is not None:
         return error
 
@@ -335,7 +359,8 @@ def run_test(
     if (error := run_test_step(
         step=TestStep.SIMULATION,
         cmd=TIME_CMD + ["spike", f"--isa={isa}", "pk", output_stem],
-        log_stem=output_stem
+        log_stem=output_stem,
+        **kwargs
     )) is not None:
         return error
 
@@ -612,7 +637,7 @@ if __name__ == "__main__":
     if args.clean:
         if not run_make_rule(
             rule=MakeRule.CLEAN,
-            verbosity=Verbosity.DEBUG,
+            verbosity=Verbosity.VERBOSE,
             root_dir=root_dir
         ):
             exit(1)
@@ -625,7 +650,7 @@ if __name__ == "__main__":
     if not args.validate_tests:
         if not run_make_rule(
             rule=MakeRule.COMPILER,
-            verbosity=Verbosity.VERBOSE,
+            verbosity=Verbosity.NORMAL,
             root_dir=root_dir,
             jobs=args.jobs,
             optimise=args.optimise
