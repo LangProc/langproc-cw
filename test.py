@@ -403,7 +403,6 @@ def measure_compiler_stats(benchmark_dir: Path, repetitions: int):
     """
     Measure compiler's compilation time, execution time and ELF size
     """
-    reporter.info("[bold]Benchmark results:[/]", style="purple")
 
     for test_case_dir in benchmark_dir.iterdir():
 
@@ -504,6 +503,7 @@ def run_tests(drivers: list[Path], jobs: int, report: JUnitXMLFile | None = None
 def student_compiler(
     compiler_path: Path,
     repetitions: int,
+    use_optimisations: bool,
     input_file: Path,
     output_stem: Path,
     **kwargs
@@ -520,6 +520,9 @@ def student_compiler(
     env["UBSAN_OPTIONS"] = f"log_path={output_stem}.ubsan.log"
 
     cmd = [str(compiler_path), "-S", str(input_file), "-o", str(append_suffix_to_stem(output_stem, "s"))]
+
+    if use_optimisations:
+        cmd.insert(1, "-O1")
 
     if repetitions > 0:
         time_cmd = ["/usr/bin/time", "-f", "%e", "-o", append_suffix_to_stem(output_stem, "compilation_time.log")]
@@ -594,7 +597,7 @@ def parse_args() -> Namespace:
     parser.add_argument(
         "--benchmark",
         nargs="?",
-        const=100,
+        const=1000,
         default=0,
         type=int,
         metavar="N",
@@ -628,6 +631,8 @@ if __name__ == "__main__":
     tests_dir = root_dir / TESTS_DIR_NAME
     benchmark_dir = tests_dir / BENCHMARK_DIR_NAME
 
+    base_student_compiler = partial(student_compiler, build_dir / TestStep.COMPILER.value)
+
     args = parse_args()
     reporter.verbosity = args.verbosity
 
@@ -656,6 +661,7 @@ if __name__ == "__main__":
             exit(1)
 
     # Run the tests and save the results into JUnit XML file
+
     with ExitStack() as stack:
         report = stack.enter_context(JUnitXMLFile(build_dir / "junit_results.xml")) \
             if args.report else None
@@ -664,7 +670,7 @@ if __name__ == "__main__":
             jobs=args.jobs,
             report=report,
             compiler=symlink_reference_compiler if args.validate_tests \
-                else partial(student_compiler, build_dir / TestStep.COMPILER.value, 0),
+                else partial(base_student_compiler, 0, False),
             output_dir=output_dir
         )
 
@@ -673,18 +679,22 @@ if __name__ == "__main__":
         if args.jobs > 1:
             reporter.warning("Benchmarking with jobs > 1 may affect compilation timing analysis")
 
-        passing_benchmark, total_benchmark = run_tests(
-            drivers=get_drivers_from_path(benchmark_dir),
-            jobs=args.jobs,
-            compiler=symlink_reference_compiler if args.validate_tests \
-                else partial(student_compiler, build_dir / TestStep.COMPILER.value, args.benchmark),
-            output_dir=output_dir
-        )
+        for use_optimisations in [False, True]:
+            optimisation_msg = ("with" if use_optimisations else "without") + " optimisations enabled"
 
-        if passing_benchmark == total_benchmark:
-            measure_compiler_stats(benchmark_dir=output_dir / BENCHMARK_DIR_NAME, repetitions=args.benchmark)
-        else:
-            reporter.warning(f"Skipping benchmarking due to failures")
+            passing_benchmark, total_benchmark = run_tests(
+                drivers=get_drivers_from_path(benchmark_dir),
+                jobs=args.jobs,
+                compiler=symlink_reference_compiler if args.validate_tests \
+                    else partial(base_student_compiler, args.benchmark, use_optimisations),
+                output_dir=output_dir
+            )
+
+            if passing_benchmark == total_benchmark:
+                reporter.info(f"[bold]Benchmark results {optimisation_msg}:[/]", style="purple")
+                measure_compiler_stats(benchmark_dir=output_dir / BENCHMARK_DIR_NAME, repetitions=args.benchmark)
+            else:
+                reporter.warning(f"Skipping benchmarking {optimisation_msg} due to failures")
 
     # Skip unavailable coverage and exit immediately for test validation
     if args.validate_tests:
