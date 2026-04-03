@@ -399,7 +399,7 @@ class JUnitXMLFile():
         self._fd.write("</testsuite>\n")
         self._fd.close()
 
-def measure_compiler_stats(benchmark_dir: Path, compilation_repetitions: int, validate_tests: bool):
+def measure_compiler_stats(benchmark_dir: Path, repetitions: int):
     """
     Measure compiler's compilation time, execution time and ELF size
     """
@@ -411,14 +411,17 @@ def measure_compiler_stats(benchmark_dir: Path, compilation_repetitions: int, va
         test_case_stem = (test_case_dir / test_case_name)
 
         # Compilation time obtained from the time spent by compiler to compiler the test case
-        compilation_log = test_case_stem.with_name(f"{test_case_stem.name}.c_compiler.stderr.log")
-        compilation_time = compilation_log.read_text(encoding="utf-8").strip()
-        compilation_msg = "N/A" if validate_tests else f"{float(compilation_time) / compilation_repetitions:.2f} s"
+        compilation_log = append_suffix_to_stem(test_case_stem, "compilation_time.log")
+        try:
+            compilation_time = compilation_log.read_text(encoding="utf-8").strip()
+            compilation_msg = f"{float(compilation_time) / repetitions:.2f} s"
+        except FileNotFoundError:
+            compilation_msg = "N/A"
 
-        # Executed instructions using ASM rdinstret in driver code
+        # Simulated instructions using ASM rdinstret in driver code
         simulation_log = str(append_suffix_to_stem(test_case_stem, "simulation.stdout.log"))
         with open(simulation_log, "r", encoding="utf-8") as f:
-            execution_instructions = int(f.readline().rstrip("\n"))
+            simulated_instructions = int(f.readline().rstrip("\n"))
 
         # Binary size obtained as the sum of .text + .data + .rodata sections of ELF file
         elf_file = test_case_stem.with_name(f"{test_case_stem.name}.o")
@@ -435,7 +438,7 @@ def measure_compiler_stats(benchmark_dir: Path, compilation_repetitions: int, va
         reporter.info(
             f"{test_case_name}: "
             f"compilation time = {compilation_msg}, "
-            f"executed instructions = {execution_instructions}, "
+            f"simulated instructions = {simulated_instructions}, "
             f"binary size = {binary_size} B",
             style="purple"
         )
@@ -520,7 +523,8 @@ def student_compiler(
     cmd = [str(compiler_path), "-S", str(input_file), "-o", str(append_suffix_to_stem(output_stem, "s"))]
 
     if repetitions > 0:
-        cmd = ["/usr/bin/time", "-f", "%e", "bash", "-lc", f"for i in $(seq 1 {repetitions}); do {' '.join(cmd)}; done"]
+        time_cmd = ["/usr/bin/time", "-f", "%e", "-o", append_suffix_to_stem(output_stem, "compilation_time.log")]
+        cmd = time_cmd + ["bash", "-lc", f"for i in $(seq 1 {repetitions}); do {' '.join(cmd)}; done"]
 
     # Compile
     return run_test_step(step=TestStep.COMPILER, cmd=cmd, log_stem=output_stem, env=env, **kwargs)
@@ -590,10 +594,14 @@ def parse_args() -> Namespace:
     )
     parser.add_argument(
         "--benchmark",
-        action="store_true",
-        default=False,
+        nargs="?",
+        const=100,
+        default=0,
+        type=int,
+        metavar="N",
         help="Benchmark compiler and gather related statistics like compilation "
-        "time, execution time, and ELF size."
+            "time, execution time, and ELF size. Use -j to use the default compilation "
+            "repetitions, or -j N to do exactly N repetitions."
     )
     parser.add_argument(
         "--validate_tests",
@@ -661,23 +669,21 @@ if __name__ == "__main__":
             output_dir=output_dir
         )
 
-    # Run the benchmarks and save the results into JUnit XML file
+    # Run the benchmarks
     if args.benchmark:
         if args.jobs > 1:
             reporter.warning("Benchmarking with jobs > 1 may affect compilation timing analysis")
-
-        compilation_repetitions = 100
 
         passing_benchmark, total_benchmark = run_tests(
             drivers=get_drivers_from_path(benchmark_dir),
             jobs=args.jobs,
             compiler=symlink_reference_compiler if args.validate_tests \
-                else partial(student_compiler, build_dir / TestStep.COMPILER.value, compilation_repetitions),
+                else partial(student_compiler, build_dir / TestStep.COMPILER.value, args.benchmark),
             output_dir=output_dir
         )
 
         if passing_benchmark == total_benchmark:
-            measure_compiler_stats(output_dir / BENCHMARK_DIR_NAME, compilation_repetitions, args.validate_tests)
+            measure_compiler_stats(benchmark_dir=output_dir / BENCHMARK_DIR_NAME, repetitions=args.benchmark)
         else:
             reporter.warning(f"Skipping benchmarking due to failures")
 
