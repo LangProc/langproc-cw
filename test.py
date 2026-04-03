@@ -419,9 +419,8 @@ def measure_compiler_stats(benchmark_dir: Path, repetitions: int):
             compilation_msg = "N/A"
 
         # Simulated instructions using ASM rdinstret in driver code
-        simulation_log = str(append_suffix_to_stem(test_case_stem, "simulation.stdout.log"))
-        with open(simulation_log, "r", encoding="utf-8") as f:
-            simulated_instructions = int(f.readline().rstrip("\n"))
+        simulation_log = append_suffix_to_stem(test_case_stem, "simulation.stdout.log")
+        simulated_instructions = int(simulation_log.read_text(encoding="utf-8").strip())
 
         # Binary size obtained as the sum of .text + .data + .rodata sections of ELF file
         elf_file = test_case_stem.with_name(f"{test_case_stem.name}.o")
