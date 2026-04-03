@@ -308,8 +308,8 @@ def run_test(
 
     # GCC is not targetting rv32imfd (base target of the course) because:
     # rv32imfd is compatible with rv32gc and the C extension is a part of extended goals
-    # isa = "rv32gc"
-    isa = "rv32gc_zicsr_zicntr"
+    # _zicntr allows for cycles and instructions measurements with rdcycle and rdinstret
+    isa = "rv32gc_zicntr"
     gcc_cmd = ["ccache", "riscv32-unknown-elf-gcc", f"-march={isa}", "-mabi=ilp32d"]
 
     # GCC Reference Output
