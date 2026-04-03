@@ -39,8 +39,6 @@ from rich.markup import escape as rich_escape
 from rich.console import Console
 from rich.progress import Progress, BarColumn, TextColumn
 
-TIME_CMD = ["/usr/bin/time", "-f", "%e"]
-
 class Verbosity(IntEnum):
     QUIET = 0
     NORMAL = 1
@@ -359,7 +357,6 @@ def run_test(
     # Simulate
     if (error := run_test_step(
         step=TestStep.SIMULATION,
-        # cmd=TIME_CMD + ["spike", f"--isa={isa}", "pk", output_stem],
         cmd=["spike", f"--isa={isa}", "pk", output_stem],
         log_stem=output_stem,
         **kwargs
@@ -402,7 +399,7 @@ class JUnitXMLFile():
         self._fd.write("</testsuite>\n")
         self._fd.close()
 
-def measure_compiler_stats(benchmark_dir: Path):
+def measure_compiler_stats(benchmark_dir: Path, compilation_repetitions: int, validate_tests: bool):
     """
     Measure compiler's compilation time, execution time and ELF size
     """
@@ -415,10 +412,8 @@ def measure_compiler_stats(benchmark_dir: Path):
 
         # Compilation time obtained from the time spent by compiler to compiler the test case
         compilation_log = test_case_stem.with_name(f"{test_case_stem.name}.c_compiler.stderr.log")
-        try:
-            compilation_time = float(compilation_log.read_text(encoding="utf-8").strip())
-        except (FileNotFoundError, ValueError):
-            compilation_time = -1.0
+        compilation_time = compilation_log.read_text(encoding="utf-8").strip()
+        compilation_msg = "N/A" if validate_tests else f"{float(compilation_time) / compilation_repetitions:.2f} s"
 
         # Executed instructions using ASM rdinstret in driver code
         simulation_log = str(append_suffix_to_stem(test_case_stem, "simulation.stdout.log"))
@@ -439,7 +434,7 @@ def measure_compiler_stats(benchmark_dir: Path):
         # Report compiler stats to terminal, students can decide how to process them further
         reporter.info(
             f"{test_case_name}: "
-            f"compilation time = {compilation_time:.2f} s, "
+            f"compilation time = {compilation_msg}, "
             f"executed instructions = {execution_instructions}, "
             f"binary size = {binary_size} B",
             style="purple"
@@ -506,6 +501,7 @@ def run_tests(drivers: list[Path], jobs: int, report: JUnitXMLFile | None = None
 
 def student_compiler(
     compiler_path: Path,
+    repetitions: int,
     input_file: Path,
     output_stem: Path,
     **kwargs
@@ -521,14 +517,13 @@ def student_compiler(
     env["ASAN_OPTIONS"] = f"log_path={output_stem}.asan.log"
     env["UBSAN_OPTIONS"] = f"log_path={output_stem}.ubsan.log"
 
+    cmd = [str(compiler_path), "-S", str(input_file), "-o", str(append_suffix_to_stem(output_stem, "s"))]
+
+    if repetitions > 0:
+        cmd = ["/usr/bin/time", "-f", "%e", "bash", "-lc", f"for i in $(seq 1 {repetitions}); do {' '.join(cmd)}; done"]
+
     # Compile
-    return run_test_step(
-        step=TestStep.COMPILER,
-        cmd=TIME_CMD + [compiler_path, "-S", input_file, "-o", append_suffix_to_stem(output_stem, "s")],
-        log_stem=output_stem,
-        env=env,
-        **kwargs
-    )
+    return run_test_step(step=TestStep.COMPILER, cmd=cmd, log_stem=output_stem, env=env, **kwargs)
 
 def symlink_reference_compiler(_input_file: Path, output_stem: Path, **kwargs) -> TestError | None:
     """
@@ -629,12 +624,6 @@ if __name__ == "__main__":
     args = parse_args()
     reporter.verbosity = args.verbosity
 
-    # Select compiler to use
-    if args.validate_tests:
-        compiler = symlink_reference_compiler
-    else:
-        compiler = partial(student_compiler, build_dir / TestStep.COMPILER.value)
-
     # Clean the repo if required
     if args.clean:
         if not run_make_rule(
@@ -667,7 +656,8 @@ if __name__ == "__main__":
             drivers=get_drivers_from_path(tests_dir, exclude_dir=benchmark_dir),
             jobs=args.jobs,
             report=report,
-            compiler=compiler,
+            compiler=symlink_reference_compiler if args.validate_tests \
+                else partial(student_compiler, build_dir / TestStep.COMPILER.value, 0),
             output_dir=output_dir
         )
 
@@ -676,15 +666,18 @@ if __name__ == "__main__":
         if args.jobs > 1:
             reporter.warning("Benchmarking with jobs > 1 may affect compilation timing analysis")
 
+        compilation_repetitions = 100
+
         passing_benchmark, total_benchmark = run_tests(
             drivers=get_drivers_from_path(benchmark_dir),
             jobs=args.jobs,
-            compiler=compiler,
+            compiler=symlink_reference_compiler if args.validate_tests \
+                else partial(student_compiler, build_dir / TestStep.COMPILER.value, compilation_repetitions),
             output_dir=output_dir
         )
 
         if passing_benchmark == total_benchmark:
-            measure_compiler_stats(output_dir / BENCHMARK_DIR_NAME)
+            measure_compiler_stats(output_dir / BENCHMARK_DIR_NAME, compilation_repetitions, args.validate_tests)
         else:
             reporter.warning(f"Skipping benchmarking due to failures")
 
