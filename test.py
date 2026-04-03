@@ -523,7 +523,7 @@ def student_compiler(
 
     if repetitions > 0:
         time_cmd = ["/usr/bin/time", "-f", "%e", "-o", append_suffix_to_stem(output_stem, "compilation_time.log")]
-        cmd = time_cmd + ["bash", "-lc", f"for i in $(seq 1 {repetitions}); do {' '.join(cmd)}; done"]
+        cmd = time_cmd + ["bash", "-lc", f"for i in $(seq 1 {repetitions}); do {shlex.join(cmd)}; done"]
 
     # Compile
     return run_test_step(step=TestStep.COMPILER, cmd=cmd, log_stem=output_stem, env=env, **kwargs)
