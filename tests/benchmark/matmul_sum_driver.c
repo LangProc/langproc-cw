@@ -1,3 +1,20 @@
+#include <stdint.h>
+#include <inttypes.h>
+#include <stdio.h>
+
+static inline uint64_t rdinstret64(void) {
+    uint32_t hi, lo, hi2;
+    asm volatile(
+        "1:\n"
+        "rdinstreth %0\n"
+        "rdinstret  %1\n"
+        "rdinstreth %2\n"
+        "bne %0, %2, 1b\n"
+        : "=&r"(hi), "=&r"(lo), "=&r"(hi2)
+    );
+    return ((uint64_t)hi << 32) | lo;
+}
+
 float matmul_sum(float A[5][5], float B[5][5]);
 
 int main(void)
@@ -18,12 +35,11 @@ int main(void)
         {0.0f, 2.0f, 1.0f, 2.0f, 0.0f}
     };
 
-    float result = 0.0f;
-    int repetitions = 100000;
+    uint64_t i0 = rdinstret64();
+    float result = matmul_sum(A, B);
+    uint64_t i1 = rdinstret64();
 
-    for (int i = 0; i < repetitions; i++){
-        result += matmul_sum(A, B);
-    }
+    printf("%" PRIu64 "\n", i1 - i0);
 
-    return !(result > (164.999f * repetitions) && result < (165.001f * repetitions));
+    return !(result > 164.999f && result < 165.001f);
 }

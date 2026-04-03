@@ -310,7 +310,8 @@ def run_test(
 
     # GCC is not targetting rv32imfd (base target of the course) because:
     # rv32imfd is compatible with rv32gc and the C extension is a part of extended goals
-    isa = "rv32gc"
+    # isa = "rv32gc"
+    isa = "rv32gc_zicsr_zicntr"
     gcc_cmd = ["ccache", "riscv32-unknown-elf-gcc", f"-march={isa}", "-mabi=ilp32d"]
 
     # GCC Reference Output
@@ -358,7 +359,8 @@ def run_test(
     # Simulate
     if (error := run_test_step(
         step=TestStep.SIMULATION,
-        cmd=TIME_CMD + ["spike", f"--isa={isa}", "pk", output_stem],
+        # cmd=TIME_CMD + ["spike", f"--isa={isa}", "pk", output_stem],
+        cmd=["spike", f"--isa={isa}", "pk", output_stem],
         log_stem=output_stem,
         **kwargs
     )) is not None:
@@ -418,10 +420,10 @@ def measure_compiler_stats(benchmark_dir: Path):
         except (FileNotFoundError, ValueError):
             compilation_time = -1.0
 
-        # Execution time obtained from the time spent by spike to simulate the (repeated) test case
-        repetitions = 100000
-        simulation_log = test_case_stem.with_name(f"{test_case_stem.name}.simulation.stderr.log")
-        execution_time = float(simulation_log.read_text(encoding="utf-8").strip())
+        # Executed instructions using ASM rdinstret in driver code
+        simulation_log = str(append_suffix_to_stem(test_case_stem, "simulation.stdout.log"))
+        with open(simulation_log, "r", encoding="utf-8") as f:
+            execution_instructions = int(f.readline().rstrip("\n"))
 
         # Binary size obtained as the sum of .text + .data + .rodata sections of ELF file
         elf_file = test_case_stem.with_name(f"{test_case_stem.name}.o")
@@ -438,7 +440,7 @@ def measure_compiler_stats(benchmark_dir: Path):
         reporter.info(
             f"{test_case_name}: "
             f"compilation time = {compilation_time:.2f} s, "
-            f"execution time = {execution_time / repetitions * 1000000:.1f} us, "
+            f"executed instructions = {execution_instructions}, "
             f"binary size = {binary_size} B",
             style="purple"
         )
@@ -671,6 +673,9 @@ if __name__ == "__main__":
 
     # Run the benchmarks and save the results into JUnit XML file
     if args.benchmark:
+        if args.jobs > 1:
+            reporter.warning("Benchmarking with jobs > 1 may affect compilation timing analysis")
+
         passing_benchmark, total_benchmark = run_tests(
             drivers=get_drivers_from_path(benchmark_dir),
             jobs=args.jobs,
