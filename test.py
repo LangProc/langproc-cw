@@ -709,7 +709,7 @@ def run_benchmark(root_dir: Path, jobs: int, validate_tests: bool, repetitions: 
 
         for test_file, simulated_instructions, binary_size in benchmark_data:
             output_stem = output_stem_from_test(output_dir=output_dir, test_file=test_file)
-            output_stem.mkdir(parents=True, exist_ok=True)
+            output_stem.parent.mkdir(parents=True, exist_ok=True)
 
             log_file = append_suffix_to_stem(output_stem, "compilation_time.log")
             compiler_cmd_str = shlex.join([
