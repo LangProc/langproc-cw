@@ -482,7 +482,7 @@ def student_compiler(base_cmd: list[Path | str]) -> CompilerType:
 
     return compiler
 
-def symlink_reference_compiler(_input_file: Path, output_stem: Path) -> TestError | None:
+def symlink_reference_compiler(_input_file: Path, output_stem: Path, **_kwargs) -> TestError | None:
     """
     Symlinks the result of riscv-gcc as its own result and move its logs as our own.
     It isn't really a compiler but can be passed as a compiler function to use the result of
@@ -499,6 +499,10 @@ def symlink_reference_compiler(_input_file: Path, output_stem: Path) -> TestErro
         )
     append_suffix_to_stem(output_stem, "s").symlink_to(append_suffix_to_stem(output_stem, "gcc.s"))
     return None
+
+def remake_dir(dir: Path):
+    rmtree(dir, ignore_errors=True)
+    dir.mkdir(parents=True, exist_ok=True)
 
 def get_drivers_in(dir: Path) -> Iterator[Path]:
     return dir.rglob("*_driver.c")
@@ -532,8 +536,7 @@ def run_normal(
             exit(1)
 
     # Clean the output folder
-    rmtree(output_dir, ignore_errors=True)
-    output_dir.mkdir(parents=True, exist_ok=True)
+    remake_dir(output_dir)
 
     # Run the tests and save the results into JUnit XML file if asked (in CI/CD typically)
     with ExitStack() as stack:
@@ -567,35 +570,57 @@ def run_normal(
 
     reporter.error(f"[bold]Passed {passing_tests}/{total_tests} found test cases[/]", style="cyan")
 
-def collect_benchmark_data(output_dir: Path, test_files: list[Path]) -> dict[Path, tuple[int, int]]:
-    bench = []
-    for test_file in test_files:
-        output_stem = output_stem_from_test(output_dir, test_file)
+def collect_benchmark_data(output_dir: Path, driver_file: Path) -> tuple[Path, int, int]:
+    test_file = test_from_driver(output_dir, test_file)
+    output_stem = output_stem_from_test(output_dir, test_file)
 
-        # Simulated instructions using ASM rdinstret in driver code
-        simulation_log = append_suffix_to_stem(output_stem, "simulation.stdout.log")
-        try:
-            simulated_instructions = int(simulation_log.read_text(encoding="utf-8").strip())
-        except ValueError:
-            simulated_instructions = -1
+    # Simulated instructions using ASM rdinstret in driver code
+    simulation_log = append_suffix_to_stem(output_stem, "simulation.stdout.log")
+    try:
+        simulated_instructions = int(simulation_log.read_text(encoding="utf-8").strip())
+    except ValueError:
+        simulated_instructions = -1
 
-        # Binary size obtained as the sum of .text + .data + .rodata sections of ELF file
-        elf_file = output_stem.with_suffix(".o")
-        cmd = ["riscv32-unknown-elf-size", "-A", elf_file]
-        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-        binary_size = 0
+    # Binary size obtained as the sum of .text + .data + .rodata sections of ELF file
+    elf_file = output_stem.with_suffix(".o")
+    cmd = ["riscv32-unknown-elf-size", "-A", elf_file]
+    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    binary_size = 0
 
-        try:
-            for line in result.stdout.splitlines():
-                parts = line.split()
-                if len(parts) >= 2 and parts[0] in {".text", ".data", ".rodata"}:
-                    binary_size += int(parts[1])
-        except ValueError:
-            binary_size = -1
+    try:
+        for line in result.stdout.splitlines():
+            parts = line.split()
+            if len(parts) >= 2 and parts[0] in {".text", ".data", ".rodata"}:
+                binary_size += int(parts[1])
+    except ValueError:
+        binary_size = -1
 
-        bench.append((test_file, simulated_instructions, binary_size))
+    return test_file, simulated_instructions, binary_size
 
-    return bench
+def measure_compile_time(output_dir: Path, compiler_path: Path, test_file: Path) -> float:
+    output_stem = output_stem_from_test(output_dir=output_dir, test_file=test_file)
+    output_stem.mkdir(parents=True, exist_ok=True)
+    log_file = append_suffix_to_stem(output_stem, "compilation_time.log")
+
+    compiler_cmd_str = shlex.join([
+        str(compiler_path), "-O1",
+        "-S", str(test_file),
+        "-o", f"{output_stem}.s"
+    ])
+    cmd = [
+        "/usr/bin/time",
+        "-f", "%e",
+        "-o", log_file,
+        "bash", "-lc", f"for i in $(seq 1 {repetitions}); do {compiler_cmd_str}; done"
+    ]
+    subprocess.run(cmd, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+
+    # Compilation time obtained from the time spent by compiler to compiler the test case
+    try:
+        total_compilation_time = log_file.read_text(encoding="utf-8").strip()
+        return float(total_compilation_time) / repetitions
+    except (FileNotFoundError, ValueError):
+        return -1.0
 
 def run_benchmark(root_dir: Path, jobs: int, validate_tests: bool, repetitions: int):
     assert repetitions > 0, f"Number of repetitions should be positive, got {repetitions}"
@@ -625,8 +650,7 @@ def run_benchmark(root_dir: Path, jobs: int, validate_tests: bool, repetitions: 
             )):
                 exit(1)
 
-        rmtree(output_dir, ignore_errors=True)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        remake_dir(output_dir)
 
         passing, total = run_tests(
             drivers=all_drivers,
@@ -659,8 +683,7 @@ def run_benchmark(root_dir: Path, jobs: int, validate_tests: bool, repetitions: 
     # Students are done with coursework, now testing if building with `-O3` and passing `-O1` works
     with reporter.status("Checking compiler with `-O1`"):
         # We can discard the output folder, even though generated reference assembly is going to be the same
-        rmtree(output_dir, ignore_errors=True)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        remake_dir(output_dir)
 
         passing, total = run_tests(
             drivers=all_drivers,
@@ -685,8 +708,10 @@ def run_benchmark(root_dir: Path, jobs: int, validate_tests: bool, repetitions: 
 
     # Get executable size and executed instruction count
     with reporter.status("Collecting benchmark data"):
-        benchmark_tests = map(test_from_driver, benchmark_drivers)
-        benchmark_data = collect_benchmark_data(output_dir=output_dir, test_files=benchmark_tests)
+        benchmark_data = [
+            collect_benchmark_data(output_dir=output_dir, driver_file=driver)
+            for driver in benchmark_drivers
+        ]
 
     # Clean and build with optimisations
     if not (run_make_rule(
@@ -704,34 +729,14 @@ def run_benchmark(root_dir: Path, jobs: int, validate_tests: bool, repetitions: 
 
     # Finally run the timed benchmarks
     with reporter.status("Measuring compile time"):
-		rmtree(output_dir, ignore_errors=True)
-        output_dir.mkdir(parents=True, exist_ok=True)
+        remake_dir(output_dir)
 
         for test_file, simulated_instructions, binary_size in benchmark_data:
-            output_stem = output_stem_from_test(output_dir=output_dir, test_file=test_file)
-            output_stem.parent.mkdir(parents=True, exist_ok=True)
-
-            log_file = append_suffix_to_stem(output_stem, "compilation_time.log")
-            compiler_cmd_str = shlex.join([
-                str(compiler_path), "-O1",
-                "-S", str(test_file),
-                "-o", "/dev/null"
-            ])
-            cmd = [
-                "/usr/bin/time",
-                "-f", "%e",
-                "-o", log_file,
-                "bash", "-lc", f"for i in $(seq 1 {repetitions}); do {compiler_cmd_str}; done"
-            ]
-            subprocess.run(cmd, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-
-            # Compilation time obtained from the time spent by compiler to compiler the test case
-            try:
-                total_compilation_time = log_file.read_text(encoding="utf-8").strip()
-                average_compilation_msg = float(total_compilation_time) / repetitions
-            except (FileNotFoundError, ValueError):
-                average_compilation_time = -1
-
+            compilation_time = measure_compile_time(
+                output_dir=output_dir,
+                compiler_path=compiler_path,
+                test_file=test_file
+            )
 
             # Report compiler stats to terminal, students can decide how to process them further
             test_str = get_relative_path_str(test_file)
@@ -742,13 +747,13 @@ def run_benchmark(root_dir: Path, jobs: int, validate_tests: bool, repetitions: 
             if binary_size < 0:
                 reporter.error(f"Could not gather binary size for {test_str}.")
                 show_results = False
-            if average_compilation_time < 0:
+            if compilation_time < 0:
                 reporter.error(f"Could not gather average compildation time for {test_str}.")
                 show_results = False
             if show_results:
                 reporter.info(
                     f"{test_str}: "
-                    f"compilation time = {average_compilation_time:.2f} s, "
+                    f"compilation time = {compilation_time:.3f} s, "
                     f"simulated instructions = {simulated_instructions}, "
                     f"binary size = {binary_size} B",
                     style="purple"
