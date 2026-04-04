@@ -704,6 +704,7 @@ def run_benchmark(root_dir: Path, jobs: int, validate_tests: bool, repetitions: 
 
     # Finally run the timed benchmarks
     with reporter.status("Measuring compile time"):
+		rmtree(output_dir, ignore_errors=True)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         for test_file, simulated_instructions, binary_size in benchmark_data:
