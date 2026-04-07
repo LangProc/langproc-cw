@@ -31,13 +31,12 @@ from pathlib import Path
 from argparse import ArgumentParser, Namespace, ArgumentError
 from enum import IntEnum, Enum
 from itertools import chain
-from functools import partial
 from contextlib import nullcontext, ExitStack
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from rich.markup import escape as rich_escape
 from rich.console import Console
-from rich.progress import Progress, BarColumn, TextColumn
+from rich.progress import Progress, BarColumn, TextColumn, SpinnerColumn
 
 class Verbosity(IntEnum):
     QUIET = 0
@@ -66,14 +65,13 @@ class Reporter:
     def error(self, message: str, style: str = "red"):
         self._emit(message, style, Verbosity.QUIET)
 
-    def status(self, message: str, style: str = "cyan", verbosity: Verbosity = Verbosity.NORMAL):
-        message = f"{message}..."
+    def status(self, message: str, verbosity: Verbosity = Verbosity.NORMAL):
+        styled_message = f"[cyan]{message}[/]"
         if verbosity > self.verbosity:
-            styled_message = message if style == "" else f"[{style}]{message}[/]"
             return self.console.status(styled_message, spinner="dots")
 
-        # For higher verbosity (when other logs are printed as well), fall back to _emit(...)
-        self._emit(message, style, verbosity)
+        # For higher verbosity (when other logs are printed as well), use fallback
+        self._emit(f"{styled_message}...", style, verbosity)
         return nullcontext()
 
 reporter = Reporter()
@@ -128,14 +126,11 @@ def get_logs_from_stem(stem: Path) -> tuple[Path, Path]:
 
 def run_subprocess(cmd: list[str | Path], log_stem: Path | None, **kwargs) -> int:
     with ExitStack() as stack:
-        if log_stem is not None:
-            # stdout and stderr go to files
-            stdout_file, stderr_file = get_logs_from_stem(log_stem)
-            stdout = stack.enter_context(stdout_file.open(mode="w"))
-            stderr = stack.enter_context(stderr_file.open(mode="w"))
-        else:
-            # stdout and stderr go to terminal
-            stdout = stderr = None
+        stdout, stderr = (
+            tuple(stack.enter_context(path.open("w")) for path in get_logs_from_stem(log_stem))
+            if log_stem is not None
+            else (None, None)
+        )
 
         return subprocess.run(cmd, stdout=stdout, stderr=stderr, **kwargs).returncode
 
@@ -206,6 +201,9 @@ class TestError:
             (f"\t{get_relative_path_str(file)}:\n{file.read_text()}:\n" for file in self._files)
         ))
 
+def get_sanitizer_files_from_stem_parent(stem: Path) -> Iterator[Path]:
+    return stem.parent.glob("*.*san.log.*")
+
 def run_test_step(
     step: TestStep,
     cmd: list[str | Path],
@@ -256,7 +254,7 @@ def run_test_step(
         if asm_file.is_file():
             files.append(append_suffix_to_stem(log_stem, "gcc.s"))
         # In any case add sanitizer files because we really want students to write good code
-        files.extend(log_stem.parent.glob("*.*san.log.*"))
+        files.extend(get_sanitizer_files_from_stem_parent(log_stem))
 
     # Clean version of the command for students to quickly retry the failing step:
     # shortening paths and removing ccache (compiler output caching)
@@ -363,7 +361,7 @@ def run_test(
     )) is not None:
         return error
 
-    if sanitizer_files := list(output_stem.parent.glob("*.*san.log.*")):
+    if sanitizer_files := list(get_sanitizer_files_from_stem_parent(output_stem)):
         return TestError(short_message="Sanitizer warnings", files=sanitizer_files)
 
     return None
@@ -403,6 +401,7 @@ def run_tests(
     drivers: list[Path],
     jobs: int,
     report: JUnitXMLFile | None = None,
+    status: str = "Running tests",
     **kwargs
 ) -> tuple[int, int]:
     """
@@ -416,6 +415,8 @@ def run_tests(
     passed = failed = 0
 
     with Progress(
+        SpinnerColumn(),
+        TextColumn("[cyan]{task.description}[/]"),
         TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
         BarColumn(bar_width=None),
         TextColumn(
@@ -427,15 +428,15 @@ def run_tests(
         transient=True,
         disable=not stdout.isatty(),
     ) as progress, ThreadPoolExecutor(max_workers=jobs) as executor:
-        task_id = progress.add_task("tests", total=len(drivers), passed=0, failed=0, rate=0.0)
+        task_id = progress.add_task(status, total=len(drivers), passed=0, failed=0, rate=0.0)
 
         job_to_driver = {
             executor.submit(run_test, driver_file=driver, **kwargs): driver
             for driver in drivers
         }
+
         for job in as_completed(job_to_driver):
-            driver = job_to_driver[job]
-            test_file = get_relative_path_str(test_from_driver(driver))
+            test_file = get_relative_path_str(test_from_driver(job_to_driver[job]))
 
             if (error := job.result()) is not None:
                 failed += 1
@@ -461,6 +462,7 @@ def run_tests(
     assert len(drivers) == passed + failed, \
         "Mismatch in number of tests with status " \
         f"({passed} passed, {failed} failed, {len(drivers)} found)"
+
     return passed, passed + failed
 
 def student_compiler(base_cmd: list[Path | str]) -> CompilerType:
@@ -518,6 +520,7 @@ def run_normal(
     build_dir = root_dir / BUILD_DIR_NAME
     output_dir = build_dir / OUTPUT_DIR_NAME
     tests_dir = root_dir / TESTS_DIR_NAME
+    compiler_path = build_dir / TestStep.COMPILER.value
 
     # Skip building steps when using riscv-gcc
     if not validate_tests:
@@ -540,14 +543,13 @@ def run_normal(
 
     # Run the tests and save the results into JUnit XML file if asked (in CI/CD typically)
     with ExitStack() as stack:
-        report = stack.enter_context(JUnitXMLFile(build_dir / "junit_results.xml")) \
-            if report else None
         passing_tests, total_tests = run_tests(
             drivers=list(get_drivers_in(tests_dir)),
             jobs=jobs,
-            report=report,
+            report=stack.enter_context(JUnitXMLFile(build_dir / "junit_results.xml")) \
+                if report else None,
             compiler=symlink_reference_compiler if validate_tests \
-                else student_compiler(base_cmd=[build_dir / TestStep.COMPILER.value]),
+                else student_compiler(base_cmd=[compiler_path]),
             output_dir=output_dir
         )
 
@@ -570,8 +572,8 @@ def run_normal(
 
     reporter.error(f"[bold]Passed {passing_tests}/{total_tests} found test cases[/]", style="cyan")
 
-def collect_benchmark_data(output_dir: Path, driver_file: Path) -> tuple[Path, int, int]:
-    test_file = test_from_driver(output_dir, test_file)
+def collect_benchmark_data(output_dir: Path, driver_file: Path) -> tuple[Path, int | None, int | None]:
+    test_file = test_from_driver(driver_file)
     output_stem = output_stem_from_test(output_dir, test_file)
 
     # Simulated instructions using ASM rdinstret in driver code
@@ -579,7 +581,7 @@ def collect_benchmark_data(output_dir: Path, driver_file: Path) -> tuple[Path, i
     try:
         simulated_instructions = int(simulation_log.read_text(encoding="utf-8").strip())
     except ValueError:
-        simulated_instructions = -1
+        simulated_instructions = None
 
     # Binary size obtained as the sum of .text + .data + .rodata sections of ELF file
     elf_file = output_stem.with_suffix(".o")
@@ -593,11 +595,18 @@ def collect_benchmark_data(output_dir: Path, driver_file: Path) -> tuple[Path, i
             if len(parts) >= 2 and parts[0] in {".text", ".data", ".rodata"}:
                 binary_size += int(parts[1])
     except ValueError:
-        binary_size = -1
+        binary_size = None
 
     return test_file, simulated_instructions, binary_size
 
-def measure_compile_time(output_dir: Path, compiler_path: Path, test_file: Path) -> float:
+def measure_compile_time(
+    output_dir: Path,
+    compiler_path: Path,
+    test_file: Path,
+    repetitions: int
+) -> float | None:
+    assert repetitions > 0, f"Number of repetitions should be positive, got {repetitions}"
+
     output_stem = output_stem_from_test(output_dir=output_dir, test_file=test_file)
     output_stem.mkdir(parents=True, exist_ok=True)
     log_file = append_suffix_to_stem(output_stem, "compilation_time.log")
@@ -620,10 +629,9 @@ def measure_compile_time(output_dir: Path, compiler_path: Path, test_file: Path)
         total_compilation_time = log_file.read_text(encoding="utf-8").strip()
         return float(total_compilation_time) / repetitions
     except (FileNotFoundError, ValueError):
-        return -1.0
+        return None
 
 def run_benchmark(root_dir: Path, jobs: int, validate_tests: bool, repetitions: int):
-    assert repetitions > 0, f"Number of repetitions should be positive, got {repetitions}"
     build_dir = root_dir / BUILD_DIR_NAME
     output_dir = build_dir / OUTPUT_DIR_NAME
     tests_dir = root_dir / TESTS_DIR_NAME
@@ -633,33 +641,34 @@ def run_benchmark(root_dir: Path, jobs: int, validate_tests: bool, repetitions: 
     all_drivers = list(chain(benchmark_drivers, get_drivers_in(tests_dir)))
 
     # First check students aren't trying to benchmark before being done with the coursework
-    with reporter.status("Checking compiler without `-O1`"):
-        # Skip building steps when using riscv-gcc
-        if not validate_tests:
-            # Clean the repo if required
-            if not (run_make_rule(
-                rule=MakeRule.CLEAN,
-                verbosity=Verbosity.VERBOSE,
-                root_dir=root_dir
-            ) and run_make_rule(
-                rule=MakeRule.BUILD,
-                verbosity=Verbosity.NORMAL,
-                root_dir=root_dir,
-                jobs=jobs,
-                optimise=False
-            )):
-                exit(1)
 
-        remake_dir(output_dir)
-
-        passing, total = run_tests(
-            drivers=all_drivers,
+    # Skip building steps when using riscv-gcc
+    if not validate_tests:
+        # Clean the repo if required
+        if not (run_make_rule(
+            rule=MakeRule.CLEAN,
+            verbosity=Verbosity.VERBOSE,
+            root_dir=root_dir
+        ) and run_make_rule(
+            rule=MakeRule.BUILD,
+            verbosity=Verbosity.NORMAL,
+            root_dir=root_dir,
             jobs=jobs,
-            report=None,
-            compiler=symlink_reference_compiler if validate_tests \
-                else student_compiler(base_cmd=[compiler_path]),
-            output_dir=output_dir
-        )
+            optimise=False
+        )):
+            exit(1)
+
+    remake_dir(output_dir)
+
+    passing, total = run_tests(
+        drivers=all_drivers,
+        jobs=jobs,
+        report=None,
+        status="Running tests without `-O1`",
+        compiler=symlink_reference_compiler if validate_tests \
+            else student_compiler(base_cmd=[compiler_path]),
+        output_dir=output_dir
+    )
 
     if passing != total:
         reporter.error(
@@ -680,18 +689,18 @@ def run_benchmark(root_dir: Path, jobs: int, validate_tests: bool, repetitions: 
         reporter.info(f"All {total} tests are valid!")
         exit(0)
 
-    # Students are done with coursework, now testing if building with `-O3` and passing `-O1` works
-    with reporter.status("Checking compiler with `-O1`"):
-        # We can discard the output folder, even though generated reference assembly is going to be the same
-        remake_dir(output_dir)
+    # We can discard the output folder, even though generated reference assembly is going to be the same
+    remake_dir(output_dir)
 
-        passing, total = run_tests(
-            drivers=all_drivers,
-            jobs=jobs,
-            report=None,
-            compiler=student_compiler(base_cmd=[compiler_path, "-O1"]),
-            output_dir=output_dir
-        )
+    # Students are done with coursework, now testing if building with `-O3` and passing `-O1` works
+    passing, total = run_tests(
+        drivers=all_drivers,
+        jobs=jobs,
+        report=None,
+        status="Running tests with `-O1`",
+        compiler=student_compiler(base_cmd=[compiler_path, "-O1"]),
+        output_dir=output_dir
+    )
 
     if passing != total:
         reporter.error(
@@ -735,29 +744,18 @@ def run_benchmark(root_dir: Path, jobs: int, validate_tests: bool, repetitions: 
             compilation_time = measure_compile_time(
                 output_dir=output_dir,
                 compiler_path=compiler_path,
-                test_file=test_file
+                test_file=test_file,
+                repetitions=repetitions
             )
 
             # Report compiler stats to terminal, students can decide how to process them further
-            test_str = get_relative_path_str(test_file)
-            show_results = True
-            if simulated_instructions < 0:
-                reporter.error(f"Could not gather simulated instructions count for {test_str}.")
-                show_results = False
-            if binary_size < 0:
-                reporter.error(f"Could not gather binary size for {test_str}.")
-                show_results = False
-            if compilation_time < 0:
-                reporter.error(f"Could not gather average compildation time for {test_str}.")
-                show_results = False
-            if show_results:
-                reporter.info(
-                    f"{test_str}: "
-                    f"compilation time = {compilation_time:.3f} s, "
-                    f"simulated instructions = {simulated_instructions}, "
-                    f"binary size = {binary_size} B",
-                    style="purple"
-                )
+            reporter.error(
+                f"{get_relative_path_str(test_file)}: "
+                f"compilation time = {compilation_time or 'N/A'} s, "
+                f"simulated instructions = {simulated_instructions or 'N/A'}, "
+                f"binary size = {binary_size or 'N/A'} B",
+                style="purple"
+            )
 
 def parse_args() -> Namespace:
     """Wrapper for argument parsing."""
@@ -845,9 +843,9 @@ def parse_args() -> Namespace:
             "like compilation time, execution time, and ELF size."
     )
     benchmark_parser.add_argument(
-        "repetitions",
+        "--repetitions",
         type=int,
-        default=10,
+        default=100,
         help="Number of times to run the compiler, "
             "a higher value isolate from noise like random slowdowns but takes more time."
     )
