@@ -474,32 +474,38 @@ def run_tests(
 
     return passed, passed + failed
 
-def student_compiler(compiler_path: Path, opt_flag: str = "", repetitions: int = 0) -> CompilerType:
+def student_compiler(
+    compiler_path: Path,
+    repetitions: int = 0,
+    opt_flag: str | None = None
+) -> CompilerType:
     """
-    Wrapper for `build/c_compiler -S <input_file> -o <log_stem>.s`.
-    Additional arguments are passed to `run_test_step`.
+    Wrapper for `build/c_compiler [opt_flag] -S <input_file> -o <log_stem>.s`,
+    with optional time measurement. Additional arguments are passed to `run_test_step`.
 
     Returns None if successful, a TestError otherwise.
     """
     def compiler(input_file: Path, output_stem: Path, **kwargs) -> TestError | None:
-        # Modifying environment to store sanitizer errors
         env = environ.copy()
-        env["ASAN_OPTIONS"] = f"log_path={output_stem}.asan.log"
-        env["UBSAN_OPTIONS"] = f"log_path={output_stem}.ubsan.log"
 
-        cmd = [compiler_path, opt_flag, "-S", input_file, "-o", append_suffix_to_stem(output_stem, "s")]
+        cmd = [compiler_path, "-S", input_file, "-o", append_suffix_to_stem(output_stem, "s")]
+        if opt_flag is not None:
+            cmd.insert(1, opt_flag)
 
         if repetitions > 0:
             time_cmd = [
-                "/usr/bin/time",
-                "-f", "%e",
+                "/usr/bin/time", "-f", "%e",
                 "-o", append_suffix_to_stem(output_stem, "compilation_time.log")
             ]
-            compiler_cmd_str = shlex.join([str(el) for el in cmd])
             cmd = time_cmd + [
                 "bash", "-lc",
-                f"for i in $(seq 1 {repetitions}); do {compiler_cmd_str}; done"
+                f"for i in $(seq 1 {repetitions}); do {shlex.join([str(el) for el in cmd])}; done"
             ]
+        else:
+            # Modifying environment to store sanitizer errors
+            env["ASAN_OPTIONS"] = f"log_path={output_stem}.asan.log"
+            env["UBSAN_OPTIONS"] = f"log_path={output_stem}.ubsan.log"
+
 
         return run_test_step(step=TestStep.COMPILER, cmd=cmd, log_stem=output_stem, env=env, **kwargs)
 
@@ -711,7 +717,7 @@ if __name__ == "__main__":
                 drivers=get_drivers_from_path(benchmark_dir),
                 status=f"Running benchmark{optimisation_msg}",
                 compiler=symlink_reference_compiler if args.validate_tests \
-                    else student_compiler(compiler_path, opt_flag=opt_flag, repetitions=args.benchmark),
+                    else student_compiler(compiler_path, repetitions=args.benchmark, opt_flag=opt_flag),
             )
 
             if passing_benchmark != total_benchmark:
