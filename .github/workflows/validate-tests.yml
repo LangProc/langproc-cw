@@ -34,6 +34,6 @@ jobs:
         if: failure()
         with:
           name: Some tests are invalid
-          path: build/junit_results.xml
+          path: build/output/junit_results.xml
           reporter: java-junit
           fail-on-error: false

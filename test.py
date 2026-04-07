@@ -31,6 +31,7 @@ from pathlib import Path
 from argparse import ArgumentParser, Namespace, ArgumentError
 from enum import IntEnum, Enum
 from itertools import chain
+from functools import partial
 from contextlib import nullcontext, ExitStack
 from collections.abc import Callable, Iterator
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -66,7 +67,8 @@ class Reporter:
         self._emit(message, style, Verbosity.QUIET)
 
     def status(self, message: str, verbosity: Verbosity = Verbosity.NORMAL):
-        styled_message = f"[cyan]{message}[/]"
+        style = "cyan"
+        styled_message = f"[{style}]{message}[/]"
         if verbosity > self.verbosity:
             return self.console.status(styled_message, spinner="dots")
 
@@ -301,8 +303,8 @@ def run_test(
     # e.g. .../build/output/_example/example/example
     output_stem = output_stem_from_test(output_dir, test_file)
 
-    # Recreate the directory (should be empty)
-    output_stem.parent.mkdir(parents=True, exist_ok=True)
+    # Recreate the directory
+    remake_dir(output_stem.parent)
 
     # GCC is not targetting rv32imfd (base target of the course) because:
     # rv32imfd is compatible with rv32gc and the C extension is a part of extended goals
@@ -400,7 +402,8 @@ class JUnitXMLFile():
 def run_tests(
     drivers: list[Path],
     jobs: int,
-    report: JUnitXMLFile | None = None,
+    output_dir: Path,
+    report_path: str | None = None,
     status: str = "Running tests",
     **kwargs
 ) -> tuple[int, int]:
@@ -414,24 +417,30 @@ def run_tests(
     """
     passed = failed = 0
 
-    with Progress(
-        SpinnerColumn(),
-        TextColumn("[cyan]{task.description}[/]"),
-        TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
-        BarColumn(bar_width=None),
-        TextColumn(
-            "[green]passed={task.fields[passed]}[/], "
-            "[red]failed={task.fields[failed]}[/], "
-            "{task.fields[rate]:.2f} test/s"
-        ),
-        console=reporter.console,
-        transient=True,
-        disable=not stdout.isatty(),
-    ) as progress, ThreadPoolExecutor(max_workers=jobs) as executor:
+    with ExitStack() as stack:
+        progress = stack.enter_context(Progress(
+            SpinnerColumn(),
+            TextColumn("[cyan]{task.description}[/]"),
+            TextColumn("[progress.percentage]{task.percentage:>3.0f}%"),
+            BarColumn(bar_width=None),
+            TextColumn(
+                "[green]passed={task.fields[passed]}[/], "
+                "[red]failed={task.fields[failed]}[/], "
+                "{task.fields[rate]:.2f} test/s"
+            ),
+            console=reporter.console,
+            transient=True,
+            disable=not stdout.isatty(),
+        ))
+        xml_file = stack.enter_context(
+            JUnitXMLFile(output_dir / report_path) if report_path is not None else nullcontext()
+        )
+        executor = stack.enter_context(ThreadPoolExecutor(max_workers=jobs))
+
         task_id = progress.add_task(status, total=len(drivers), passed=0, failed=0, rate=0.0)
 
         job_to_driver = {
-            executor.submit(run_test, driver_file=driver, **kwargs): driver
+            executor.submit(run_test, driver_file=driver, output_dir=output_dir, **kwargs): driver
             for driver in drivers
         }
 
@@ -456,8 +465,8 @@ def run_tests(
                 rate=(passed + failed) / elapsed if elapsed > 0 else 0.0,
             )
 
-            if report is not None:
-                report.write_result(test_file=test_file, error=error)
+            if xml_file is not None:
+                xml_file.write_result(test_file=test_file, error=error)
 
     assert len(drivers) == passed + failed, \
         "Mismatch in number of tests with status " \
@@ -465,7 +474,7 @@ def run_tests(
 
     return passed, passed + failed
 
-def student_compiler(base_cmd: list[Path | str]) -> CompilerType:
+def student_compiler(compiler_path: Path, opt_flag: str = "", repetitions: int = 0) -> CompilerType:
     """
     Wrapper for `build/c_compiler -S <input_file> -o <log_stem>.s`.
     Additional arguments are passed to `run_test_step`.
@@ -478,7 +487,19 @@ def student_compiler(base_cmd: list[Path | str]) -> CompilerType:
         env["ASAN_OPTIONS"] = f"log_path={output_stem}.asan.log"
         env["UBSAN_OPTIONS"] = f"log_path={output_stem}.ubsan.log"
 
-        cmd = base_cmd + ["-S", input_file, "-o", append_suffix_to_stem(output_stem, "s")]
+        cmd = [compiler_path, opt_flag, "-S", input_file, "-o", append_suffix_to_stem(output_stem, "s")]
+
+        if repetitions > 0:
+            time_cmd = [
+                "/usr/bin/time",
+                "-f", "%e",
+                "-o", append_suffix_to_stem(output_stem, "compilation_time.log")
+            ]
+            compiler_cmd_str = shlex.join([str(el) for el in cmd])
+            cmd = time_cmd + [
+                "bash", "-lc",
+                f"for i in $(seq 1 {repetitions}); do {compiler_cmd_str}; done"
+            ]
 
         return run_test_step(step=TestStep.COMPILER, cmd=cmd, log_stem=output_stem, env=env, **kwargs)
 
@@ -506,261 +527,75 @@ def remake_dir(dir: Path):
     rmtree(dir, ignore_errors=True)
     dir.mkdir(parents=True, exist_ok=True)
 
-def get_drivers_in(dir: Path) -> Iterator[Path]:
-    return dir.rglob("*_driver.c")
+def get_drivers_from_path(dir: Path, exclude_dir: Path | None = None) -> list[Path]:
+    drivers = []
+    for test_candidate in dir.rglob("*_driver.c"):
+        if exclude_dir is not None and test_candidate.is_relative_to(exclude_dir):
+            continue
+        drivers.append(test_candidate)
 
-def run_normal(
-    root_dir: Path,
-    jobs: int,
-    validate_tests: bool,
-    clean: bool,
-    report: bool,
-    optimise: bool
-):
-    build_dir = root_dir / BUILD_DIR_NAME
-    output_dir = build_dir / OUTPUT_DIR_NAME
-    tests_dir = root_dir / TESTS_DIR_NAME
-    compiler_path = build_dir / TestStep.COMPILER.value
+    return sorted(drivers, key=lambda p: (p.parent.name, p.name))
 
-    # Skip building steps when using riscv-gcc
-    if not validate_tests:
-        # Clean the repo if required
-        if (clean and not run_make_rule(
-            rule=MakeRule.CLEAN,
-            verbosity=Verbosity.VERBOSE,
-            root_dir=root_dir
-        )) or not run_make_rule(
-            rule=MakeRule.BUILD,
-            verbosity=Verbosity.NORMAL,
-            root_dir=root_dir,
-            jobs=jobs,
-            optimise=optimise
-        ):
-            exit(1)
-
-    # Clean the output folder
-    remake_dir(output_dir)
-
-    # Run the tests and save the results into JUnit XML file if asked (in CI/CD typically)
-    with ExitStack() as stack:
-        passing_tests, total_tests = run_tests(
-            drivers=list(get_drivers_in(tests_dir)),
-            jobs=jobs,
-            report=stack.enter_context(JUnitXMLFile(build_dir / "junit_results.xml")) \
-                if report else None,
-            compiler=symlink_reference_compiler if validate_tests \
-                else student_compiler(base_cmd=[compiler_path]),
-            output_dir=output_dir
-        )
-
-    if validate_tests:
-        if passing_tests != total_tests:
-            reporter.error(
-                f"Number of tests failed during test validation: {total_tests - passing_tests}"
-            )
-            exit(1)
-        reporter.info(f"All {total_tests} tests are valid!")
-        exit(0)
-
-    # No coverage for optimised builds
-    if not (optimise or run_make_rule(
-        rule=MakeRule.COVERAGE,
-        verbosity=Verbosity.DEBUG,
-        root_dir=root_dir
-    )):
-        exit(1)
-
-    reporter.error(f"[bold]Passed {passing_tests}/{total_tests} found test cases[/]", style="cyan")
-
-def collect_benchmark_data(output_dir: Path, driver_file: Path) -> tuple[Path, int | None, int | None]:
-    test_file = test_from_driver(driver_file)
-    output_stem = output_stem_from_test(output_dir, test_file)
-
-    # Simulated instructions using ASM rdinstret in driver code
-    simulation_log = append_suffix_to_stem(output_stem, "simulation.stdout.log")
-    try:
-        simulated_instructions = int(simulation_log.read_text(encoding="utf-8").strip())
-    except ValueError:
-        simulated_instructions = None
-
-    # Binary size obtained as the sum of .text + .data + .rodata sections of ELF file
-    elf_file = output_stem.with_suffix(".o")
-    cmd = ["riscv32-unknown-elf-size", "-A", elf_file]
-    result = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    binary_size = 0
-
-    try:
-        for line in result.stdout.splitlines():
-            parts = line.split()
-            if len(parts) >= 2 and parts[0] in {".text", ".data", ".rodata"}:
-                binary_size += int(parts[1])
-    except ValueError:
-        binary_size = None
-
-    return test_file, simulated_instructions, binary_size
-
-def measure_compile_time(
-    output_dir: Path,
-    compiler_path: Path,
-    test_file: Path,
-    repetitions: int
-) -> float | None:
+def benchmark(output_dir: Path, benchmark_dir: Path, repetitions: int):
     assert repetitions > 0, f"Number of repetitions should be positive, got {repetitions}"
 
-    output_stem = output_stem_from_test(output_dir=output_dir, test_file=test_file)
-    output_stem.mkdir(parents=True, exist_ok=True)
-    log_file = append_suffix_to_stem(output_stem, "compilation_time.log")
+    for driver in get_drivers_from_path(benchmark_dir):
+        output_stem =  output_stem_from_test(output_dir, test_from_driver(driver))
 
-    compiler_cmd_str = shlex.join([
-        str(compiler_path), "-O1",
-        "-S", str(test_file),
-        "-o", f"{output_stem}.s"
-    ])
-    cmd = [
-        "/usr/bin/time",
-        "-f", "%e",
-        "-o", log_file,
-        "bash", "-lc", f"for i in $(seq 1 {repetitions}); do {compiler_cmd_str}; done"
-    ]
-    subprocess.run(cmd, stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        # Compilation time obtained from the time spent by compiler to compiler the test case
+        compilation_log = append_suffix_to_stem(output_stem, "compilation_time.log")
+        try:
+            total_compilation_time = compilation_log.read_text(encoding="utf-8").strip()
+            compilation_time = float(total_compilation_time) / repetitions
+        except (FileNotFoundError, ValueError):
+            compilation_time = None
 
-    # Compilation time obtained from the time spent by compiler to compiler the test case
-    try:
-        total_compilation_time = log_file.read_text(encoding="utf-8").strip()
-        return float(total_compilation_time) / repetitions
-    except (FileNotFoundError, ValueError):
-        return None
+        # Simulated instructions using ASM rdinstret in driver code
+        simulation_log = append_suffix_to_stem(output_stem, "simulation.stdout.log")
+        try:
+            simulated_instructions = int(simulation_log.read_text(encoding="utf-8").strip())
+        except ValueError:
+            simulated_instructions = None
 
-def run_benchmark(root_dir: Path, jobs: int, validate_tests: bool, repetitions: int):
-    build_dir = root_dir / BUILD_DIR_NAME
-    output_dir = build_dir / OUTPUT_DIR_NAME
-    tests_dir = root_dir / TESTS_DIR_NAME
-    benchmark_dir = root_dir / BENCHMARK_DIR_NAME
-    compiler_path = build_dir / TestStep.COMPILER.value
-    benchmark_drivers = list(get_drivers_in(benchmark_dir))
-    all_drivers = list(chain(benchmark_drivers, get_drivers_in(tests_dir)))
+        # Binary size obtained as the sum of .text + .data + .rodata sections of ELF file
+        elf_file = output_stem.with_suffix(".o")
+        cmd = ["riscv32-unknown-elf-size", "-A", elf_file]
+        result = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        binary_size = 0
+        try:
+            for parts in (line.split() for line in result.stdout.splitlines()):
+                if len(parts) >= 2 and parts[0] in {".text", ".data", ".rodata"}:
+                    binary_size += int(parts[1])
+        except ValueError:
+            binary_size = None
 
-    # First check students aren't trying to benchmark before being done with the coursework
-
-    # Skip building steps when using riscv-gcc
-    if not validate_tests:
-        # Clean the repo if required
-        if not (run_make_rule(
-            rule=MakeRule.CLEAN,
-            verbosity=Verbosity.VERBOSE,
-            root_dir=root_dir
-        ) and run_make_rule(
-            rule=MakeRule.BUILD,
-            verbosity=Verbosity.NORMAL,
-            root_dir=root_dir,
-            jobs=jobs,
-            optimise=False
-        )):
-            exit(1)
-
-    remake_dir(output_dir)
-
-    passing, total = run_tests(
-        drivers=all_drivers,
-        jobs=jobs,
-        report=None,
-        status="Running tests without `-O1`",
-        compiler=symlink_reference_compiler if validate_tests \
-            else student_compiler(base_cmd=[compiler_path]),
-        output_dir=output_dir
-    )
-
-    if passing != total:
         reporter.error(
-            f"Passing only {passing}/{total} tests, "
-            f"please fix your {'tests' if validate_tests else 'compiler'} before benchmarking."
+            f"\t{output_stem.name}: "
+            f"compilation time = {compilation_time or 'N/A'} s, "
+            f"simulated instructions = {simulated_instructions or 'N/A'}, "
+            f"binary size = {binary_size or 'N/A'} B",
+            style="purple"
         )
-        # Generate coverage for debug convenience
-        if not validate_tests:
-            run_make_rule(
-                rule=MakeRule.COVERAGE,
-                verbosity=Verbosity.DEBUG,
-                root_dir=root_dir
-            )
-        exit(1)
-
-    # If we wanted to validate we can stop here
-    if validate_tests:
-        reporter.info(f"All {total} tests are valid!")
-        exit(0)
-
-    # We can discard the output folder, even though generated reference assembly is going to be the same
-    remake_dir(output_dir)
-
-    # Students are done with coursework, now testing if building with `-O3` and passing `-O1` works
-    passing, total = run_tests(
-        drivers=all_drivers,
-        jobs=jobs,
-        report=None,
-        status="Running tests with `-O1`",
-        compiler=student_compiler(base_cmd=[compiler_path, "-O1"]),
-        output_dir=output_dir
-    )
-
-    if passing != total:
-        reporter.error(
-            f"Passing only {passing}/{total} tests with `-O1`, "
-            "please fix your compiler before benchmarking."
-        )
-        # Generate coverage for debug convenience
-        run_make_rule(
-            rule=MakeRule.COVERAGE,
-            verbosity=Verbosity.DEBUG,
-            root_dir=root_dir
-        )
-        exit(1)
-
-    # Get executable size and executed instruction count
-    with reporter.status("Collecting benchmark data"):
-        benchmark_data = [
-            collect_benchmark_data(output_dir=output_dir, driver_file=driver)
-            for driver in benchmark_drivers
-        ]
-
-    # Clean and build with optimisations
-    if not (run_make_rule(
-        rule=MakeRule.CLEAN,
-        verbosity=Verbosity.VERBOSE,
-        root_dir=root_dir
-    ) and run_make_rule(
-        rule=MakeRule.BUILD,
-        verbosity=Verbosity.NORMAL,
-        root_dir=root_dir,
-        jobs=jobs,
-        optimise=True
-    )):
-        exit(1)
-
-    # Finally run the timed benchmarks
-    with reporter.status("Measuring compile time"):
-        remake_dir(output_dir)
-
-        for test_file, simulated_instructions, binary_size in benchmark_data:
-            compilation_time = measure_compile_time(
-                output_dir=output_dir,
-                compiler_path=compiler_path,
-                test_file=test_file,
-                repetitions=repetitions
-            )
-
-            # Report compiler stats to terminal, students can decide how to process them further
-            reporter.error(
-                f"{get_relative_path_str(test_file)}: "
-                f"compilation time = {compilation_time or 'N/A'} s, "
-                f"simulated instructions = {simulated_instructions or 'N/A'}, "
-                f"binary size = {binary_size or 'N/A'} B",
-                style="purple"
-            )
 
 def parse_args() -> Namespace:
     """Wrapper for argument parsing."""
-    shared_parser = ArgumentParser(add_help=False)
-    shared_parser.add_argument(
+    parser = ArgumentParser()
+    parser.add_argument(
+        "-v", "--version",
+        action="version",
+        version=f"BetterTesting {__version__}"
+    )
+    parser.add_argument(
+        "-j", "--jobs",
+        nargs="?",
+        const=cpu_count() or 8,
+        default=1,
+        type=int,
+        metavar="N",
+        help="Build compiler and run tests using multiple threads. "
+            "Use -m to use the default thread count, or -m N to use exactly N threads. "
+    )
+    parser.add_argument(
         "--verbosity",
         type=lambda arg: Verbosity(int(arg)),
         choices=Verbosity,
@@ -768,105 +603,141 @@ def parse_args() -> Namespace:
         help="Disable verbose output into the terminal. Note that all logs will "
             "be stored automatically into log files regardless of this option."
     )
-    shared_parser.add_argument(
-        "-j", "--jobs",
-        nargs="?",
-        const=cpu_count() or 8,
-        default=1,
-        type=int,
-        metavar="N",
-        help="Use parallelism when possible. "
-            "Use -j to use the default job count, or -j N to use exactly N jobs."
-    )
-    shared_parser.add_argument(
-        "--validate_tests",
-        action="store_true",
-        default=False,
-        help="Use GCC to validate tests instead of testing the compiler. "
-            "Use it to validate tests you add (see docs/coverage.md for useful tests)."
-    )
-
-    parser = ArgumentParser(exit_on_error=False)
     parser.add_argument(
-        "-v", "--version",
-        action="version",
-        version=f"BetterTesting {__version__}"
-    )
-
-    # "normal" is the default command when none is provided, logic for that is at the end
-    subparsers = parser.add_subparsers(
-        title="commands",
-        dest="command",
-        required=False,
-        metavar="[run,benchmark]"
-    )
-
-    normal_parser = subparsers.add_parser(
-        "run",
-        parents=[shared_parser],
-        help="Use normal mode. (default)"
-    )
-    normal_parser.add_argument(
         "--clean",
         action="store_true",
         default=False,
         help="Clean the repository before testing. This will make it slower "
             "but it can solve some compilation issues when source files are deleted."
     )
-    normal_parser.add_argument(
-        "--report",
-        action="store_true",
-        default=False,
-        help="Generate a JUnit report to use as a test summary for CI/CD."
-    )
-    normal_parser.add_argument(
+    parser.add_argument(
         "--optimise",
         action="store_true",
         default=False,
         help="Optimise the compiler for speed, at the cost building time and debugging."
     )
-    normal_parser.set_defaults(
-        action=lambda root_dir, args: run_normal(
-            root_dir=root_dir,
-            jobs=args.jobs,
-            validate_tests=args.validate_tests,
-            clean=args.clean,
-            report=args.report,
-            optimise=args.optimise
-        )
+    parser.add_argument(
+        "--report",
+        nargs="?",
+        const=Path("junit_results.xml"),
+        default=None,
+        metavar="PATH",
+        help="Generate a JUnit report to use as a test summary for CI/CD. "
+            "Use --report for the default path, or --report PATH to choose a file."
     )
-
-    benchmark_parser = subparsers.add_parser(
-        "benchmark",
-        parents=[shared_parser],
-        help="Benchmark compiler and gather related statistics "
-            "like compilation time, execution time, and ELF size."
-    )
-    benchmark_parser.add_argument(
-        "--repetitions",
+    parser.add_argument(
+        "--benchmark",
+        nargs="?",
+        const=1000,
+        default=0,
         type=int,
-        default=100,
-        help="Number of times to run the compiler, "
-            "a higher value isolate from noise like random slowdowns but takes more time."
+        metavar="N",
+        help="Benchmark compiler and gather related statistics like compilation "
+            "time, execution time, and ELF size. Use --benchmark to use the default "
+            "compilation repetitions, or --benchmark N to do exactly N repetitions."
     )
-    benchmark_parser.set_defaults(
-        action=lambda root_dir, args: run_benchmark(
-            root_dir=root_dir,
-            jobs=args.jobs,
-            validate_tests=args.validate_tests,
-            repetitions=args.repetitions
-        )
+    parser.add_argument(
+        "--validate_tests",
+        action="store_true",
+        default=False,
+        help="Use GCC to validate tests instead of testing the compiler. "
+            "Use it to validate tests you add (see docs/coverage.md for useful tests)."
     )
-    try:
-        args, leftover_command = parser.parse_known_args()
-        if args.command is None:
-            args = normal_parser.parse_args(leftover_command, namespace=args)
-    except ArgumentError:
-        args = normal_parser.parse_args()
-    return args
+    return parser.parse_args()
 
 if __name__ == "__main__":
     root_dir = Path(__file__).resolve().parent
     args = parse_args()
     reporter.verbosity = args.verbosity
-    args.action(root_dir, args)
+
+    build_dir = root_dir / BUILD_DIR_NAME
+    output_dir = build_dir / OUTPUT_DIR_NAME
+    tests_dir = root_dir / TESTS_DIR_NAME
+    benchmark_dir = tests_dir / BENCHMARK_DIR_NAME
+    compiler_path = MakeRule.BUILD.value
+
+    # Shared arguments to run_make_rule
+    run_make_rule_common = partial(
+        run_make_rule,
+        root_dir=root_dir,
+        jobs=args.jobs,
+        optimise=args.optimise
+    )
+
+    # Skip building steps when using riscv-gcc
+    if not args.validate_tests:
+        # Clean the repo if required
+        if (args.clean and not run_make_rule_common(
+            rule=MakeRule.CLEAN,
+            verbosity=Verbosity.VERBOSE
+        )) or not run_make_rule_common(
+            rule=MakeRule.BUILD,
+            verbosity=Verbosity.NORMAL
+        ):
+            exit(1)
+
+    # Clean the output folder
+    remake_dir(output_dir)
+
+    # Shared arguments to run_tests
+    run_tests_common = partial(
+        run_tests,
+        jobs=args.jobs,
+        output_dir=output_dir,
+        report_path=args.report,
+    )
+
+    # Run the tests and save the results into JUnit XML file if asked (in CI/CD typically)
+    passing_tests, total_tests = run_tests_common(
+        drivers=get_drivers_from_path(tests_dir, exclude_dir=benchmark_dir),
+        compiler=symlink_reference_compiler if args.validate_tests \
+            else student_compiler(compiler_path),
+    )
+
+    reporter.error(f"[bold]Passed {passing_tests}/{total_tests} found test cases[/]", style="cyan")
+
+    if args.benchmark:
+        # Benchmark students' compiler with and without their custom optimisations, if relevant
+        benchmark_configs = (
+            [(" without optimisations", None), (" with optimisations", "-O1")]
+            if not args.validate_tests
+            else [("", None)]
+        )
+
+        for optimisation_msg, opt_flag in benchmark_configs:
+
+            # Run the benchmark tests according to opt_flag
+            passing_benchmark, total_benchmark = run_tests_common(
+                drivers=get_drivers_from_path(benchmark_dir),
+                status=f"Running benchmark{optimisation_msg}",
+                compiler=symlink_reference_compiler if args.validate_tests \
+                    else student_compiler(compiler_path, opt_flag=opt_flag, repetitions=args.benchmark),
+            )
+
+            if passing_benchmark != total_benchmark:
+                reporter.warning(f"Skipping benchmarking{optimisation_msg} due to failures")
+                continue
+
+            reporter.error(f"[bold]Benchmark results{optimisation_msg}:[/]", style="purple")
+            benchmark(output_dir=output_dir, benchmark_dir=benchmark_dir, repetitions=args.benchmark)
+
+        passing_tests += passing_benchmark
+        total_tests += total_benchmark
+
+    # Skip unavailable coverage and exit immediately for test validation
+    if args.validate_tests:
+        if passing_tests != total_tests:
+            reporter.error(
+                "Number of tests failed during test validation: "
+                f"{total_tests - passing_tests}"
+            )
+            exit(1)
+        reporter.error(f"All {total_tests} tests are valid!", style="cyan")
+        exit(0)
+
+    # Run coverage if students' compiler was built w/o optimising
+    if not (args.optimise or run_make_rule_common(
+        rule=MakeRule.COVERAGE,
+        verbosity=Verbosity.DEBUG
+    )):
+        exit(1)
