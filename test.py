@@ -540,7 +540,7 @@ def get_drivers_from_path(dir: Path, exclude_dir: Path | None = None) -> list[Pa
             continue
         drivers.append(test_candidate)
 
-    return sorted(drivers, key=lambda p: (p.parent.name, p.name))
+    return drivers
 
 def benchmark(output_dir: Path, benchmark_dir: Path, repetitions: int):
     assert repetitions > 0, f"Number of repetitions should be positive, got {repetitions}"
@@ -599,7 +599,7 @@ def parse_args() -> Namespace:
         type=int,
         metavar="N",
         help="Build compiler and run tests using multiple threads. "
-            "Use -m to use the default thread count, or -m N to use exactly N threads. "
+            "Use -j to use the default thread count, or -j N to use exactly N threads. "
     )
     parser.add_argument(
         "--verbosity",
@@ -703,9 +703,24 @@ if __name__ == "__main__":
     reporter.error(f"[bold]Passed {passing_tests}/{total_tests} found test cases[/]", style="cyan")
 
     if args.benchmark:
+        opt_flag = "-O1"
+
+        if args.jobs > 1 or not args.optimise:
+            reporter.warning(f"Benchmarking with jobs > 1 or unoptimised builds can affect timing")
+
+        # Start by checking if students' optimisations don't fail more seen tests than before
+        passing_tests_with_opt, _ = run_tests_common(
+            drivers=get_drivers_from_path(tests_dir, exclude_dir=benchmark_dir),
+            compiler=symlink_reference_compiler if args.validate_tests \
+                else student_compiler(compiler_path, opt_flag=opt_flag),
+        )
+        if passing_tests_with_opt < passing_tests:
+            reporter.error(f"Enabling optimisations with {opt_flag} causes "
+                           f"{passing_tests-passing_tests_with_opt} previously successful tests to fail")
+
         # Benchmark students' compiler with and without their custom optimisations, if relevant
         benchmark_configs = (
-            [(" without optimisations", None), (" with optimisations", "-O1")]
+            [(" without optimisations", None), (" with optimisations", opt_flag)]
             if not args.validate_tests
             else [("", None)]
         )
