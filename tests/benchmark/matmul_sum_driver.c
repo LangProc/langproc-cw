@@ -1,3 +1,5 @@
+/* DISCLAIMER: Benchmark tests are NOT part of the assessed tests */
+
 #include <stdint.h>
 #include <inttypes.h>
 #include <stdio.h>

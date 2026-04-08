@@ -1,3 +1,5 @@
+/* DISCLAIMER: Benchmark tests are NOT part of the assessed tests */
+
 #include <inttypes.h>
 
 static inline uint64_t rdinstret64(void) {
