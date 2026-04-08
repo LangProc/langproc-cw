@@ -534,13 +534,8 @@ def remake_dir(dir: Path):
     dir.mkdir(parents=True, exist_ok=True)
 
 def get_drivers_from_path(dir: Path, exclude_dir: Path | None = None) -> list[Path]:
-    drivers = []
-    for test_candidate in dir.rglob("*_driver.c"):
-        if exclude_dir is not None and test_candidate.is_relative_to(exclude_dir):
-            continue
-        drivers.append(test_candidate)
-
-    return drivers
+    return [driver for driver in dir.rglob("*_driver.c")
+            if exclude_dir is None or not driver.is_relative_to(exclude_dir)]
 
 def benchmark(output_dir: Path, benchmark_dir: Path, repetitions: int):
     assert repetitions > 0, f"Number of repetitions should be positive, got {repetitions}"
@@ -598,8 +593,8 @@ def parse_args() -> Namespace:
         default=1,
         type=int,
         metavar="N",
-        help="Build compiler and run tests using multiple threads. "
-            "Use -j to use the default thread count, or -j N to use exactly N threads. "
+        help="Build compiler and run tests using parallelism. "
+            "Use -j to use the default job count, or -j N to use exactly N jobs. "
     )
     parser.add_argument(
         "--verbosity",
