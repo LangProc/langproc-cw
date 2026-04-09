@@ -82,6 +82,7 @@ BUILD_DIR_NAME = "build"
 OUTPUT_DIR_NAME = "output"
 TESTS_DIR_NAME = "tests"
 BENCHMARK_DIR_NAME = "benchmark"
+TIMEOUT_RETURNCODE = 124
 
 class TestStep(Enum):
     REFERENCE = "gcc_reference", "Generating reference assembly"
@@ -114,7 +115,7 @@ def get_return_code_msg(return_code: int) -> str:
     if return_code < 0 and -return_code in valid_signals():
         signal_name = strsignal(-return_code).lower() or 'unknown signal'
         return f"Process ended by {signal_name} {Signals(-return_code)}"
-    if return_code == 124:
+    if return_code == TIMEOUT_RETURNCODE:
         return "Timeout"
     if return_code != 0:
         return "Error"
@@ -133,8 +134,10 @@ def run_subprocess(cmd: list[str | Path], log_stem: Path | None, **kwargs) -> in
             if log_stem is not None
             else (None, None)
         )
-
-        return subprocess.run(cmd, stdout=stdout, stderr=stderr, **kwargs).returncode
+        try:
+            return subprocess.run(cmd, stdout=stdout, stderr=stderr, **kwargs).returncode
+        except subprocess.TimeoutExpired:
+            return TIMEOUT_RETURNCODE
 
 def run_make_rule(
     rule: MakeRule,
